@@ -1373,7 +1373,15 @@ function campoSelectIdioma() {
 }
 
 function renderFormulario() {
-  const cont = $("#form-panel");
+  let cont = $("#form-panel");
+  if (!cont) {
+    // Recuperación: si #form-panel desapareció del DOM, se recrea vacío.
+    const host = $("#panel-formulario") || document.body;
+    host.innerHTML = "";
+    cont = document.createElement("div");
+    cont.id = "form-panel";
+    host.appendChild(cont);
+  }
   cont.innerHTML = "";
 
   const t1 = seccionTitulo("Datos personales");
@@ -1670,8 +1678,11 @@ function configurarBloques() {
 
 function entrarModoLatex() {
   state.modo = "latex";
-  const form = $("#panel-formulario");
-  form.innerHTML = "";
+  const host = $("#panel-formulario") || document.body;
+  const panelForm = $("#form-panel");
+  if (panelForm) panelForm.hidden = true;
+  const previo = $("#panel-latex");
+  if (previo) previo.remove();
 
   const cont = document.createElement("div");
   cont.id = "panel-latex";
@@ -1699,7 +1710,7 @@ function entrarModoLatex() {
   });
 
   cont.append(barra, ta);
-  form.appendChild(cont);
+  host.appendChild(cont);
   actualizarMarcas();
 }
 
@@ -1707,6 +1718,10 @@ function salirModoLatex(recompilar) {
   state.modo = "formulario";
   state.texManual = null;
   state.texEditado = false;
+  const pl = $("#panel-latex");
+  if (pl) pl.remove();
+  const panelForm = $("#form-panel");
+  if (panelForm) panelForm.hidden = false;
   renderFormulario();
   actualizarMarcas();
   if (recompilar) programarCompilacion();

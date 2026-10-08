@@ -8,6 +8,7 @@ pipeline espera (menu Anadir, modales de bloques, deshacer/rehacer y zoom).
 """
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -95,3 +96,43 @@ def test_app_js_tiene_estado_de_colapso_por_seccion():
     assert "colapsoUI" in JS
     assert "function aplicarColapso(" in JS
     assert "function alternarColapso(" in JS
+
+
+def _cuerpo_funcion(nombre):
+    """Devuelve el cuerpo de una funcion top-level (cierre '}' en columna 0)."""
+    m = re.search(r"function %s\([^)]*\) \{(.*?)\n\}" % nombre, JS, re.S)
+    assert m, "no se encontró la función %s" % nombre
+    return m.group(1)
+
+
+def test_app_js_render_formulario_recrea_form_panel_si_falta():
+    """Regresión: volver del modo LaTeX crasheaba con #form-panel a null."""
+    cuerpo = _cuerpo_funcion("renderFormulario")
+    assert 'let cont = $("#form-panel");' in cuerpo
+    assert "if (!cont) {" in cuerpo
+    assert 'document.createElement("div")' in cuerpo
+    assert 'cont.id = "form-panel"' in cuerpo
+    assert "host.appendChild(cont)" in cuerpo
+
+
+def test_app_js_entrar_modo_latex_no_destruye_el_formulario():
+    """entrarModoLatex oculta #form-panel en vez de vaciar #panel-formulario."""
+    cuerpo = _cuerpo_funcion("entrarModoLatex")
+    assert 'form.innerHTML = ""' not in cuerpo
+    assert "panelForm.hidden = true" in cuerpo
+    # Se elimina cualquier #panel-latex previo para no duplicar ids.
+    assert '$("#panel-latex")' in cuerpo
+    assert "host.appendChild(cont)" in cuerpo
+
+
+def test_app_js_salir_modo_latex_restaura_form_panel():
+    """salirModoLatex quita #panel-latex, muestra #form-panel y repinta."""
+    cuerpo = _cuerpo_funcion("salirModoLatex")
+    assert 'const pl = $("#panel-latex");' in cuerpo
+    assert "pl.remove()" in cuerpo
+    assert "panelForm.hidden = false" in cuerpo
+    assert "renderFormulario()" in cuerpo
+    # El estado de edición manual se restablece al volver.
+    assert "state.texManual = null" in cuerpo
+    assert "state.texEditado = false" in cuerpo
+
