@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUTA_HTML = os.path.join(RAIZ, "web", "index.html")
 RUTA_JS = os.path.join(RAIZ, "web", "app.js")
+RUTA_CSS = os.path.join(RAIZ, "web", "style.css")
 
 
 def _leer(ruta):
@@ -25,6 +26,7 @@ def _leer(ruta):
 
 HTML = _leer(RUTA_HTML)
 JS = _leer(RUTA_JS)
+CSS = _leer(RUTA_CSS)
 
 
 def test_index_tiene_menu_anadir_con_las_acciones_de_bloque():
@@ -135,4 +137,22 @@ def test_app_js_salir_modo_latex_restaura_form_panel():
     # El estado de edición manual se restablece al volver.
     assert "state.texManual = null" in cuerpo
     assert "state.texEditado = false" in cuerpo
+
+
+def _bloque_css(selector):
+    """Devuelve el cuerpo de la regla CSS del selector exacto."""
+    m = re.search(re.escape(selector) + r"\s*\{([^}]*)\}", CSS)
+    assert m, "no se encontró la regla %s en web/style.css" % selector
+    return m.group(1)
+
+
+def test_css_panel_latex_ocupa_la_altura_disponible():
+    """Regresión: #panel-latex solo medía su altura intrínseca dentro del
+    contenedor flex de #panel-formulario, así que el textarea quedaba en ~2
+    filas. Debe crecer con `flex: 1 1 auto` y el textarea estirarse y
+    desplazarse internamente (min-height: 0)."""
+    assert "flex: 1 1 auto" in _bloque_css("#panel-latex")
+    bloque_texto = _bloque_css("#texto-latex")
+    assert "flex: 1 1 auto" in bloque_texto
+    assert "min-height: 0" in bloque_texto
 
