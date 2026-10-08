@@ -38,11 +38,12 @@ def load():
         try:
             with open(PREFS_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-            for k, v in saved.items():
-                if k == "margenes" and isinstance(v, dict):
-                    data["margenes"].update(v)
-                else:
-                    data[k] = v
+            if isinstance(saved, dict):
+                for k, v in saved.items():
+                    if k == "margenes" and isinstance(v, dict):
+                        data["margenes"].update(v)
+                    else:
+                        data[k] = v
         except (json.JSONDecodeError, OSError):
             pass
     _CACHE = data
@@ -53,8 +54,10 @@ def save(data):
     global _CACHE
     _ensure_dirs()
     _CACHE = dict(data)
-    with open(PREFS_FILE, "w", encoding="utf-8") as f:
+    tmp = PREFS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, PREFS_FILE)
 
 
 def set(k, v):

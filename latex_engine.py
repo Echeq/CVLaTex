@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 import urllib.request
+import uuid
 import zipfile
 
 import latex_gen
@@ -183,7 +184,9 @@ def _usa_xelatex(tex):
     if _CJK_RE is None:
         import re as _re
 
-        _CJK_RE = _re.compile("[\u4e00-\u9fff\uff00-\uffef]")
+        _CJK_RE = _re.compile(
+            "[\u4e00-\u9fff\uff00-\uffef\u3040-\u30ff\uac00-\ud7af\uf900-\ufaff]"
+        )
     return bool(_CJK_RE.search(tex))
 
 
@@ -209,6 +212,21 @@ def compile(tex, foto=None, extras=None):
         }
     with _CANDADO:
         return _compilar_sin_candado(motor, tex, foto, extras)
+
+
+def _copiar_pdf_estable(origen):
+    """Copia el PDF a CACHE_DIR/out para que la exportación no compita con la próxima compilación."""
+    destino_dir = os.path.join(prefs.CACHE_DIR, "out")
+    os.makedirs(destino_dir, exist_ok=True)
+    destino = os.path.join(destino_dir, "result_" + uuid.uuid4().hex + ".pdf")
+    try:
+        shutil.copy2(origen, destino)
+    except OSError:
+        try:
+            shutil.copyfile(origen, destino)
+        except OSError:
+            return origen
+    return destino
 
 
 def _compilar_sin_candado(pdflatex, tex, foto=None, extras=None):
@@ -252,6 +270,9 @@ def _compilar_sin_candado(pdflatex, tex, foto=None, extras=None):
         return {"ok": False, "pdf": None, "errores": ["La compilación tardó demasiado."]}
     pdf = os.path.join(prefs.BUILD_DIR, "main.pdf")
     if os.path.isfile(pdf):
-        return {"ok": True, "pdf": pdf, "errores": []}
+        return {"ok": True, "pdf": _copiar_pdf_estable(pdf), "errores": []}
     log = _leer_log(os.path.join(prefs.BUILD_DIR, "main.log"))
-    return {"ok": False, "pdf": None, "errores": _parsear_errores(log)}
+    errores = _parsear_errores(log)
+    if not errores:
+        errores = ["pdflatex no generó el PDF; revisa main.log."]
+    return {"ok": False, "pdf": None, "errores": errores}

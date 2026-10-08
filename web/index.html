@@ -122,13 +122,13 @@
   </section>
 </main>
 
-<footer id="barra-estado"><span id="estado"></span></footer>
+<footer id="barra-estado"><span id="estado" aria-live="polite"></span></footer>
 
 <div class="modal" id="modal-wizard" hidden>
   <div class="modal-box">
     <h2>Motor LaTeX</h2>
     <p>Para generar la previsualización y exportar a PDF, CVLaTeX necesita un motor LaTeX en tu equipo.</p>
-    <p>Si no tienes uno, CVLaTeX puede <b>descargar e instalar TinyTeX automáticamente</b> (una sola vez, requiero conexión a internet).</p>
+    <p>Si no tienes uno, CVLaTeX puede <b>descargar e instalar TinyTeX automáticamente</b> (una sola vez, requiere conexión a internet).</p>
     <div class="wizard-opciones">
       <button id="wz-instalar" class="primary">Descargar e instalar TinyTeX (recomendado)</button>
       <button id="wz-tengo">Ya tengo LaTeX instalado</button>
@@ -264,7 +264,7 @@
   </div>
 </div>
 
-<div id="toast" hidden></div>
+<div id="toast" aria-live="polite" hidden></div>
 
 <script src="/app.js"></script>
 </body>

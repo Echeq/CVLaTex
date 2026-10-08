@@ -15,7 +15,19 @@ ARCHIVOS = {
     "chino": "chino/chino.tex",
 }
 
-_ESPECIALES = re.compile(r"([\\{}$&#^_%~])")
+_ESPECIALES = re.compile(r"([\\{}$&#_%~^])")
+_ESC_LATEX = {
+    "\\": "\\\\",
+    "{": "\\{",
+    "}": "\\}",
+    "$": "\\$",
+    "&": "\\&",
+    "#": "\\#",
+    "_": "\\_",
+    "%": "\\%",
+    "~": "\\textasciitilde{}",
+    "^": "\\textasciicircum{}",
+}
 LOGO_EXTS = {".jpg", ".jpeg", ".png"}
 ANCHOS = {1: "1.0", 2: "0.48", 3: "0.31"}
 
@@ -23,6 +35,7 @@ LANG = {
     "zh": {
         "titulo": "个人简历 PERSONAL RESUME",
         "nacimiento": "出生年月：", "telefono": "手机号码：", "nacionalidad": "国籍：",
+        "direccion": "地址：",
         "correo": "邮箱：", "egresado": "毕业院校：", "puesto": "意向岗位：",
         "github": "Github: ", "linkedin": "Linkedin: ",
         "educacion": "教育背景", "proyectos": "项目经历", "proyectosu": "校内项目",
@@ -34,6 +47,7 @@ LANG = {
     "es": {
         "titulo": "CURRÍCULUM",
         "nacimiento": "Nacimiento:", "telefono": "Teléfono:", "nacionalidad": "Nacionalidad:",
+        "direccion": "Dirección:",
         "correo": "Correo:", "egresado": "Institución de egreso:", "puesto": "Puesto deseado:",
         "github": "Github:", "linkedin": "Linkedin:",
         "educacion": "Educación", "proyectos": "Proyectos", "proyectosu": "Proyectos universitarios",
@@ -45,6 +59,7 @@ LANG = {
     "en": {
         "titulo": "PERSONAL RESUME",
         "nacimiento": "Date of birth:", "telefono": "Phone:", "nacionalidad": "Nationality:",
+        "direccion": "Address:",
         "correo": "Email:", "egresado": "Graduated from:", "puesto": "Desired role:",
         "github": "Github:", "linkedin": "Linkedin:",
         "educacion": "Education", "proyectos": "Projects", "proyectosu": "University projects",
@@ -56,18 +71,21 @@ LANG = {
 }
 
 
+def _escapar(texto):
+    return _ESPECIALES.sub(lambda m: _ESC_LATEX[m.group(1)], texto)
+
+
 def esc(texto):
     if not texto:
         return ""
-    t = _ESPECIALES.sub(r"\\\1", str(texto))
-    return " ".join(_partir_palabra(p) for p in t.split(" "))
+    return " ".join(_partir_palabra(p) for p in str(texto).split(" "))
 
 
 def _partir_palabra(pal):
-    if len(pal) <= 18:
-        return pal
+    # Los trozos se cortan sobre el texto SIN escapar para que un corte nunca
+    # parta un macro generado por _escapar (p. ej. \textasciitilde{}).
     trozos = [pal[i:i + 18] for i in range(0, len(pal), 18)]
-    return "\\allowbreak ".join(trozos)
+    return "\\allowbreak ".join(_escapar(t) for t in trozos)
 
 
 def datos_vacios():
@@ -198,6 +216,7 @@ def _contactos(d, L):
     ag(L["telefono"], d.get("telefono"), mono=True)
     ag(L["nacionalidad"], d.get("nacionalidad"))
     ag(L["correo"], d.get("email"), mono=True)
+    ag(L["direccion"], d.get("direccion"))
     ag(L["egresado"], d.get("institucion_egresado"))
     ag(L["puesto"], d.get("profesion"))
     ag(L["github"], d.get("github"), mono=True)

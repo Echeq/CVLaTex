@@ -136,6 +136,7 @@ def _agregar_contactos(doc, d, L):
     agregar(L["telefono"], d.get("telefono"))
     agregar(L["nacionalidad"], d.get("nacionalidad"))
     agregar(L["correo"], d.get("email"))
+    agregar(L["direccion"], d.get("direccion"))
     agregar(L["egresado"], d.get("institucion_egresado"))
     agregar(L["puesto"], d.get("profesion"))
     agregar(L["github"], d.get("github"))

@@ -5,6 +5,9 @@
 __pycache__/
 *.pyc
 
+# Caché de pytest
+.pytest_cache/
+
 # Artefactos de build (PyInstaller)
 build/
 dist/

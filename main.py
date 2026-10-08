@@ -1,3 +1,4 @@
+import base64
 import functools
 import http.server
 import json
@@ -6,6 +7,7 @@ import os
 import shutil
 import sys
 import threading
+import uuid
 
 import webview
 
@@ -60,6 +62,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(204)
         self.end_headers()
 
+    def _servir_seguro(self, base, relativo):
+        """Sirve un fichero contenido en base; si la ruta escapa, devuelve 404."""
+        try:
+            base_real = os.path.realpath(base)
+            objetivo = os.path.realpath(os.path.join(base_real, relativo))
+            if os.path.commonpath([os.path.normcase(base_real), os.path.normcase(objetivo)]) != os.path.normcase(base_real):
+                self.send_error(404)
+                return
+        except ValueError:
+            self.send_error(404)
+            return
+        self._servir(objetivo)
+
     def do_GET(self):
         ruta = self._ruta_sin_query()
         if ruta in ("/", "/index.html"):
@@ -67,9 +82,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif ruta in RUTAS:
             self._servir(RUTAS[ruta])
         elif ruta.startswith("/preview/"):
-            self._servir(os.path.join(prefs.BUILD_DIR, ruta[len("/preview/"):]))
+            self._servir_seguro(prefs.BUILD_DIR, ruta[len("/preview/"):])
         elif ruta.startswith("/media/"):
-            self._servir(os.path.join(prefs.CACHE_DIR, ruta[len("/media/"):]))
+            self._servir_seguro(prefs.CACHE_DIR, ruta[len("/media/"):])
         elif ruta == "/favicon.ico":
             self._sin_contenido()
         else:
@@ -79,14 +94,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Api:
     def __init__(self, win):
         self._w = win
-        self._compilar_id = 0
 
     def init(self):
         prefs.load()
+        ruta_latex = latex_engine.find_pdflatex()
         return {
             "prefs": prefs.load(),
-            "latex_ok": latex_engine.find_pdflatex() is not None,
-            "needs_setup": latex_engine.find_pdflatex() is None and not prefs.get("setup_dismissed"),
+            "latex_ok": ruta_latex is not None,
+            "needs_setup": ruta_latex is None and not prefs.get("setup_dismissed"),
         }
 
     def _empujar(self, nombre, datos):
@@ -98,7 +113,6 @@ class Api:
             pass
 
     def compile(self, datos, id_compilacion):
-        self._compilar_id = id_compilacion
         threading.Thread(target=self._compilar_en_hilo, args=(datos, id_compilacion), daemon=True).start()
         return "ok"
 
@@ -112,20 +126,17 @@ class Api:
         resultado["id"] = id_compilacion
         self._empujar("__onCompile", resultado)
 
-    def tex_actual(self, datos):
-        try:
-            return latex_gen.build_tex(datos, prefs.load())
-        except Exception as e:
-            return f"% Error al generar: {e}"
-
-    def compilar_tex(self, tex, id_compilacion):
-        self._compilar_id = id_compilacion
-        threading.Thread(target=self._compilar_tex_hilo, args=(tex, id_compilacion), daemon=True).start()
+    def compilar_tex(self, tex, id_compilacion, datos=None):
+        threading.Thread(target=self._compilar_tex_hilo, args=(tex, id_compilacion, datos), daemon=True).start()
         return "ok"
 
-    def _compilar_tex_hilo(self, tex, id_compilacion):
+    def _compilar_tex_hilo(self, tex, id_compilacion, datos=None):
         try:
-            resultado = latex_engine.compile(tex, None)
+            resultado = latex_engine.compile(
+                tex,
+                datos.get("foto") if datos else None,
+                latex_gen.logos_extra(datos) if datos else None,
+            )
         except Exception as e:
             resultado = {"ok": False, "pdf": None, "errores": [f"Error interno: {e}"]}
         resultado["id"] = id_compilacion
@@ -161,29 +172,32 @@ class Api:
             ruta = ruta[0] if ruta else None
         return ruta
 
-    def elegir_foto(self):
+    def elegir_foto(self, tipo=None):
+        tipo = "logo" if str(tipo or "").strip().lower() == "logo" else "foto"
         ruta = self.elegir_archivo(("Imágenes (*.jpg;*.jpeg;*.png)",), False, None)
         if not ruta:
             return {"ok": False}
         try:
-            ext = os.path.splitext(ruta)[1].lower() or ".jpg"
+            ext = os.path.splitext(ruta)[1].lower()
             if ext not in latex_engine.FOTOS_PERMITIDAS:
                 return {"ok": False, "error": "Formato no admitido (usa JPG o PNG)."}
-            destino = os.path.join(prefs.CACHE_DIR, "foto" + ext)
+            os.makedirs(prefs.CACHE_DIR, exist_ok=True)
+            nombre = "%s_%s%s" % (tipo, uuid.uuid4().hex, ext)
+            destino = os.path.join(prefs.CACHE_DIR, nombre)
             shutil.copy2(ruta, destino)
-            return {"ok": True, "path": destino, "url": "/media/foto" + ext}
+            return {"ok": True, "path": destino, "url": "/media/" + nombre}
         except OSError as e:
             return {"ok": False, "error": str(e)}
 
     def guardar_foto_recorte(self, data_url):
         try:
-            import base64
-
             datos_img = base64.b64decode(data_url.split(",", 1)[1])
-            destino = os.path.join(prefs.CACHE_DIR, "foto_recorte.png")
+            os.makedirs(prefs.CACHE_DIR, exist_ok=True)
+            nombre = "recorte_%s.png" % uuid.uuid4().hex
+            destino = os.path.join(prefs.CACHE_DIR, nombre)
             with open(destino, "wb") as f:
                 f.write(datos_img)
-            return {"ok": True, "path": destino, "url": "/media/foto_recorte.png"}
+            return {"ok": True, "path": destino, "url": "/media/" + nombre}
         except Exception as e:
             return {"ok": False, "error": f"No se pudo guardar el recorte: {e}"}
 
@@ -252,8 +266,9 @@ class Api:
             ruta = self.elegir_archivo(("CVLaTeX (*.cvjson)",), True, sugerido)
             if not ruta:
                 return {"ok": False, "cancelado": True}
+            contenido = {"version": 2, "datos": datos, "medios": _recolectar_medios(datos)}
             with open(ruta, "w", encoding="utf-8") as f:
-                json.dump({"version": 1, "datos": datos}, f, ensure_ascii=False, indent=2)
+                json.dump(contenido, f, ensure_ascii=False, indent=2)
             return {"ok": True, "ruta": ruta}
         except OSError as e:
             return {"ok": False, "errores": [str(e)]}
@@ -268,14 +283,46 @@ class Api:
             datos = contenido.get("datos") if isinstance(contenido, dict) else None
             if not isinstance(datos, dict):
                 return {"ok": False, "errores": ["Archivo no válido."]}
-            datos = _migrar_datos(datos)
+            try:
+                datos = _migrar_datos(datos)
+            except Exception as e:
+                return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
+            if isinstance(contenido, dict) and contenido.get("version") == 2:
+                datos = _materializar_medios(datos, contenido.get("medios"))
             vacios = latex_gen.datos_vacios()
             for k in vacios:
                 if k not in datos or not isinstance(datos[k], type(vacios[k])):
                     datos[k] = vacios[k]
             return {"ok": True, "datos": datos, "ruta": ruta}
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, UnicodeDecodeError, ValueError) as e:
             return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
+
+    def autosave(self, datos):
+        try:
+            os.makedirs(prefs.APP_DIR, exist_ok=True)
+            contenido = {"version": 2, "datos": datos, "medios": _recolectar_medios(datos)}
+            with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "w", encoding="utf-8") as f:
+                json.dump(contenido, f, ensure_ascii=False)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "errores": [str(e)]}
+
+    def autosave_leer(self):
+        try:
+            with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "r", encoding="utf-8") as f:
+                contenido = json.load(f)
+            return contenido if isinstance(contenido, dict) else None
+        except Exception:
+            return None
+
+    def autosave_borrar(self):
+        try:
+            ruta = os.path.join(prefs.APP_DIR, "autosave.cvjson")
+            if os.path.isfile(ruta):
+                os.remove(ruta)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "errores": [str(e)]}
 
     def importar_tex(self):
         ruta = self.elegir_archivo(("LaTeX (*.tex)",), False, None)
@@ -300,7 +347,10 @@ class Api:
                 return {"ok": False, "errores": [msg]}
             except tex_datos.BloqueDatosInvalido:
                 return {"ok": False, "errores": ["El bloque de datos de CVLaTeX está dañado y no se puede reimportar."]}
-            datos = _migrar_datos(datos)
+            try:
+                datos = _migrar_datos(datos)
+            except Exception as e:
+                return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
             vacios = latex_gen.datos_vacios()
             for k in vacios:
                 if k not in datos or not isinstance(datos[k], type(vacios[k])):
@@ -308,7 +358,7 @@ class Api:
             if datos.get("plantilla") not in latex_gen.PLANTILLAS:
                 datos["plantilla"] = "clasico"
             return {"ok": True, "datos": datos, "ruta": ruta}
-        except OSError as e:
+        except (OSError, UnicodeDecodeError, ValueError) as e:
             return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
 
     def install_latex(self):
@@ -349,12 +399,19 @@ class Api:
         prefs.set("setup_dismissed", True)
 
 
+MEDIA_EXTS = (".jpg", ".jpeg", ".png")
+CAMPOS_MEDIA = ("foto", "foto_original", "foto_recorte", "logo_egresado")
+CAMPOS_LOGO = ("trabajo", "pasantia", "proyectos", "proyectosu", "educacion")
+
+
 def _migrar_datos(datos):
     """Convierte archivos .cvjson antiguos al modelo actual."""
+    if not isinstance(datos, dict):
+        return datos
     if "experiencia" in datos and isinstance(datos.get("experiencia"), list) and not (datos.get("trabajo") or datos.get("pasantia")):
         trabajo, pasantia = [], []
         for e in datos["experiencia"]:
-            if str((e or {}).get("tipo", "")).strip().lower().startswith("pasant"):
+            if isinstance(e, dict) and str(e.get("tipo", "")).strip().lower().startswith("pasant"):
                 pasantia.append(e)
             else:
                 trabajo.append(e)
@@ -364,12 +421,101 @@ def _migrar_datos(datos):
     if "habilidades" in datos and isinstance(datos.get("habilidades"), list):
         nuevas = []
         for h in datos["habilidades"]:
-            if (h or {}).get("categoria") or (h or {}).get("valores"):
+            if not isinstance(h, dict):
+                continue
+            if h.get("categoria") or h.get("valores"):
                 nuevas.append(h)
-            elif (h or {}).get("nombre"):
+            elif h.get("nombre"):
                 nuevas.append({"categoria": h["nombre"], "valores": h.get("nivel", "")})
         datos["habilidades"] = nuevas
     return datos
+
+
+def _recolectar_medios(datos):
+    """Devuelve {ruta_original: {'nombre': basename, 'b64': ...}} de los medios existentes."""
+    medios = {}
+    if not isinstance(datos, dict):
+        return medios
+    candidatos = []
+    for clave in CAMPOS_MEDIA:
+        valor = datos.get(clave)
+        if isinstance(valor, str) and valor:
+            candidatos.append(valor)
+    for clave in CAMPOS_LOGO:
+        lista = datos.get(clave)
+        if not isinstance(lista, list):
+            continue
+        for ent in lista:
+            if isinstance(ent, dict):
+                valor = ent.get("logo")
+                if isinstance(valor, str) and valor:
+                    candidatos.append(valor)
+    for ruta in candidatos:
+        if ruta in medios:
+            continue
+        ext = os.path.splitext(ruta)[1].lower()
+        if ext not in MEDIA_EXTS or not os.path.isfile(ruta):
+            continue
+        try:
+            with open(ruta, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("ascii")
+        except OSError:
+            continue
+        medios[ruta] = {"nombre": os.path.basename(ruta), "b64": b64}
+    return medios
+
+
+def _reescribir_medios(datos, reemplazos):
+    for clave in CAMPOS_MEDIA:
+        if isinstance(datos.get(clave), str):
+            datos[clave] = reemplazos.get(datos[clave], datos[clave])
+    for clave in CAMPOS_LOGO:
+        lista = datos.get(clave)
+        if not isinstance(lista, list):
+            continue
+        for ent in lista:
+            if isinstance(ent, dict) and isinstance(ent.get("logo"), str):
+                ent["logo"] = reemplazos.get(ent["logo"], ent["logo"])
+    return datos
+
+
+def _materializar_medios(datos, medios):
+    """Escribe los medios de un .cvjson v2 en CACHE_DIR y reescribe las rutas."""
+    if not isinstance(datos, dict) or not isinstance(medios, dict) or not medios:
+        return datos
+    try:
+        os.makedirs(prefs.CACHE_DIR, exist_ok=True)
+    except OSError:
+        return datos
+    reemplazos = {}
+    for ruta_original, info in medios.items():
+        if not isinstance(info, dict):
+            continue
+        b64 = info.get("b64")
+        if not isinstance(b64, str):
+            continue
+        try:
+            crudo = base64.b64decode(b64)
+        except Exception:
+            continue
+        if not crudo:
+            continue
+        ext = os.path.splitext(str(ruta_original))[1].lower()
+        if ext not in MEDIA_EXTS:
+            ext = os.path.splitext(str(info.get("nombre") or ""))[1].lower()
+        if ext not in MEDIA_EXTS:
+            ext = ".jpg"
+        nombre = "cv_%s%s" % (uuid.uuid4().hex, ext)
+        destino = os.path.join(prefs.CACHE_DIR, nombre)
+        try:
+            with open(destino, "wb") as f:
+                f.write(crudo)
+        except OSError:
+            continue
+        reemplazos[str(ruta_original)] = destino
+    if not reemplazos:
+        return datos
+    return _reescribir_medios(datos, reemplazos)
 
 
 def _iniciar_servidor():

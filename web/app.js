@@ -38,6 +38,8 @@ const state = {
   modo: "formulario",
   tex: null,
   texManual: null,
+  texEditado: false,
+  sucio: false,
   idCompilacion: 0,
   timer: null,
 };
@@ -199,9 +201,29 @@ function toast(msj) {
 }
 
 let _confirmarAceptar = null;
-function confirmar(msj, alAceptar) {
+let _confirmarCancelar = null;
+
+function restaurarEtiquetasConfirmar() {
+  $("#confirmar-si").textContent = "Aceptar";
+  $("#confirmar-no").textContent = "Cancelar";
+}
+
+function cerrarModal(modal) {
+  if (!modal) return;
+  modal.hidden = true;
+  if (modal.id === "modal-confirmar") {
+    _confirmarAceptar = null;
+    _confirmarCancelar = null;
+    restaurarEtiquetasConfirmar();
+  }
+}
+
+function confirmar(msj, alAceptar, alCancelar, etiquetaAceptar, etiquetaCancelar) {
   $("#confirmar-msj").textContent = msj;
-  _confirmarAceptar = alAceptar;
+  _confirmarAceptar = alAceptar || null;
+  _confirmarCancelar = alCancelar || null;
+  $("#confirmar-si").textContent = etiquetaAceptar || "Aceptar";
+  $("#confirmar-no").textContent = etiquetaCancelar || "Cancelar";
   $("#confirmar-no").hidden = false;
   $("#modal-confirmar").hidden = false;
 }
@@ -209,6 +231,8 @@ function confirmar(msj, alAceptar) {
 function alerta(msj) {
   $("#confirmar-msj").textContent = msj;
   _confirmarAceptar = null;
+  _confirmarCancelar = null;
+  restaurarEtiquetasConfirmar();
   $("#confirmar-no").hidden = true;
   $("#modal-confirmar").hidden = false;
 }
@@ -272,10 +296,10 @@ function cambiarTema(t) {
 
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-accion]");
-  if (el) ejecutarAccion(el.dataset.accion);
+  if (el) ejecutarAccion(el.dataset.accion, e);
 });
 
-function ejecutarAccion(accion) {
+function ejecutarAccion(accion, e) {
   if (accion.startsWith("papel:")) aplicarPapel(accion.split(":")[1]);
   else if (accion.startsWith("margenes:")) aplicarMargenes(accion.split(":")[1]);
   else if (accion.startsWith("fuente:")) aplicarFuente(Number(accion.split(":")[1]));
@@ -294,12 +318,23 @@ function ejecutarAccion(accion) {
       case "importar-tex": accionImportarTex(); break;
       case "cargar-ejemplo": accionCargarEjemplo(); break;
       case "preferencias": case "preferencias-motor": abrirPrefs(); break;
-      case "recompilar": compilar(); break;
+      case "recompilar": clearTimeout(state.timer); compilar(); break;
       case "ayuda": $("#modal-ayuda").hidden = false; break;
       case "creditos": $("#modal-creditos").hidden = false; break;
-      case "cerrar-modal": e.target.closest(".modal").hidden = true; break;
+      case "cerrar-modal": {
+        const modal = e && e.target && e.target.closest ? e.target.closest(".modal") : null;
+        if (modal) cerrarModal(modal);
+        break;
+      }
     }
   }
+}
+
+function hayContenido() {
+  if (!datosVacios || !state.datos) return false;
+  return Object.keys(datosVacios).some(
+    (k) => k !== "plantilla" && JSON.stringify(state.datos[k]) !== JSON.stringify(datosVacios[k])
+  );
 }
 
 async function accionNuevo() {
@@ -309,6 +344,8 @@ async function accionNuevo() {
     renderFormulario();
     actualizarMarcas();
     programarCompilacion();
+    state.sucio = false;
+    borrarAutosave();
     toast("CV nuevo creado");
   });
 }
@@ -316,12 +353,21 @@ async function accionNuevo() {
 async function accionAbrir() {
   const r = await api.abrir_cv();
   if (r.ok && r.datos) {
-    if (state.modo === "latex") salirModoLatex(false);
-    state.datos = r.datos;
-    renderFormulario();
-    actualizarMarcas();
-    programarCompilacion();
-    toast("Abierto: " + r.ruta);
+    const aplicar = () => {
+      if (state.modo === "latex") salirModoLatex(false);
+      state.datos = r.datos;
+      renderFormulario();
+      actualizarMarcas();
+      programarCompilacion();
+      state.sucio = false;
+      borrarAutosave();
+      toast("Abierto: " + r.ruta);
+    };
+    if (hayContenido()) {
+      confirmar("Se reemplazará el contenido actual por el del archivo que abras. ¿Continuar?", aplicar);
+    } else {
+      aplicar();
+    }
   } else if (r.errores) {
     toast(r.errores[0]);
   }
@@ -329,8 +375,13 @@ async function accionAbrir() {
 
 async function accionGuardar() {
   const r = await api.exportar_cv(state.datos);
-  if (r.ok) toast("Guardado: " + r.ruta);
-  else if (r.errores) toast(r.errores[0]);
+  if (r.ok) {
+    state.sucio = false;
+    await borrarAutosave();
+    toast("Guardado: " + r.ruta);
+  } else if (r.errores) {
+    toast(r.errores[0]);
+  }
 }
 
 async function accionExportarPDF() {
@@ -356,21 +407,27 @@ async function accionExportarDocx() {
 async function accionImportarTex() {
   const r = await api.importar_tex();
   if (r.ok && r.datos) {
-    if (state.modo === "latex") salirModoLatex(false);
-    state.datos = r.datos;
-    renderFormulario();
-    actualizarMarcas();
-    programarCompilacion();
-    toast("LaTeX importado: " + r.ruta);
+    const aplicar = () => {
+      if (state.modo === "latex") salirModoLatex(false);
+      state.datos = r.datos;
+      renderFormulario();
+      actualizarMarcas();
+      programarCompilacion();
+      state.sucio = false;
+      borrarAutosave();
+      toast("LaTeX importado: " + r.ruta);
+    };
+    if (hayContenido()) {
+      confirmar("Se reemplazará el contenido actual por el LaTeX importado. ¿Continuar?", aplicar);
+    } else {
+      aplicar();
+    }
   } else if (r.errores) {
     alerta(r.errores[0]);
   }
 }
 
 async function accionCargarEjemplo() {
-  const hayContenido = Object.keys(datosVacios).some(
-    (k) => k !== "plantilla" && JSON.stringify(state.datos[k]) !== JSON.stringify(datosVacios[k])
-  );
   const aplicar = async () => {
     const r = await api.cargar_ejemplo(state.datos.plantilla);
     if (!r.ok) {
@@ -382,9 +439,11 @@ async function accionCargarEjemplo() {
     renderFormulario();
     actualizarMarcas();
     programarCompilacion();
+    state.sucio = false;
+    borrarAutosave();
     toast("Ejemplo cargado: sustituye estos datos por los tuyos");
   };
-  if (hayContenido) {
+  if (hayContenido()) {
     confirmar("Se reemplazará el contenido actual por el CV de ejemplo. ¿Continuar?", aplicar);
   } else {
     aplicar();
@@ -417,7 +476,7 @@ function aplicarFuente(f) {
 function aplicarPlantilla(v) {
   const esValida = PLANTILLAS_CV.some((o) => o.v === v);
   state.datos.plantilla = esValida ? v : "clasico";
-  programarCompilacion();
+  marcarSucio();
   actualizarMarcas();
 }
 
@@ -429,12 +488,12 @@ function alternarToggle(t) {
     if (state.prefs.autocompilar) programarCompilacion();
   } else if (t === "latex") {
     if (state.modo === "latex") {
-      const editado = state.texManual !== null && state.textoLatexDirty();
+      const editado = state.texEditado;
       confirmar(
         editado
           ? "El código LaTeX se editó a mano. Al volver al formulario se regenerará desde los datos y se perderán los cambios manuales. ¿Continuar?"
           : "¿Volver al formulario?",
-        () => { state.texManual = null; salirModoLatex(true); }
+        () => salirModoLatex(true)
       );
     } else {
       entrarModoLatex();
@@ -457,7 +516,7 @@ async function compilar() {
   ep.className = "compilando";
   ep.textContent = "Compilando…";
   if (state.modo === "latex") {
-    await api.compilar_tex(state.texManual !== null ? state.texManual : state.tex, id);
+    await api.compilar_tex(state.texManual !== null ? state.texManual : state.tex, id, state.datos);
   } else {
     await api.compile(state.datos, id);
   }
@@ -487,6 +546,57 @@ window.__onCompile = function (res) {
     if (ta) ta.value = res.tex;
   }
 };
+
+/* ---------------- autosave ---------------- */
+
+let _autosaveTimer = null;
+
+function marcarSucio() {
+  state.sucio = true;
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(autosaveYa, 5000);
+  programarCompilacion();
+}
+
+async function autosaveYa() {
+  if (!api || !state.sucio || !state.datos) return;
+  try {
+    await api.autosave(state.datos);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function borrarAutosave() {
+  if (!api) return;
+  try {
+    await api.autosave_borrar();
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function ofrecerRecuperacion(datos) {
+  confirmar(
+    "Hay un CV sin guardar. ¿Recuperarlo?",
+    () => {
+      if (state.modo === "latex") salirModoLatex(false);
+      const base = JSON.parse(JSON.stringify(datosVacios || {}));
+      Object.keys(datos).forEach((k) => { base[k] = datos[k]; });
+      state.datos = base;
+      renderFormulario();
+      actualizarMarcas();
+      marcarSucio();
+      toast("CV sin guardar recuperado");
+    },
+    () => {
+      borrarAutosave();
+      toast("CV sin guardar descartado");
+    },
+    "Recuperar",
+    "Descartar"
+  );
+}
 
 /* ---------------- formulario ---------------- */
 
@@ -519,7 +629,7 @@ function seccionTitulo(texto, clave) {
     sel.addEventListener("click", (e) => e.stopPropagation());
     sel.addEventListener("change", () => {
       state.datos.columnas[clave] = Number(sel.value);
-      programarCompilacion();
+      marcarSucio();
     });
     rot.appendChild(sel);
     cab.appendChild(rot);
@@ -546,7 +656,7 @@ function campoBasico(k, label, area) {
   inp.value = state.datos[k] || "";
   inp.addEventListener("input", () => {
     state.datos[k] = inp.value;
-    programarCompilacion();
+    marcarSucio();
   });
   div.append(lb, inp);
   return div;
@@ -571,7 +681,7 @@ function pintarFoto() {
   vista.style.width = "64px";
   vista.style.height = Math.min(96, Math.max(50, Math.round((64 * al) / a))) + "px";
   const img = document.createElement("img");
-  img.src = "/media/" + state.datos.foto.split(/[\\/]/).pop();
+  img.src = "/media/" + encodeURIComponent(state.datos.foto.split(/[\\/]/).pop());
   vista.appendChild(img);
   const b = $("#btn-ajustar-foto");
   if (b) b.hidden = false;
@@ -632,19 +742,19 @@ function fotoFila() {
   const aplicarTam = () => {
     state.datos.foto_ancho_cm = Number(inpA.value) || 4;
     state.datos.foto_alto_cm = Number(inpAl.value) || 5;
-    programarCompilacion();
+    marcarSucio();
   };
   inpA.addEventListener("change", () => { aplicarTam(); pintarFoto(); });
   inpAl.addEventListener("change", () => { aplicarTam(); pintarFoto(); });
   elegir.onclick = async () => {
-    const r = await api.elegir_foto();
+    const r = await api.elegir_foto("foto");
     if (r.ok) {
       state.datos.foto = r.path;
       state.datos.foto_original = r.path;
       state.datos.foto_recorte = null;
       actualizarTam();
       pintarFoto();
-      programarCompilacion();
+      marcarSucio();
     } else if (r.error) toast(r.error);
   };
   ajustar.onclick = () => abrirRecorte();
@@ -653,10 +763,9 @@ function fotoFila() {
     state.datos.foto_original = "";
     state.datos.foto_recorte = null;
     pintarFoto();
-    programarCompilacion();
+    marcarSucio();
   };
   actualizarTam();
-  pintarFoto();
   return fila;
 }
 
@@ -674,7 +783,7 @@ function abrirRecorte() {
     montarRecorte();
   };
   img.onerror = () => toast("No se pudo cargar la foto para ajustar el área");
-  img.src = "/media/" + origen.split(/[\\/]/).pop();
+  img.src = "/media/" + encodeURIComponent(origen.split(/[\\/]/).pop());
 }
 
 function ponerCaja(x, y, w, h) {
@@ -805,7 +914,7 @@ function configurarRecorte() {
       state.datos.foto = r.path;
       $("#modal-recorte").hidden = true;
       pintarFoto();
-      programarCompilacion();
+      marcarSucio();
       toast("Área de la foto ajustada");
     } else {
       toast(r.error || "No se pudo guardar el recorte");
@@ -845,7 +954,7 @@ function listaDinamica(key) {
         e.stopPropagation();
         state.datos[key].splice(idx, 1);
         pintar();
-        programarCompilacion();
+        marcarSucio();
       };
       cab.append(rot, quitar);
       cab.addEventListener("click", (e) => {
@@ -876,7 +985,7 @@ function listaDinamica(key) {
           sel.value = ent[c.k] || "";
           sel.addEventListener("change", () => {
             ent[c.k] = sel.value;
-            programarCompilacion();
+            marcarSucio();
           });
           camp.appendChild(sel);
         } else if (c.tipo === "logo") {
@@ -893,11 +1002,11 @@ function listaDinamica(key) {
           boton.className = "pequeño";
           boton.textContent = "Elegir logo…";
           boton.onclick = async () => {
-            const r = await api.elegir_foto();
+            const r = await api.elegir_foto("logo");
             if (r.ok) {
               ent[c.k] = r.path;
               pintarLogo();
-              programarCompilacion();
+              marcarSucio();
             } else if (r.error) toast(r.error);
           };
           const quitar = document.createElement("button");
@@ -907,7 +1016,7 @@ function listaDinamica(key) {
           quitar.onclick = () => {
             ent[c.k] = "";
             pintarLogo();
-            programarCompilacion();
+            marcarSucio();
           };
           pintarLogo();
           fila.append(boton, quitar, estadoSpan);
@@ -917,7 +1026,7 @@ function listaDinamica(key) {
           inp.value = ent[c.k] || "";
           inp.addEventListener("input", () => {
             ent[c.k] = inp.value;
-            programarCompilacion();
+            marcarSucio();
           });
           camp.appendChild(inp);
         }
@@ -934,7 +1043,7 @@ function listaDinamica(key) {
       def.campos.forEach((c) => (vacio[c.k] = ""));
       state.datos[key].push(vacio);
       pintar();
-      programarCompilacion();
+      marcarSucio();
     };
     wrap.appendChild(boton);
   };
@@ -960,11 +1069,11 @@ function campoLogoPersonal(k, label) {
   boton.className = "pequeño";
   boton.textContent = "Elegir logo…";
   boton.onclick = async () => {
-    const r = await api.elegir_foto();
+    const r = await api.elegir_foto("logo");
     if (r.ok) {
       state.datos[k] = r.path;
       pintar();
-      programarCompilacion();
+      marcarSucio();
     } else if (r.error) toast(r.error);
   };
   const quitar = document.createElement("button");
@@ -974,7 +1083,7 @@ function campoLogoPersonal(k, label) {
   quitar.onclick = () => {
     state.datos[k] = "";
     pintar();
-    programarCompilacion();
+    marcarSucio();
   };
   pintar();
   fila.append(boton, quitar, estadoSpan);
@@ -1001,11 +1110,11 @@ function campoLogoPersonal(k, label) {
   };
   inpA.addEventListener("change", () => {
     state.datos.logo_egresado_ancho_cm = Number(inpA.value) || 2.4;
-    programarCompilacion();
+    marcarSucio();
   });
   inpAl.addEventListener("change", () => {
     state.datos.logo_egresado_alto_cm = Number(inpAl.value) || 0.85;
-    programarCompilacion();
+    marcarSucio();
   });
   tam.append(lbA, inpA, lbAl, inpAl);
   llenarTam();
@@ -1029,7 +1138,7 @@ function campoSelectIdioma() {
   sel.value = state.datos.idioma_cv || "zh";
   sel.addEventListener("change", () => {
     state.datos.idioma_cv = sel.value;
-    programarCompilacion();
+    marcarSucio();
   });
   camp.append(lb, sel);
   return camp;
@@ -1038,7 +1147,6 @@ function campoSelectIdioma() {
 function renderFormulario() {
   const cont = $("#form-panel");
   cont.innerHTML = "";
-  cont.id = "form-panel";
 
   const t1 = seccionTitulo("Datos personales");
   const c1 = document.createElement("div");
@@ -1061,6 +1169,7 @@ function renderFormulario() {
   c1.appendChild(fotoFila());
   t1.contenido.appendChild(c1);
   cont.appendChild(t1);
+  pintarFoto(); // ahora #foto-vista ya está en el DOM
 
   const t2 = seccionTitulo("Perfil");
   t2.contenido.appendChild(campoBasico("perfil", "Resumen profesional", true));
@@ -1105,20 +1214,22 @@ function entrarModoLatex() {
   ta.id = "texto-latex";
   ta.spellcheck = false;
   ta.value = state.texManual !== null ? state.texManual : (state.tex || "");
+  state.texEditado = false;
   ta.addEventListener("input", () => {
     state.texManual = ta.value;
+    state.texEditado = true;
     programarCompilacion();
   });
 
   cont.append(barra, ta);
   form.appendChild(cont);
-  state.textoLatexDirty = () => ta.value !== (state.tex || "");
   actualizarMarcas();
 }
 
 function salirModoLatex(recompilar) {
   state.modo = "formulario";
-  state.textoLatexDirty = null;
+  state.texManual = null;
+  state.texEditado = false;
   renderFormulario();
   actualizarMarcas();
   if (recompilar) programarCompilacion();
@@ -1142,10 +1253,18 @@ function cerrarWizard(ok) {
 
 function configurarWizard() {
   $("#wz-instalar").addEventListener("click", async () => {
+    const boton = $("#wz-instalar");
+    boton.disabled = true;
     $("#wz-progreso").hidden = false;
     $("#wz-estado").textContent = "";
     $("#wz-barra").style.width = "0%";
-    await api.install_latex();
+    try {
+      await api.install_latex();
+    } catch (e) {
+      boton.disabled = false;
+      $("#wz-estado").textContent = "No se pudo iniciar la instalación.";
+      console.error(e);
+    }
   });
 
   $("#wz-tengo").addEventListener("click", async () => {
@@ -1181,6 +1300,7 @@ window.__onInstallProgress = function (p) {
 };
 
 window.__onInstallDone = function (r) {
+  $("#wz-instalar").disabled = false;
   $("#wz-barra").style.width = "100%";
   if (r.ok) {
     $("#wz-progreso").hidden = true;
@@ -1302,13 +1422,29 @@ function configurarMargenes() {
 
 function configurarConfirmar() {
   $("#confirmar-si").addEventListener("click", () => {
-    $("#modal-confirmar").hidden = true;
-    if (_confirmarAceptar) _confirmarAceptar();
-    _confirmarAceptar = null;
+    const aceptar = _confirmarAceptar;
+    cerrarModal($("#modal-confirmar"));
+    if (aceptar) aceptar();
   });
   $("#confirmar-no").addEventListener("click", () => {
-    $("#modal-confirmar").hidden = true;
-    _confirmarAceptar = null;
+    const cancelar = _confirmarCancelar;
+    cerrarModal($("#modal-confirmar"));
+    if (cancelar) cancelar();
+  });
+}
+
+function configurarModales() {
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      $$(".modal").forEach((m) => {
+        if (!m.hidden) cerrarModal(m);
+      });
+    }
+  });
+  $$(".modal").forEach((m) => {
+    m.addEventListener("click", (e) => {
+      if (e.target.classList.contains("modal")) cerrarModal(e.target);
+    });
   });
 }
 
@@ -1335,6 +1471,14 @@ async function iniciar() {
     state.datos = JSON.parse(JSON.stringify(datosVacios));
     state.latexOk = info.latex_ok;
 
+    let autosavePendiente = null;
+    try {
+      const a = await api.autosave_leer();
+      if (a && typeof a === "object" && !Array.isArray(a)) autosavePendiente = a;
+    } catch (e) {
+      console.error(e);
+    }
+
     renderFormulario();
     actualizarMarcas();
     aplicarResponsive();
@@ -1345,8 +1489,11 @@ async function iniciar() {
     configurarPrefs();
     configurarMargenes();
     configurarConfirmar();
+    configurarModales();
     configurarRecorte();
+    setInterval(autosaveYa, 30000);
 
+    if (autosavePendiente) ofrecerRecuperacion(autosavePendiente);
     if (info.needs_setup) abrirWizard();
     else compilar();
   } catch (e) {
