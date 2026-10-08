@@ -31,6 +31,21 @@ _ESC_LATEX = {
 LOGO_EXTS = {".jpg", ".jpeg", ".png"}
 ANCHOS = {1: "1.0", 2: "0.48", 3: "0.31"}
 
+# Bloques libres que el usuario intercala entre las secciones del CV.
+# El ancla indica la seccion tras la cual se inserta el bloque; "inicio" va
+# antes de todo y "final" despues de todo.
+ANCLAS_BLOQUE = (
+    "inicio", "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
+    "trabajo", "habilidades", "idiomas", "referencias", "final",
+)
+TIPOS_BLOQUE = ("separador", "seccion")
+ESTILOS_SEPARADOR = ("linea", "banda", "espacio")
+_MACROS_SEPARADOR = {
+    "linea": "\\cvbloquelinea",
+    "banda": "\\cvbloquebanda",
+    "espacio": "\\cvbloqueespacio",
+}
+
 LANG = {
     "zh": {
         "titulo": "个人简历 PERSONAL RESUME",
@@ -109,6 +124,7 @@ def datos_vacios():
         "habilidades": [],
         "idiomas": [],
         "referencias": [],
+        "bloques": [],
         "columnas": {"trabajo": 1, "pasantia": 1, "proyectos": 1, "proyectosu": 1, "educacion": 1},
     }
 
@@ -667,6 +683,47 @@ def _parejas(lista, campo_nombre, campo_nivel, sep):
     return _itemize(lineas) if lineas else ""
 
 
+def _ancla_bloque(valor):
+    # Ancla ausente o desconocida: el bloque cae al final del documento.
+    ancla = str(valor or "").strip()
+    return ancla if ancla in ANCLAS_BLOQUE else "final"
+
+
+def _agrupar_bloques(data):
+    grupos = {ancla: [] for ancla in ANCLAS_BLOQUE}
+    for bloque in data.get("bloques") or []:
+        if isinstance(bloque, dict):
+            grupos[_ancla_bloque(bloque.get("posicion"))].append(bloque)
+    return grupos
+
+
+def _bloque_seccion(bloque):
+    titulo = str(bloque.get("titulo") or "").strip()
+    contenido = _parrafos(bloque.get("contenido") or "")
+    if not titulo and not contenido:
+        return ""
+    cabecera = f"\\cvsection{{{esc(titulo)}}}\n" if titulo else ""
+    return cabecera + contenido
+
+
+def _bloque_separador(bloque):
+    estilo = str(bloque.get("estilo") or "").strip()
+    if estilo not in ESTILOS_SEPARADOR:
+        estilo = "linea"
+    return _MACROS_SEPARADOR[estilo] + "\n"
+
+
+def _render_bloques(bloques):
+    partes = []
+    for bloque in bloques:
+        tipo = str(bloque.get("tipo") or "").strip()
+        if tipo == "seccion":
+            partes.append(_bloque_seccion(bloque))
+        elif tipo == "separador":
+            partes.append(_bloque_separador(bloque))
+    return "".join(partes)
+
+
 def build_tex(data, p):
     pid = str(data.get("plantilla", "clasico") or "clasico").strip().lower()
     if pid not in PLANTILLAS:
@@ -682,19 +739,26 @@ def build_tex(data, p):
     )
     L = LANG.get(str(data.get("idioma_cv", "zh")), LANG["zh"])
 
-    cuerpo = ""
+    # Los bloques libres se insertan tras su seccion ancla; "perfil" e "inicio"
+    # se resuelven aparte y "final" cierra el cuerpo. Una seccion vacia sigue
+    # mostrando los bloques anclados a ella.
+    grupos = _agrupar_bloques(data)
+    cuerpo = _render_bloques(grupos["inicio"])
     perfil = esc(data.get("perfil", "").strip())
     if perfil:
         cuerpo += _seccion(L["perfil"], perfil + "\n")
+    cuerpo += _render_bloques(grupos["perfil"])
     render = _chino_render_seccion if pid == "chino" else _render_seccion
-    cuerpo += render("educacion", L["educacion"], data, L)
-    cuerpo += render("proyectos", L["proyectos"], data, L)
-    cuerpo += render("proyectosu", L["proyectosu"], data, L)
-    cuerpo += render("pasantia", L["pasantia"], data, L)
-    cuerpo += render("trabajo", L["trabajo"], data, L)
+    for clave in ("educacion", "proyectos", "proyectosu", "pasantia", "trabajo"):
+        cuerpo += render(clave, L[clave], data, L)
+        cuerpo += _render_bloques(grupos[clave])
     cuerpo += _seccion(L["habilidades"], _categorias(data.get("habilidades"), L))
+    cuerpo += _render_bloques(grupos["habilidades"])
     cuerpo += _seccion(L["idiomas"], _parejas(data.get("idiomas"), "idioma", "nivel", " --- "))
+    cuerpo += _render_bloques(grupos["idiomas"])
     cuerpo += _seccion(L["referencias"], _parejas(data.get("referencias"), "nombre", "contacto", " --- "))
+    cuerpo += _render_bloques(grupos["referencias"])
+    cuerpo += _render_bloques(grupos["final"])
 
     m = p["margenes"]
     papeles = {"a4": "a4paper", "letter": "letterpaper", "legal": "legalpaper"}

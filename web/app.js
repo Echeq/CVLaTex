@@ -42,6 +42,9 @@ const state = {
   sucio: false,
   idCompilacion: 0,
   timer: null,
+  zoom: 100,
+  pilaDeshacer: [],
+  pilaRehacer: [],
 };
 
 let datosVacios = null;
@@ -178,6 +181,28 @@ const SECCIONES_DINAMICAS = {
   },
 };
 
+// Anclas de los bloques libres, en el mismo orden en que se insertan en el
+// documento (sincronizado con ANCLAS_BLOQUE de latex_gen.py).
+const ANCLAS_UI = [
+  "inicio", "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
+  "trabajo", "habilidades", "idiomas", "referencias", "final",
+];
+
+// Nombre visible de cada ancla para el indicador de posición.
+const NOMBRES_ANCLA = {
+  inicio: "Inicio",
+  perfil: "Perfil",
+  educacion: "Educación",
+  proyectos: "Proyectos",
+  proyectosu: "Proyectos universitarios",
+  pasantia: "Pasantías",
+  trabajo: "Trabajo",
+  habilidades: "Habilidades",
+  idiomas: "Idiomas",
+  referencias: "Referencias",
+  final: "Final",
+};
+
 /* ---------------- utilidades ---------------- */
 
 function escaparHtml(s) {
@@ -305,9 +330,12 @@ function ejecutarAccion(accion, e) {
   else if (accion.startsWith("fuente:")) aplicarFuente(Number(accion.split(":")[1]));
   else if (accion.startsWith("tema:")) cambiarTema(accion.split(":")[1]);
   else if (accion.startsWith("plantilla:")) aplicarPlantilla(accion.split(":")[1]);
+  else if (accion.startsWith("zoom:")) aplicarZoom(Number(accion.split(":")[1]));
   else if (accion.startsWith("toggle:")) alternarToggle(accion.split(":")[1]);
   else {
     switch (accion) {
+      case "deshacer": deshacer(); break;
+      case "rehacer": rehacer(); break;
       case "nuevo": accionNuevo(); break;
       case "abrir": accionAbrir(); break;
       case "importar": accionAbrir(); break;
@@ -319,6 +347,11 @@ function ejecutarAccion(accion, e) {
       case "cargar-ejemplo": accionCargarEjemplo(); break;
       case "preferencias": case "preferencias-motor": abrirPrefs(); break;
       case "recompilar": clearTimeout(state.timer); compilar(); break;
+      case "bloque:linea": crearBloqueSeparador("linea"); break;
+      case "bloque:banda": crearBloqueSeparador("banda"); break;
+      case "bloque:espacio": crearBloqueSeparador("espacio"); break;
+      case "bloque:seccion": abrirModalBloqueSeccion(null); break;
+      case "bloques:gestion": abrirModalBloques(); break;
       case "ayuda": $("#modal-ayuda").hidden = false; break;
       case "creditos": $("#modal-creditos").hidden = false; break;
       case "cerrar-modal": {
@@ -341,6 +374,7 @@ async function accionNuevo() {
   confirmar("¿Descartar el CV actual y comenzar uno nuevo?", () => {
     if (state.modo === "latex") salirModoLatex(false);
     state.datos = JSON.parse(JSON.stringify(datosVacios));
+    limpiarHistorial();
     renderFormulario();
     actualizarMarcas();
     programarCompilacion();
@@ -356,6 +390,7 @@ async function accionAbrir() {
     const aplicar = () => {
       if (state.modo === "latex") salirModoLatex(false);
       state.datos = r.datos;
+      limpiarHistorial();
       renderFormulario();
       actualizarMarcas();
       programarCompilacion();
@@ -410,6 +445,7 @@ async function accionImportarTex() {
     const aplicar = () => {
       if (state.modo === "latex") salirModoLatex(false);
       state.datos = r.datos;
+      limpiarHistorial();
       renderFormulario();
       actualizarMarcas();
       programarCompilacion();
@@ -436,6 +472,7 @@ async function accionCargarEjemplo() {
     }
     if (state.modo === "latex") salirModoLatex(false);
     state.datos = r.datos;
+    limpiarHistorial();
     renderFormulario();
     actualizarMarcas();
     programarCompilacion();
@@ -475,6 +512,7 @@ function aplicarFuente(f) {
 
 function aplicarPlantilla(v) {
   const esValida = PLANTILLAS_CV.some((o) => o.v === v);
+  registrarHistorial(true);
   state.datos.plantilla = esValida ? v : "clasico";
   marcarSucio();
   actualizarMarcas();
@@ -522,13 +560,30 @@ async function compilar() {
   }
 }
 
+/* ---------------- zoom de la previsualización ---------------- */
+
+// El fragmento #zoom=<pct>&view=FitH lo interpreta el visor de PDF. Si el
+// visor integrado de WebView2 lo ignora, el respaldo es el PDF a tamaño de
+// página: el zoom es solo un ajuste visual y nunca afecta al .tex ni al PDF.
+function aplicarZoom(pct) {
+  const valores = [75, 100, 125];
+  const valor = valores.indexOf(Number(pct)) >= 0 ? Number(pct) : (state.zoom || 100);
+  state.zoom = valor;
+  valores.forEach((v) => {
+    const b = $("#zoom-" + v);
+    if (b) b.classList.toggle("activo", v === valor);
+  });
+  const pdf = $("#pdf");
+  if (pdf) pdf.src = "/preview/main.pdf?v=" + Date.now() + "#zoom=" + valor + "&view=FitH";
+}
+
 window.__onCompile = function (res) {
   if (res.id !== state.idCompilacion) return;
   const ep = $("#estado-preview");
   if (res.ok) {
     $("#errores").hidden = true;
     $("#aviso-motor").hidden = true;
-    $("#pdf").src = "/preview/main.pdf?v=" + Date.now();
+    aplicarZoom(state.zoom);
     ep.className = "ok";
     ep.textContent = "Previsualización lista";
     estado("");
@@ -576,6 +631,87 @@ async function borrarAutosave() {
   }
 }
 
+/* ---------------- deshacer / rehacer ---------------- */
+
+const LIMITE_HISTORIAL = 50;
+const COALESCENCIA_HISTORIAL = 600;
+
+let _historialTs = 0;
+let _historialEstructural = false;
+
+function copiaProfunda(o) {
+  return JSON.parse(JSON.stringify(o));
+}
+
+function limpiarHistorial() {
+  state.pilaDeshacer = [];
+  state.pilaRehacer = [];
+  _historialTs = 0;
+  _historialEstructural = false;
+  actualizarBotonesHistorial();
+}
+
+/* Guarda un snapshot de state.datos antes de mutarlo. Los cambios no
+   estructurales consecutivos (p. ej. teclear) se agrupan durante 600 ms: solo
+   se conserva el snapshot del primer cambio del tirón. Las acciones
+   estructurales (bloques, entradas, plantilla, columnas, idioma) siempre
+   empujan una entrada nueva. */
+function registrarHistorial(estructural) {
+  if (!state.datos) return;
+  const ahora = Date.now();
+  const reciente = ahora - _historialTs < COALESCENCIA_HISTORIAL;
+  _historialTs = ahora;
+  if (!estructural && reciente && !_historialEstructural && state.pilaDeshacer.length) {
+    state.pilaRehacer = [];
+    actualizarBotonesHistorial();
+    return;
+  }
+  state.pilaDeshacer.push(copiaProfunda(state.datos));
+  if (state.pilaDeshacer.length > LIMITE_HISTORIAL) state.pilaDeshacer.shift();
+  state.pilaRehacer = [];
+  _historialEstructural = !!estructural;
+  actualizarBotonesHistorial();
+}
+
+function actualizarBotonesHistorial() {
+  const marcar = (accion, habilitado) => {
+    const enlace = $("#menus [data-accion='" + accion + "']");
+    if (enlace) {
+      enlace.classList.toggle("deshabilitado", !habilitado);
+      enlace.setAttribute("aria-disabled", habilitado ? "false" : "true");
+    }
+    const span = $("#menus [data-marca='" + accion + "']");
+    if (span) span.classList.toggle("deshabilitado", !habilitado);
+  };
+  marcar("deshacer", !!(state.pilaDeshacer && state.pilaDeshacer.length));
+  marcar("rehacer", !!(state.pilaRehacer && state.pilaRehacer.length));
+}
+
+function aplicarSnapshotHistorial() {
+  _historialTs = 0;
+  _historialEstructural = false;
+  renderFormulario();
+  actualizarMarcas();
+  actualizarBotonesHistorial();
+  marcarSucio(); // sucio + autosave + programarCompilacion, sin tocar el historial
+}
+
+function deshacer() {
+  if (!state.datos || !state.pilaDeshacer.length) return;
+  if (state.modo === "latex") return; // en modo LaTeX manda el deshacer del textarea
+  state.pilaRehacer.push(copiaProfunda(state.datos));
+  state.datos = state.pilaDeshacer.pop();
+  aplicarSnapshotHistorial();
+}
+
+function rehacer() {
+  if (!state.datos || !state.pilaRehacer.length) return;
+  if (state.modo === "latex") return;
+  state.pilaDeshacer.push(copiaProfunda(state.datos));
+  state.datos = state.pilaRehacer.pop();
+  aplicarSnapshotHistorial();
+}
+
 function ofrecerRecuperacion(datos) {
   confirmar(
     "Hay un CV sin guardar. ¿Recuperarlo?",
@@ -584,6 +720,7 @@ function ofrecerRecuperacion(datos) {
       const base = JSON.parse(JSON.stringify(datosVacios || {}));
       Object.keys(datos).forEach((k) => { base[k] = datos[k]; });
       state.datos = base;
+      limpiarHistorial();
       renderFormulario();
       actualizarMarcas();
       marcarSucio();
@@ -599,6 +736,24 @@ function ofrecerRecuperacion(datos) {
 }
 
 /* ---------------- formulario ---------------- */
+
+/* Plegado de tarjetas y entradas. Es estado solo de interfaz: vive en este
+   mapa en memoria, se aplica en cada re-render y NUNCA se guarda en el
+   .cvjson ni en el autosave (no forma parte de state.datos). */
+const colapsoUI = { secciones: {}, entradas: {}, bloques: {} };
+
+function estaColapsado(tipo, clave) {
+  return !!colapsoUI[tipo][clave];
+}
+
+function aplicarColapso(tipo, clave, el) {
+  if (el) el.classList.toggle("colapsada", estaColapsado(tipo, clave));
+}
+
+function alternarColapso(tipo, clave, el) {
+  colapsoUI[tipo][clave] = !colapsoUI[tipo][clave];
+  if (el) el.classList.toggle("colapsada", colapsoUI[tipo][clave]);
+}
 
 function seccionTitulo(texto, clave) {
   const t = document.createElement("div");
@@ -628,6 +783,7 @@ function seccionTitulo(texto, clave) {
     sel.title = "Muestra esta sección en 1, 2 o 3 columnas en el CV";
     sel.addEventListener("click", (e) => e.stopPropagation());
     sel.addEventListener("change", () => {
+      registrarHistorial(true);
       state.datos.columnas[clave] = Number(sel.value);
       marcarSucio();
     });
@@ -639,9 +795,11 @@ function seccionTitulo(texto, clave) {
   t.appendChild(cab);
   t.appendChild(contenido);
   t.contenido = contenido;
+  const claveColapso = clave || texto;
+  aplicarColapso("secciones", claveColapso, t);
   cab.addEventListener("click", (e) => {
     if (e.target.closest("select")) return;
-    t.classList.toggle("colapsada");
+    alternarColapso("secciones", claveColapso, t);
   });
   return t;
 }
@@ -655,6 +813,7 @@ function campoBasico(k, label, area) {
   const inp = document.createElement(area ? "textarea" : "input");
   inp.value = state.datos[k] || "";
   inp.addEventListener("input", () => {
+    registrarHistorial(false);
     state.datos[k] = inp.value;
     marcarSucio();
   });
@@ -740,6 +899,7 @@ function fotoFila() {
     inpAl.value = Number(state.datos.foto_alto_cm) || 5;
   };
   const aplicarTam = () => {
+    registrarHistorial(false);
     state.datos.foto_ancho_cm = Number(inpA.value) || 4;
     state.datos.foto_alto_cm = Number(inpAl.value) || 5;
     marcarSucio();
@@ -749,6 +909,7 @@ function fotoFila() {
   elegir.onclick = async () => {
     const r = await api.elegir_foto("foto");
     if (r.ok) {
+      registrarHistorial(false);
       state.datos.foto = r.path;
       state.datos.foto_original = r.path;
       state.datos.foto_recorte = null;
@@ -759,6 +920,7 @@ function fotoFila() {
   };
   ajustar.onclick = () => abrirRecorte();
   quitar.onclick = () => {
+    registrarHistorial(false);
     state.datos.foto = "";
     state.datos.foto_original = "";
     state.datos.foto_recorte = null;
@@ -896,6 +1058,7 @@ function configurarRecorte() {
     const w = parseFloat(caja.style.width) / anchoC;
     const h = parseFloat(caja.style.height) / altoC;
     const red = (v) => Math.round(v * 1000) / 1000;
+    registrarHistorial(false);
     state.datos.foto_recorte = { x: red(x), y: red(y), w: red(w), h: red(h) };
     const sx = x * img.naturalWidth;
     const sy = y * img.naturalHeight;
@@ -938,6 +1101,8 @@ function listaDinamica(key) {
     lista.forEach((ent, idx) => {
       const div = document.createElement("div");
       div.className = "entrada";
+      const claveEntrada = key + ":" + idx;
+      aplicarColapso("entradas", claveEntrada, div);
       const cab = document.createElement("div");
       cab.className = "cab-entrada";
       const rot = document.createElement("span");
@@ -946,20 +1111,73 @@ function listaDinamica(key) {
       chev.className = "chevron";
       chev.textContent = "▾";
       rot.append(chev, document.createTextNode(" " + def.titulo.replace(/s$/, "") + " " + (idx + 1)));
+      const acciones = document.createElement("span");
+      acciones.className = "entrada-acciones";
+
+      const duplicar = document.createElement("button");
+      duplicar.className = "pequeño";
+      duplicar.textContent = "⧉";
+      duplicar.title = "Duplicar entrada";
+      duplicar.onclick = (e) => {
+        e.stopPropagation();
+        registrarHistorial(true);
+        const copia = JSON.parse(JSON.stringify(ent));
+        state.datos[key].splice(idx + 1, 0, copia);
+        pintar();
+        marcarSucio();
+      };
+
+      const subir = document.createElement("button");
+      subir.className = "pequeño";
+      subir.textContent = "↑";
+      subir.title = "Subir entrada";
+      subir.disabled = idx === 0;
+      subir.onclick = (e) => {
+        e.stopPropagation();
+        const l = state.datos[key];
+        if (idx <= 0) return;
+        registrarHistorial(true);
+        const tmp = l[idx - 1];
+        l[idx - 1] = l[idx];
+        l[idx] = tmp;
+        pintar();
+        marcarSucio();
+      };
+
+      const bajar = document.createElement("button");
+      bajar.className = "pequeño";
+      bajar.textContent = "↓";
+      bajar.title = "Bajar entrada";
+      bajar.disabled = idx >= lista.length - 1;
+      bajar.onclick = (e) => {
+        e.stopPropagation();
+        const l = state.datos[key];
+        if (idx >= l.length - 1) return;
+        registrarHistorial(true);
+        const tmp = l[idx + 1];
+        l[idx + 1] = l[idx];
+        l[idx] = tmp;
+        pintar();
+        marcarSucio();
+      };
+
       const quitar = document.createElement("button");
       quitar.className = "btn-quitar";
       quitar.textContent = "✕";
       quitar.title = "Eliminar entrada";
       quitar.onclick = (e) => {
         e.stopPropagation();
+        registrarHistorial(true);
         state.datos[key].splice(idx, 1);
         pintar();
         marcarSucio();
       };
-      cab.append(rot, quitar);
+
+      acciones.append(duplicar, subir, bajar, quitar);
+      cab.append(rot, acciones);
       cab.addEventListener("click", (e) => {
-        if (e.target.closest(".btn-quitar")) return;
-        div.classList.toggle("colapsada");
+        if (e.target.closest("button")) return;
+        alternarColapso("entradas", claveEntrada, div);
       });
       div.appendChild(cab);
       const campos = document.createElement("div");
@@ -984,6 +1202,7 @@ function listaDinamica(key) {
           });
           sel.value = ent[c.k] || "";
           sel.addEventListener("change", () => {
+            registrarHistorial(true);
             ent[c.k] = sel.value;
             marcarSucio();
           });
@@ -1004,6 +1223,7 @@ function listaDinamica(key) {
           boton.onclick = async () => {
             const r = await api.elegir_foto("logo");
             if (r.ok) {
+              registrarHistorial(true);
               ent[c.k] = r.path;
               pintarLogo();
               marcarSucio();
@@ -1014,6 +1234,7 @@ function listaDinamica(key) {
           quitar.textContent = "✕";
           quitar.title = "Quitar logo";
           quitar.onclick = () => {
+            registrarHistorial(true);
             ent[c.k] = "";
             pintarLogo();
             marcarSucio();
@@ -1025,6 +1246,7 @@ function listaDinamica(key) {
           const inp = document.createElement(c.area ? "textarea" : "input");
           inp.value = ent[c.k] || "";
           inp.addEventListener("input", () => {
+            registrarHistorial(true);
             ent[c.k] = inp.value;
             marcarSucio();
           });
@@ -1041,6 +1263,7 @@ function listaDinamica(key) {
     boton.onclick = () => {
       const vacio = {};
       def.campos.forEach((c) => (vacio[c.k] = ""));
+      registrarHistorial(true);
       state.datos[key].push(vacio);
       pintar();
       marcarSucio();
@@ -1071,6 +1294,7 @@ function campoLogoPersonal(k, label) {
   boton.onclick = async () => {
     const r = await api.elegir_foto("logo");
     if (r.ok) {
+      registrarHistorial(false);
       state.datos[k] = r.path;
       pintar();
       marcarSucio();
@@ -1081,6 +1305,7 @@ function campoLogoPersonal(k, label) {
   quitar.textContent = "✕";
   quitar.title = "Quitar logo";
   quitar.onclick = () => {
+    registrarHistorial(false);
     state.datos[k] = "";
     pintar();
     marcarSucio();
@@ -1109,10 +1334,12 @@ function campoLogoPersonal(k, label) {
     inpAl.value = Number(state.datos.logo_egresado_alto_cm) || 0.85;
   };
   inpA.addEventListener("change", () => {
+    registrarHistorial(false);
     state.datos.logo_egresado_ancho_cm = Number(inpA.value) || 2.4;
     marcarSucio();
   });
   inpAl.addEventListener("change", () => {
+    registrarHistorial(false);
     state.datos.logo_egresado_alto_cm = Number(inpAl.value) || 0.85;
     marcarSucio();
   });
@@ -1137,6 +1364,7 @@ function campoSelectIdioma() {
   });
   sel.value = state.datos.idioma_cv || "zh";
   sel.addEventListener("change", () => {
+    registrarHistorial(true);
     state.datos.idioma_cv = sel.value;
     marcarSucio();
   });
@@ -1187,6 +1415,255 @@ function renderFormulario() {
     t.contenido.appendChild(listaDinamica(key));
     cont.appendChild(t);
   });
+
+  const tb = seccionTitulo("Bloques");
+  tb.title = "Separadores y secciones personalizadas que se insertan en el CV";
+  const listaB = document.createElement("div");
+  listaB.id = "bloques-inline";
+  tb.contenido.appendChild(listaB);
+  cont.appendChild(tb);
+  pintarListaBloques(listaB);
+}
+
+/* ---------------- bloques añadidos (menú Añadir) ---------------- */
+
+let _bloqueEditando = null;
+
+function bloquesActuales() {
+  if (!state.datos) return [];
+  if (!Array.isArray(state.datos.bloques)) state.datos.bloques = [];
+  return state.datos.bloques;
+}
+
+function nuevoIdBloque() {
+  try {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID().replace(/-/g, "");
+    }
+  } catch (e) {
+    /* crypto.randomUUID no disponible: se usa el respaldo hexadecimal */
+  }
+  let id = "";
+  const hex = "0123456789abcdef";
+  for (let i = 0; i < 32; i++) id += hex[Math.floor(Math.random() * 16)];
+  return id;
+}
+
+function normalizarPosicion(pos) {
+  const p = String(pos || "").trim();
+  return ANCLAS_UI.indexOf(p) >= 0 ? p : "final";
+}
+
+function etiquetaPosicion(pos) {
+  const p = normalizarPosicion(pos);
+  if (p === "inicio") return "Al inicio";
+  if (p === "final") return "Al final";
+  return "Después de " + (NOMBRES_ANCLA[p] || p);
+}
+
+function recortarTexto(s, max) {
+  const t = String(s);
+  return t.length > max ? t.slice(0, max - 1).replace(/\s+$/, "") + "…" : t;
+}
+
+function etiquetaBloque(b) {
+  if (!b || typeof b !== "object") return "Bloque";
+  if (b.tipo === "seccion") {
+    const titulo = String(b.titulo || "").trim();
+    if (titulo) return "Sección: " + titulo;
+    const linea = String(b.contenido || "").split(/\r?\n/).find((l) => l.trim());
+    return "Sección: " + (linea ? recortarTexto(linea.trim(), 48) : "sin contenido");
+  }
+  if (b.tipo === "separador") {
+    const estilos = {
+      linea: "Línea separadora",
+      banda: "Banda de color",
+      espacio: "Espacio en blanco",
+    };
+    return "Separador: " + (estilos[b.estilo] || estilos.linea);
+  }
+  return "Bloque";
+}
+
+/* Punto ÚNICO de mutación de state.datos.bloques: los altas, las ediciones,
+   los movimientos y los borrados de bloques pasan todos por aquí.
+   marcarSucio() deja el CV sucio y programa el autosave y la recompilación.
+   t6 (deshacer/rehacer) debe engancharse en este único punto: no mutar
+   state.datos.bloques desde ningún otro sitio. `estructural` repinta las
+   listas visibles (tarjeta del formulario y modal) salvo que se pase false. */
+function mutarBloques(fn, estructural) {
+  if (!state.datos) return null;
+  // Enganche de deshacer/rehacer: snapshot antes de mutar. Las acciones de
+  // bloques son estructurales y no se agrupan con los cambios de texto.
+  registrarHistorial(estructural !== false);
+  const bloques = bloquesActuales();
+  const resultado = fn(bloques);
+  marcarSucio();
+  if (estructural !== false) refrescarListasBloques();
+  return resultado;
+}
+
+function crearBloqueSeparador(estilo) {
+  if (["linea", "banda", "espacio"].indexOf(estilo) < 0) estilo = "linea";
+  mutarBloques((bloques) => {
+    bloques.push({ id: nuevoIdBloque(), tipo: "separador", estilo, posicion: "final" });
+  });
+}
+
+function moverBloque(b, paso) {
+  mutarBloques((bloques) => {
+    if (bloques.indexOf(b) < 0) return;
+    const j = ANCLAS_UI.indexOf(normalizarPosicion(b.posicion)) + paso;
+    if (j < 0 || j >= ANCLAS_UI.length) return;
+    b.posicion = ANCLAS_UI[j];
+  });
+}
+
+function eliminarBloque(b) {
+  mutarBloques((bloques) => {
+    const i = bloques.indexOf(b);
+    if (i >= 0) bloques.splice(i, 1);
+  });
+}
+
+function refrescarListasBloques() {
+  const inline = $("#bloques-inline");
+  if (inline) pintarListaBloques(inline);
+  const modal = $("#bloques-lista");
+  if (modal) pintarListaBloques(modal);
+}
+
+function pintarListaBloques(cont) {
+  if (!cont) return;
+  cont.innerHTML = "";
+  const bloques = bloquesActuales();
+  if (!bloques.length) {
+    const p = document.createElement("p");
+    p.className = "sin-entradas";
+    p.textContent = "Sin bloques todavía. Añádelos desde el menú «Añadir».";
+    cont.appendChild(p);
+    return;
+  }
+  bloques.forEach((b) => cont.appendChild(filaBloque(b)));
+}
+
+function filaBloque(b) {
+  const div = document.createElement("div");
+  div.className = "entrada";
+  const claveBloque = b && b.id ? String(b.id) : "";
+  aplicarColapso("bloques", claveBloque, div);
+  const cab = document.createElement("div");
+  cab.className = "cab-entrada";
+  const rot = document.createElement("span");
+  rot.className = "cab-txt";
+  const nombre = document.createElement("span");
+  nombre.textContent = etiquetaBloque(b);
+  const pos = document.createElement("span");
+  pos.className = "bloque-posicion";
+  pos.textContent = etiquetaPosicion(b && b.posicion);
+  pos.title = "Posición del bloque en el CV";
+  rot.append(nombre, pos);
+
+  const acciones = document.createElement("span");
+  acciones.className = "bloque-acciones";
+  acciones.style.display = "flex";
+  acciones.style.alignItems = "center";
+  acciones.style.gap = "6px";
+  const ancla = ANCLAS_UI.indexOf(normalizarPosicion(b && b.posicion));
+
+  const arriba = document.createElement("button");
+  arriba.className = "pequeño";
+  arriba.textContent = "↑";
+  arriba.title = "Mover una posición antes en el CV";
+  arriba.disabled = ancla <= 0;
+  arriba.addEventListener("click", (e) => {
+    e.stopPropagation();
+    moverBloque(b, -1);
+  });
+
+  const abajo = document.createElement("button");
+  abajo.className = "pequeño";
+  abajo.textContent = "↓";
+  abajo.title = "Mover una posición después en el CV";
+  abajo.disabled = ancla >= ANCLAS_UI.length - 1;
+  abajo.addEventListener("click", (e) => {
+    e.stopPropagation();
+    moverBloque(b, 1);
+  });
+
+  acciones.append(arriba, abajo);
+
+  if (b && b.tipo === "seccion") {
+    const editar = document.createElement("button");
+    editar.className = "pequeño";
+    editar.textContent = "Editar";
+    editar.title = "Editar el título y el contenido";
+    editar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      abrirModalBloqueSeccion(b);
+    });
+    acciones.appendChild(editar);
+  }
+
+  const quitar = document.createElement("button");
+  quitar.className = "btn-quitar";
+  quitar.textContent = "✕";
+  quitar.title = "Eliminar bloque";
+  quitar.addEventListener("click", (e) => {
+    e.stopPropagation();
+    eliminarBloque(b);
+  });
+  acciones.appendChild(quitar);
+
+  cab.append(rot, acciones);
+  cab.addEventListener("click", (e) => {
+    if (e.target.closest("button")) return;
+    alternarColapso("bloques", claveBloque, div);
+  });
+  div.appendChild(cab);
+  return div;
+}
+
+function abrirModalBloqueSeccion(bloque) {
+  _bloqueEditando = bloque || null;
+  $("#bs-titulo").value = _bloqueEditando ? String(_bloqueEditando.titulo || "") : "";
+  $("#bs-contenido").value = _bloqueEditando ? String(_bloqueEditando.contenido || "") : "";
+  $("#modal-bloque-seccion").hidden = false;
+  $("#bs-titulo").focus();
+}
+
+function aceptarBloqueSeccion() {
+  const titulo = $("#bs-titulo").value.trim();
+  const contenido = $("#bs-contenido").value.trim();
+  if (!titulo && !contenido) {
+    toast("Escribe un título o un contenido para la sección");
+    return;
+  }
+  const editando = _bloqueEditando;
+  _bloqueEditando = null;
+  mutarBloques((bloques) => {
+    if (editando && bloques.indexOf(editando) >= 0) {
+      editando.titulo = titulo;
+      editando.contenido = contenido;
+    } else {
+      bloques.push({ id: nuevoIdBloque(), tipo: "seccion", titulo, contenido, posicion: "final" });
+    }
+  });
+  cerrarModal($("#modal-bloque-seccion"));
+}
+
+function abrirModalBloques() {
+  pintarListaBloques($("#bloques-lista"));
+  $("#modal-bloques").hidden = false;
+}
+
+function configurarBloques() {
+  $("#bs-cancelar").addEventListener("click", () => {
+    _bloqueEditando = null;
+    cerrarModal($("#modal-bloque-seccion"));
+  });
+  $("#bs-aceptar").addEventListener("click", aceptarBloqueSeccion);
+  $("#bloques-cerrar").addEventListener("click", () => cerrarModal($("#modal-bloques")));
 }
 
 /* ---------------- modo LaTeX ---------------- */
@@ -1448,6 +1925,61 @@ function configurarModales() {
   });
 }
 
+/* ---------------- atajos de teclado ---------------- */
+
+function hayModalAbierto() {
+  return $$(".modal").some((m) => !m.hidden);
+}
+
+function configurarAtajos() {
+  document.addEventListener("keydown", (e) => {
+    // Mientras se teclea (incluida la composición IME) el texto normal no se
+    // intercepta: solo actúan las combinaciones con Ctrl.
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.isComposing) return;
+    // Con un modal abierto no actúan los atajos globales (Escape los cierra).
+    if (hayModalAbierto()) return;
+    const k = String(e.key || "").toLowerCase();
+    if (k === "z" && !e.shiftKey) {
+      // En el editor LaTeX se respeta el deshacer nativo del textarea.
+      if (state.modo === "latex") return;
+      e.preventDefault();
+      deshacer();
+      return;
+    }
+    if (k === "y" || (k === "z" && e.shiftKey)) {
+      if (state.modo === "latex") return;
+      e.preventDefault();
+      rehacer();
+      return;
+    }
+    if (k === "s") {
+      if (e.repeat) return; // no repetir el diálogo al mantener pulsado
+      e.preventDefault();
+      accionGuardar();
+      return;
+    }
+    if (k === "o") {
+      if (e.repeat) return;
+      e.preventDefault();
+      accionAbrir();
+      return;
+    }
+    if (k === "n") {
+      if (e.repeat) return;
+      e.preventDefault();
+      accionNuevo();
+      return;
+    }
+    if (k === "enter") {
+      // Ctrl+Enter recompila; el Enter normal sigue escribiendo en los campos.
+      e.preventDefault();
+      clearTimeout(state.timer);
+      compilar();
+      return;
+    }
+  });
+}
+
 /* ---------------- responsive ---------------- */
 
 function aplicarResponsive() {
@@ -1481,6 +2013,7 @@ async function iniciar() {
 
     renderFormulario();
     actualizarMarcas();
+    actualizarBotonesHistorial();
     aplicarResponsive();
     window.addEventListener("resize", aplicarResponsive);
     $("#aviso-motor").hidden = info.latex_ok;
@@ -1491,6 +2024,8 @@ async function iniciar() {
     configurarConfirmar();
     configurarModales();
     configurarRecorte();
+    configurarBloques();
+    configurarAtajos();
     setInterval(autosaveYa, 30000);
 
     if (autosavePendiente) ofrecerRecuperacion(autosavePendiente);

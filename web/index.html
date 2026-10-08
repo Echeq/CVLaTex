@@ -31,6 +31,9 @@
     <div class="menu">
       <button class="menu-btn">Editar</button>
       <div class="menu-drop">
+        <a data-accion="deshacer"><span class="marca" data-marca="deshacer"></span>Deshacer</a>
+        <a data-accion="rehacer"><span class="marca" data-marca="rehacer"></span>Rehacer</a>
+        <hr>
         <div class="sub">Tamaño de hoja
           <div class="menu-drop subdrop">
             <a data-accion="papel:a4">A4 (210×297 mm)</a>
@@ -63,6 +66,18 @@
         </div>
         <hr>
         <a data-accion="cargar-ejemplo">Cargar CV de ejemplo</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Añadir</button>
+      <div class="menu-drop">
+        <a data-accion="bloque:linea">Línea separadora</a>
+        <a data-accion="bloque:banda">Banda de color</a>
+        <a data-accion="bloque:espacio">Espacio en blanco</a>
+        <hr>
+        <a data-accion="bloque:seccion">Sección personalizada…</a>
+        <a data-accion="bloques:gestion">Gestionar bloques…</a>
       </div>
     </div>
 
@@ -112,6 +127,9 @@
         <span id="auto-ind" class="auto-punto"></span>Auto
       </button>
       <span id="estado-preview">Esperando…</span>
+      <button id="zoom-75" class="pequeño" data-accion="zoom:75" title="Zoom 75%">75%</button>
+      <button id="zoom-100" class="pequeño activo" data-accion="zoom:100" title="Zoom 100%">100%</button>
+      <button id="zoom-125" class="pequeño" data-accion="zoom:125" title="Zoom 125%">125%</button>
     </div>
     <div id="aviso-motor" hidden>
       No hay un motor LaTeX configurado. La previsualización y la exportación a PDF requieren uno.
@@ -206,6 +224,36 @@
     <div class="modal-pie">
       <button class="pequeño" id="mg-cancelar">Cancelar</button>
       <button class="primary pequeño" id="mg-aplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-bloque-seccion" hidden>
+  <div class="modal-box pequeño">
+    <h2>Sección personalizada</h2>
+    <div class="campos">
+      <div class="campo ancho">
+        <label for="bs-titulo">Título de la sección</label>
+        <input type="text" id="bs-titulo">
+      </div>
+      <div class="campo ancho">
+        <label for="bs-contenido">Contenido (una línea por viñeta)</label>
+        <textarea id="bs-contenido" rows="5"></textarea>
+      </div>
+    </div>
+    <div class="modal-pie">
+      <button class="pequeño" id="bs-cancelar">Cancelar</button>
+      <button class="primary pequeño" id="bs-aceptar">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-bloques" hidden>
+  <div class="modal-box">
+    <h2>Gestionar bloques</h2>
+    <div id="bloques-lista"></div>
+    <div class="modal-pie">
+      <button class="primary pequeño" id="bloques-cerrar">Cerrar</button>
     </div>
   </div>
 </div>

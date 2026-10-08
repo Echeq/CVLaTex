@@ -9,9 +9,11 @@ import os
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
-from latex_gen import LANG
+from latex_gen import ANCLAS_BLOQUE, ESTILOS_SEPARADOR, LANG
 
 # Tamano de pagina en centimetros: (ancho, alto).
 PAPELES = {
@@ -27,6 +29,10 @@ MARGEN_DEFECTO = 2.0
 FUENTE_DEFECTO = 11.0
 TAMANO_NOMBRE = 20.0
 ANCHO_FOTO_DEFECTO = 4.0
+
+# Azul de acento de la plantilla clasica (color por defecto del CV): se usa
+# en los bordes y bandas de los separadores de bloques libres.
+COLOR_ACENTO = "233A5E"
 
 
 def _texto(valor):
@@ -286,46 +292,155 @@ def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b):
             parrafo.add_run(b)
 
 
+def _ancla_bloque(valor):
+    """Ancla valida o "final" para un bloque con posicion ausente o desconocida."""
+    ancla = _texto(valor)
+    return ancla if ancla in ANCLAS_BLOQUE else "final"
+
+
+def _agrupar_bloques(d):
+    """Reparte los bloques libres por ancla; ignora lo que no sea diccionario."""
+    grupos = {ancla: [] for ancla in ANCLAS_BLOQUE}
+    entradas = d.get("bloques")
+    if not isinstance(entradas, (list, tuple)):
+        return grupos
+    for bloque in entradas:
+        if isinstance(bloque, dict):
+            grupos[_ancla_bloque(bloque.get("posicion"))].append(bloque)
+    return grupos
+
+
+def _borde_inferior(parrafo, color, grosor=6):
+    """Anade el borde inferior XML (w:pBdr) al parrafo indicado."""
+    p_pr = parrafo._p.get_or_add_pPr()
+    p_bdr = OxmlElement("w:pBdr")
+    inferior = OxmlElement("w:bottom")
+    inferior.set(qn("w:val"), "single")
+    inferior.set(qn("w:sz"), str(grosor))
+    inferior.set(qn("w:space"), "1")
+    inferior.set(qn("w:color"), color)
+    p_bdr.append(inferior)
+    p_pr.append(p_bdr)
+
+
+def _sombreado(parrafo, color):
+    """Anade el sombreado XML (w:shd) al parrafo indicado."""
+    p_pr = parrafo._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), color)
+    p_pr.append(shd)
+
+
+def _separador_linea(doc):
+    """Separador fino: parrafo vacio con borde inferior en el color de acento."""
+    parrafo = doc.add_paragraph()
+    _borde_inferior(parrafo, COLOR_ACENTO)
+    return parrafo
+
+
+def _separador_banda(doc):
+    """Separador ancho: parrafo vacio sombreado con el color de acento."""
+    parrafo = doc.add_paragraph()
+    _borde_inferior(parrafo, COLOR_ACENTO, grosor=24)
+    _sombreado(parrafo, COLOR_ACENTO)
+    return parrafo
+
+
+def _bloque_separador(doc, bloque):
+    """Un separador siempre se dibuja; un estilo desconocido cae a "linea"."""
+    estilo = _texto(bloque.get("estilo"))
+    if estilo not in ESTILOS_SEPARADOR:
+        estilo = "linea"
+    if estilo == "banda":
+        _separador_banda(doc)
+    elif estilo == "espacio":
+        doc.add_paragraph()
+    else:
+        _separador_linea(doc)
+
+
+def _bloque_seccion(doc, bloque):
+    """Titulo en negrita y contenido por lineas; se omite solo si esta todo vacio."""
+    titulo = _texto(bloque.get("titulo"))
+    if not titulo and not _texto(bloque.get("contenido")):
+        return
+    if titulo:
+        _encabezado(doc, titulo)
+    _parrafos(doc, bloque.get("contenido"))
+
+
+def _render_bloques(doc, bloques):
+    """Dibuja los bloques de un ancla en el mismo orden de la lista."""
+    for bloque in bloques:
+        if not isinstance(bloque, dict):
+            continue
+        tipo = _texto(bloque.get("tipo"))
+        if tipo == "separador":
+            _bloque_separador(doc, bloque)
+        elif tipo == "seccion":
+            _bloque_seccion(doc, bloque)
+
+
 def _cuerpo(doc, d, L):
-    """Secciones en el mismo orden que latex_gen.build_tex, a una columna."""
+    """Secciones en el mismo orden que latex_gen.build_tex, a una columna.
+
+    Los bloques libres se intercalan tras su seccion ancla; las anclas
+    "inicio" y "final" abren y cierran el cuerpo. Una seccion vacia sigue
+    mostrando los bloques anclados a ella.
+    """
+    grupos = _agrupar_bloques(d)
+    _render_bloques(doc, grupos["inicio"])
+
     perfil = _texto(d.get("perfil"))
     if perfil:
         _encabezado(doc, L["perfil"])
         _parrafos(doc, d.get("perfil"))
+    _render_bloques(doc, grupos["perfil"])
 
     educacion = _entradas_con_contenido(d.get("educacion"))
     if educacion:
         _encabezado(doc, L["educacion"])
         for ent in educacion:
             _entrada_educacion(doc, ent, L)
+    _render_bloques(doc, grupos["educacion"])
 
     proyectos = _entradas_con_contenido(d.get("proyectos"))
     if proyectos:
         _encabezado(doc, L["proyectos"])
         for ent in proyectos:
             _entrada_proyecto(doc, ent, L, False)
+    _render_bloques(doc, grupos["proyectos"])
 
     proyectosu = _entradas_con_contenido(d.get("proyectosu"))
     if proyectosu:
         _encabezado(doc, L["proyectosu"])
         for ent in proyectosu:
             _entrada_proyecto(doc, ent, L, True)
+    _render_bloques(doc, grupos["proyectosu"])
 
     pasantia = _entradas_con_contenido(d.get("pasantia"))
     if pasantia:
         _encabezado(doc, L["pasantia"])
         for ent in pasantia:
             _entrada_trabajo(doc, ent, L)
+    _render_bloques(doc, grupos["pasantia"])
 
     trabajo = _entradas_con_contenido(d.get("trabajo"))
     if trabajo:
         _encabezado(doc, L["trabajo"])
         for ent in trabajo:
             _entrada_trabajo(doc, ent, L)
+    _render_bloques(doc, grupos["trabajo"])
 
     _seccion_habilidades(doc, d, L)
+    _render_bloques(doc, grupos["habilidades"])
     _seccion_parejas(doc, d.get("idiomas"), L, "idiomas", "idioma", "nivel")
+    _render_bloques(doc, grupos["idiomas"])
     _seccion_parejas(doc, d.get("referencias"), L, "referencias", "nombre", "contacto")
+    _render_bloques(doc, grupos["referencias"])
+    _render_bloques(doc, grupos["final"])
 
 
 def exportar(datos, prefs_dict, ruta):

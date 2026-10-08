@@ -50,12 +50,15 @@ def test_exportar_cv_v2_incrusta_medios_y_abrir_cv_los_materializa(prefs_tmp, mo
     gif.write_bytes(b"no-debe-incrustarse")
     inexistente = origenes / "borrado.png"
 
+    rectangulo = {"x": 0.1, "y": 0.2, "w": 0.5, "h": 0.6}
     datos = latex_gen.datos_vacios()
     datos["idioma_cv"] = "es"
     datos["nombre"] = "Ana"
-    datos["foto"] = str(foto)
+    # Estado tras aplicar un recorte: "foto" es la imagen ya recortada,
+    # "foto_original" la subida y "foto_recorte" el rectangulo normalizado.
+    datos["foto"] = str(recorte)
     datos["foto_original"] = str(foto)
-    datos["foto_recorte"] = str(recorte)
+    datos["foto_recorte"] = rectangulo
     datos["logo_egresado"] = str(logo)
     datos["trabajo"] = [
         {"puesto": "Dev", "empresa": "Acme", "logo": str(logo)},
@@ -70,7 +73,8 @@ def test_exportar_cv_v2_incrusta_medios_y_abrir_cv_los_materializa(prefs_tmp, mo
 
     contenido = json.loads(salida.read_text(encoding="utf-8"))
     assert contenido["version"] == 2
-    assert contenido["datos"]["foto"] == str(foto)
+    assert contenido["datos"]["foto"] == str(recorte)
+    assert contenido["datos"]["foto_recorte"] == rectangulo
 
     esperados = {
         str(foto): b"contenido-foto-original",
@@ -92,8 +96,8 @@ def test_exportar_cv_v2_incrusta_medios_y_abrir_cv_los_materializa(prefs_tmp, mo
     assert resultado["ok"] is True
     datos_nuevos = resultado["datos"]
 
-    # Un fichero cv_* por cada medio distinto incrustado: foto y foto_original
-    # comparten ruta, y logo_egresado y trabajo[0].logo tambien.
+    # Un fichero cv_* por cada medio distinto incrustado: foto (recorte),
+    # foto_original y logo_egresado (que comparte ruta con trabajo[0].logo).
     ficheros = [n for n in os.listdir(prefs.CACHE_DIR) if n.startswith("cv_")]
     assert len(ficheros) == 3
     contenidos = set()
@@ -114,14 +118,17 @@ def test_exportar_cv_v2_incrusta_medios_y_abrir_cv_los_materializa(prefs_tmp, mo
         assert os.path.realpath(os.path.dirname(ruta_nueva)) == os.path.realpath(prefs.CACHE_DIR)
 
     with open(datos_nuevos["foto"], "rb") as f:
+        assert f.read() == b"contenido-recorte-original"
+    with open(datos_nuevos["foto_original"], "rb") as f:
         assert f.read() == b"contenido-foto-original"
     with open(datos_nuevos["logo_egresado"], "rb") as f:
         assert f.read() == b"contenido-logo-original"
 
     assert datos_nuevos["trabajo"][0]["logo"] == datos_nuevos["logo_egresado"]
-    # El esquema vacio declara foto_recorte como None, asi que el relleno de
-    # abrir_cv normaliza a None cualquier otro tipo aunque el medio se materialice.
-    assert datos_nuevos["foto_recorte"] is None
+    # El rectangulo de recorte (dict) sobrevive a la importacion v2: el
+    # relleno con datos_vacios() solo sustituye claves ausentes cuando el
+    # valor por defecto es None, sin comprobar el tipo contra NoneType.
+    assert datos_nuevos["foto_recorte"] == rectangulo
     # El gif no se incrusta y el logo inexistente no se reescribe.
     assert datos_nuevos["trabajo"][1]["logo"] == str(gif)
     assert datos_nuevos["trabajo"][2]["logo"] == str(inexistente)
@@ -164,3 +171,5 @@ def test_abrir_cv_v1_conserva_rutas_y_relena_vacios(prefs_tmp, monkeypatch):
     for clave, valor in vacios.items():
         assert clave in datos
         assert isinstance(datos[clave], type(valor))
+    # Un archivo antiguo sin la clave foto_recorte la recibe como None.
+    assert datos["foto_recorte"] is None

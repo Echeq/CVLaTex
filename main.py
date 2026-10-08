@@ -289,10 +289,13 @@ class Api:
                 return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
             if isinstance(contenido, dict) and contenido.get("version") == 2:
                 datos = _materializar_medios(datos, contenido.get("medios"))
+            # Rellene solo las claves ausentes. Si el valor por defecto es None
+            # (p. ej. foto_recorte), no se comprueba el tipo: un rectángulo dict
+            # válido debe sobrevivir; el None solo se aplica si falta la clave.
             vacios = latex_gen.datos_vacios()
-            for k in vacios:
-                if k not in datos or not isinstance(datos[k], type(vacios[k])):
-                    datos[k] = vacios[k]
+            for k, por_defecto in vacios.items():
+                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
+                    datos[k] = por_defecto
             return {"ok": True, "datos": datos, "ruta": ruta}
         except (OSError, UnicodeDecodeError, ValueError) as e:
             return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
@@ -351,10 +354,13 @@ class Api:
                 datos = _migrar_datos(datos)
             except Exception as e:
                 return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
+            # Rellene solo las claves ausentes. Si el valor por defecto es None
+            # (p. ej. foto_recorte), no se comprueba el tipo: un rectángulo dict
+            # válido debe sobrevivir; el None solo se aplica si falta la clave.
             vacios = latex_gen.datos_vacios()
-            for k in vacios:
-                if k not in datos or not isinstance(datos[k], type(vacios[k])):
-                    datos[k] = vacios[k]
+            for k, por_defecto in vacios.items():
+                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
+                    datos[k] = por_defecto
             if datos.get("plantilla") not in latex_gen.PLANTILLAS:
                 datos["plantilla"] = "clasico"
             return {"ok": True, "datos": datos, "ruta": ruta}
@@ -404,6 +410,61 @@ CAMPOS_MEDIA = ("foto", "foto_original", "foto_recorte", "logo_egresado")
 CAMPOS_LOGO = ("trabajo", "pasantia", "proyectos", "proyectosu", "educacion")
 
 
+def _sanear_bloques(bloques):
+    """Normaliza la lista de bloques libres; nunca lanza.
+
+    Descarta entradas que no sean dict o con un ``tipo`` desconocido,
+    completa ``estilo``/``posicion``/``id``, garantiza ids únicos y
+    reconstruye cada bloque solo con las claves canónicas de su tipo.
+    """
+    try:
+        if not isinstance(bloques, list):
+            return []
+        limpios = []
+        ids = set()
+        for bruto in bloques:
+            try:
+                if not isinstance(bruto, dict):
+                    continue
+                tipo = str(bruto.get("tipo") or "").strip()
+                if tipo not in latex_gen.TIPOS_BLOQUE:
+                    continue
+                posicion = str(bruto.get("posicion") or "").strip()
+                if posicion not in latex_gen.ANCLAS_BLOQUE:
+                    posicion = "final"
+                ident = bruto.get("id")
+                if not isinstance(ident, str) or not ident or ident in ids:
+                    ident = uuid.uuid4().hex
+                    while ident in ids:
+                        ident = uuid.uuid4().hex
+                ids.add(ident)
+                if tipo == "separador":
+                    estilo = str(bruto.get("estilo") or "").strip()
+                    if estilo not in latex_gen.ESTILOS_SEPARADOR:
+                        estilo = "linea"
+                    limpios.append({
+                        "id": ident,
+                        "tipo": tipo,
+                        "estilo": estilo,
+                        "posicion": posicion,
+                    })
+                else:
+                    titulo = bruto.get("titulo")
+                    contenido = bruto.get("contenido")
+                    limpios.append({
+                        "id": ident,
+                        "tipo": tipo,
+                        "titulo": "" if titulo is None else str(titulo),
+                        "contenido": "" if contenido is None else str(contenido),
+                        "posicion": posicion,
+                    })
+            except Exception:
+                continue
+        return limpios
+    except Exception:
+        return []
+
+
 def _migrar_datos(datos):
     """Convierte archivos .cvjson antiguos al modelo actual."""
     if not isinstance(datos, dict):
@@ -428,6 +489,7 @@ def _migrar_datos(datos):
             elif h.get("nombre"):
                 nuevas.append({"categoria": h["nombre"], "valores": h.get("nivel", "")})
         datos["habilidades"] = nuevas
+    datos["bloques"] = _sanear_bloques(datos.get("bloques"))
     return datos
 
 

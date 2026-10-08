@@ -73,3 +73,76 @@ def test_exportar_docx_con_datos_vacios_no_falla(tmp_path):
     assert ruta.is_file()
     doc = Document(str(ruta))
     assert [p.text for p in doc.paragraphs] is not None
+
+
+# ---------------------------------------------------------------------------
+# Bloques libres en la exportacion Word
+# ---------------------------------------------------------------------------
+
+def _datos_docx_con_bloque_educacion():
+    d = _datos_docx()
+    d["bloques"] = [
+        {"id": "linea", "tipo": "separador", "estilo": "linea",
+         "posicion": "educacion"},
+        {"id": "seccion", "tipo": "seccion", "titulo": "Mi sección",
+         "contenido": "Primera línea del bloque.\nSegunda línea del bloque.",
+         "posicion": "educacion"},
+    ]
+    return d
+
+
+def _textos_docx(datos, tmp_path, nombre):
+    ruta = tmp_path / nombre
+    docx_gen.exportar(datos, PREFS_PRUEBA, str(ruta))
+    return [p.text for p in Document(str(ruta)).paragraphs]
+
+
+def test_exportar_docx_bloque_anclado_a_educacion(tmp_path):
+    textos = _textos_docx(_datos_docx_con_bloque_educacion(), tmp_path, "bloques.docx")
+
+    i_educacion = textos.index("Educación")
+    i_bloque = textos.index("Mi sección")
+    i_siguiente = textos.index("Experiencia laboral")
+    assert i_educacion < i_bloque < i_siguiente
+    assert any("Primera línea del bloque." in t for t in textos)
+    assert any("Segunda línea del bloque." in t for t in textos)
+
+
+def test_exportar_docx_bloque_seccion_vacio_se_omite(tmp_path):
+    sin_bloque = _textos_docx(_datos_docx(), tmp_path, "sin_bloque.docx")
+
+    d = _datos_docx()
+    d["bloques"] = [
+        {"id": "vacio", "tipo": "seccion", "titulo": "",
+         "contenido": "", "posicion": "educacion"},
+        {"id": "nulos", "tipo": "seccion", "titulo": None,
+         "contenido": None, "posicion": "final"},
+    ]
+    con_vacios = _textos_docx(d, tmp_path, "con_vacios.docx")
+    assert con_vacios == sin_bloque
+
+
+def test_exportar_docx_bloques_mal_formados_no_lanzan(tmp_path):
+    d = _datos_docx()
+    d["bloques"] = [
+        None, 3, "texto", [], (),
+        {},
+        {"tipo": "otro"},
+        {"tipo": "seccion", "titulo": None, "contenido": None},
+        {"tipo": "seccion", "titulo": 7, "contenido": 7},
+        {"tipo": "separador", "estilo": "inexistente"},
+        {"tipo": "separador", "estilo": None, "posicion": None},
+        {"tipo": "separador", "posicion": "marte"},
+    ]
+    ruta = tmp_path / "mal_formados.docx"
+    docx_gen.exportar(d, PREFS_PRUEBA, str(ruta))
+    assert ruta.is_file()
+    textos = [p.text for p in Document(str(ruta)).paragraphs]
+    assert "7" in textos
+    assert "Educación" in textos
+
+    # "bloques" con un tipo que no es lista tampoco rompe la exportacion.
+    d["bloques"] = "no-es-lista"
+    ruta2 = tmp_path / "no_lista.docx"
+    docx_gen.exportar(d, PREFS_PRUEBA, str(ruta2))
+    assert ruta2.is_file()

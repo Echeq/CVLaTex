@@ -6,6 +6,7 @@ No requiere GUI, ni LaTeX, ni pywebview: solo importa ``latex_gen`` y
 """
 
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,7 +23,7 @@ CLAVES_ESPERADAS = {
     "foto_alto_cm", "institucion_egresado", "logo_egresado",
     "logo_egresado_ancho_cm", "logo_egresado_alto_cm", "perfil",
     "trabajo", "pasantia", "proyectos", "proyectosu", "educacion",
-    "habilidades", "idiomas", "referencias", "columnas",
+    "habilidades", "idiomas", "referencias", "bloques", "columnas",
 }
 
 CLAVES_TEXTO = (
@@ -33,7 +34,7 @@ CLAVES_TEXTO = (
 
 CLAVES_LISTA = (
     "datos_extra", "trabajo", "pasantia", "proyectos", "proyectosu",
-    "educacion", "habilidades", "idiomas", "referencias",
+    "educacion", "habilidades", "idiomas", "referencias", "bloques",
 )
 
 CLAVES_MEDIDA = (
@@ -72,9 +73,11 @@ def test_datos_vacios_devuelve_estructuras_nuevas():
     assert a == b
     a["nombre"] = "cambiado"
     a["datos_extra"].append({"etiqueta": "x", "valor": "y"})
+    a["bloques"].append({"tipo": "separador"})
     a["columnas"]["trabajo"] = 3
     assert b["nombre"] == ""
     assert b["datos_extra"] == []
+    assert b["bloques"] == []
     assert b["columnas"]["trabajo"] == 1
 
 
@@ -137,3 +140,134 @@ def test_migrar_no_dict_devuelve_la_entrada():
     assert _migrar_datos(None) is None
     assert _migrar_datos("texto") == "texto"
     assert _migrar_datos(7) == 7
+
+
+# ---------------------------------------------------------------------------
+# Bloques libres: saneado via _migrar_datos (main._sanear_bloques)
+# ---------------------------------------------------------------------------
+
+def _bloques_saneados(bloques):
+    """Pasa por _migrar_datos (como al abrir un .cvjson) y devuelve los bloques."""
+    return _migrar_datos({"bloques": bloques})["bloques"]
+
+
+@pytest.mark.parametrize(
+    "entrada",
+    [
+        None,
+        "x",
+        3,
+        {"a": 1},
+        [],
+        [None, 3, "s"],
+        [{}],
+        [[]],
+        [{"tipo": "otro"}],
+        [{"tipo": None}],
+    ],
+)
+def test_bloques_invalidos_o_inexistentes_no_lanzan(entrada):
+    salida = _bloques_saneados(entrada)
+    assert isinstance(salida, list)
+    assert salida == []
+
+
+def test_bloques_no_lista_y_sin_tipo_se_descartan():
+    assert _bloques_saneados("x") == []
+    assert _bloques_saneados([None, 3, "s"]) == []
+    assert _bloques_saneados([{"tipo": "otro"}]) == []
+    assert _bloques_saneados([{"tipo": "otro"}, None, {"sin_tipo": 1}]) == []
+    assert _migrar_datos({})["bloques"] == []
+
+
+def test_bloques_separador_estilo_invalido_o_ausente_cae_a_linea():
+    salida = _bloques_saneados([
+        {"tipo": "separador", "estilo": "zzz"},
+        {"tipo": "separador"},
+        {"tipo": "separador", "estilo": None},
+        {"tipo": "separador", "estilo": 7},
+    ])
+    assert [b["estilo"] for b in salida] == ["linea"] * 4
+    assert all(b["tipo"] == "separador" for b in salida)
+
+
+def test_bloques_seccion_titulo_y_contenido_se_convierten_a_texto():
+    salida = _bloques_saneados([
+        {"tipo": "seccion", "titulo": 5, "contenido": None},
+        {"tipo": "seccion", "titulo": None, "contenido": 0},
+    ])
+    assert salida[0]["titulo"] == "5"
+    assert salida[0]["contenido"] == ""
+    assert salida[1]["titulo"] == ""
+    assert salida[1]["contenido"] == "0"
+
+
+def test_bloques_posicion_invalida_o_ausente_cae_a_final():
+    salida = _bloques_saneados([
+        {"tipo": "separador", "posicion": "marte"},
+        {"tipo": "separador", "posicion": 3},
+        {"tipo": "separador"},
+        {"tipo": "separador", "posicion": "inicio"},
+    ])
+    assert [b["posicion"] for b in salida] == ["final", "final", "final", "inicio"]
+
+
+def test_bloques_id_ausente_se_genera_y_duplicados_se_regeneran():
+    salida = _bloques_saneados([
+        {"tipo": "separador"},
+        {"id": "repe", "tipo": "separador"},
+        {"id": "repe", "tipo": "separador"},
+        {"id": 17, "tipo": "separador"},
+    ])
+    ids = [b["id"] for b in salida]
+    assert len(ids) == 4
+    assert len(set(ids)) == 4
+    assert ids[1] == "repe"
+    for i, ident in enumerate(ids):
+        assert isinstance(ident, str) and ident
+        if i != 1:
+            assert re.fullmatch(r"[0-9a-f]{32}", ident), ident
+
+
+def test_bloques_solo_conservan_claves_canonicas():
+    salida = _bloques_saneados([
+        {"id": "a", "tipo": "separador", "estilo": "banda", "posicion": "inicio",
+         "basura": 1, "contenido": "x", "titulo": "y"},
+        {"id": "b", "tipo": "seccion", "titulo": "T", "contenido": "C",
+         "posicion": "final", "estilo": "linea", "extra": {}},
+    ])
+    assert set(salida[0]) == {"id", "tipo", "estilo", "posicion"}
+    assert set(salida[1]) == {"id", "tipo", "titulo", "contenido", "posicion"}
+
+
+def test_bloques_validos_se_conservan_intactos():
+    validos = [
+        {"id": "s1", "tipo": "separador", "estilo": "espacio", "posicion": "inicio"},
+        {"id": "s2", "tipo": "seccion", "titulo": "Mi sección",
+         "contenido": "Uno\nDos", "posicion": "educacion"},
+    ]
+    assert _bloques_saneados(validos) == validos
+
+
+def test_bloques_formas_raras_nunca_lanzan():
+    class Explosivo:
+        def __str__(self):
+            raise RuntimeError("boom")
+
+    casos = [
+        {"bloques": None},
+        {"bloques": "x"},
+        {"bloques": 7},
+        {"bloques": {"tipo": "seccion"}},
+        {"bloques": [None, 3, "s", [], (), {}]},
+        {"bloques": [{"tipo": "otro"}]},
+        {"bloques": [{"tipo": "seccion", "titulo": Explosivo()}]},
+        {"bloques": [{"tipo": "separador", "estilo": Explosivo()}]},
+        {"bloques": [{"tipo": "separador", "posicion": Explosivo()}]},
+        {"bloques": [{"tipo": "seccion", "contenido": {"a": 1}}]},
+        {"bloques": ["texto", {"tipo": object()}]},
+    ]
+    for datos in casos:
+        salida = _migrar_datos(datos)
+        assert isinstance(salida, dict)
+        assert isinstance(salida["bloques"], list)
