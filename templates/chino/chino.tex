@@ -1,0 +1,51 @@
+% Plantilla Chino - CVLaTeX
+% Estilo de curriculum chino: banda azul de titulo, barras de seccion azul/gris
+% y lineas de entrada en tres bloques (fecha / puesto / organizacion).
+\documentclass[{{fuente}}pt]{article}
+
+\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
+{{motor_tipografia}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{31,52,125}
+\definecolor{gris}{RGB}{196,200,212}
+
+\newlength{\cnTitulo}
+\newlength{\cnBarra}
+\newcommand{\cvsection}[1]{%
+  \par\vspace{0.85em}%
+  \noindent
+  \settowidth{\cnTitulo}{\bfseries\fontsize{17}{17}\selectfont #1}%
+  \setlength{\cnBarra}{\dimexpr\linewidth-\cnTitulo-0.9em\relax}%
+  \ifdim\cnBarra<0.6em\relax
+    \setlength{\cnTitulo}{\dimexpr\linewidth-1.5em\relax}%
+    \setlength{\cnBarra}{0.6em}%
+  \fi
+  \begingroup
+  \setlength{\fboxsep}{0pt}%
+  \colorbox{accent}{\parbox[c][7.5mm][c]{\dimexpr\cnTitulo+0.9em\relax}{\hspace{0.35em}\color{white}\bfseries\fontsize{17}{17}\selectfont #1}}%
+  \colorbox{gris}{\parbox[c][7.5mm][c]{\cnBarra}{\mbox{}}}%
+  \endgroup
+  \par\vspace{0.45em}%
+}
+
+\newcommand{\cvcnlinea}[3]{%
+  \par\noindent
+  {\bfseries #1}\hfill{\bfseries #2}\hfill{\bfseries #3}%
+  \par\vspace{0.1em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{cabecera}}
+
+{{cuerpo}}
+
+\end{document}

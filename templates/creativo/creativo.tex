@@ -1,0 +1,37 @@
+% Plantilla Creativo - CVLaTeX
+% Estilo colorido: banda de acento en la cabecera y paleta propia en las secciones.
+\documentclass[{{fuente}}pt]{article}
+
+\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
+{{motor_tipografia}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{224,82,68}
+\definecolor{gris}{RGB}{97,97,97}
+\definecolor{acento2}{RGB}{0,137,123}
+\definecolor{acento3}{RGB}{244,180,64}
+
+\newcommand{\cvsection}[1]{%
+  \vspace{1.2em}%
+  {\Large\bfseries\color{accent}#1}\par
+  \vspace{0.12em}%
+  {\color{acento2}\hrule height 0.9pt}\par
+  \vspace{2pt}%
+  {\color{acento3}\hrule height 1.8pt}\par
+  \vspace{0.5em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{cabecera}}
+
+{{cuerpo}}
+
+\end{document}

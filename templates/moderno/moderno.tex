@@ -1,0 +1,33 @@
+% Plantilla Moderno - CVLaTeX
+% Estilo moderno: nombre grande en color de acento y regla gruesa.
+\documentclass[{{fuente}}pt]{article}
+
+\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
+{{motor_tipografia}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{0,102,153}
+\definecolor{gris}{RGB}{108,117,125}
+
+\newcommand{\cvsection}[1]{%
+  \vspace{1.2em}%
+  {\Large\bfseries\color{accent}#1}\par
+  \vspace{0.15em}%
+  {\color{accent}\hrule height 1.6pt}\par
+  \vspace{0.5em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{cabecera}}
+
+{{cuerpo}}
+
+\end{document}

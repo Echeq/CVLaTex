@@ -1,0 +1,33 @@
+% Plantilla Harvard - CVLaTeX
+% Estilo academico sobrio: cabecera centrada, reglas finas y tonos neutros.
+\documentclass[{{fuente}}pt]{article}
+
+\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
+{{motor_tipografia}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{26,26,26}
+\definecolor{gris}{RGB}{102,102,102}
+
+\newcommand{\cvsection}[1]{%
+  \vspace{1.2em}%
+  {\large\bfseries\color{accent}#1}\par
+  \vspace{0.15em}%
+  {\color{gris}\hrule height 0.4pt}\par
+  \vspace{0.45em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{cabecera}}
+
+{{cuerpo}}
+
+\end{document}

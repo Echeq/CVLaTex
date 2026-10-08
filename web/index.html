@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVLaTeX — Editor de CV</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header id="toolbar">
+  <span class="logo">CV<span>LaTeX</span></span>
+  <nav id="menus">
+    <div class="menu">
+      <button class="menu-btn">Archivos</button>
+      <div class="menu-drop">
+        <a data-accion="nuevo">Nuevo</a>
+        <a data-accion="abrir">Abrir…</a>
+        <a data-accion="guardar">Guardar…</a>
+        <hr>
+        <a data-accion="exportar-pdf">Exportar PDF…</a>
+        <a data-accion="exportar-tex">Exportar LaTeX…</a>
+        <a data-accion="exportar-docx">Exportar Word (.docx)…</a>
+        <a data-accion="importar">Importar…</a>
+        <a data-accion="importar-tex">Importar LaTeX (.tex)…</a>
+        <hr>
+        <a data-accion="preferencias">Preferencias</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Editar</button>
+      <div class="menu-drop">
+        <div class="sub">Tamaño de hoja
+          <div class="menu-drop subdrop">
+            <a data-accion="papel:a4">A4 (210×297 mm)</a>
+            <a data-accion="papel:letter">Carta (216×279 mm)</a>
+            <a data-accion="papel:legal">Legal (216×356 mm)</a>
+          </div>
+        </div>
+        <div class="sub">Márgenes
+          <div class="menu-drop subdrop">
+            <a data-accion="margenes:normal">Normal (2 cm)</a>
+            <a data-accion="margenes:estrecho">Estrechos (1 cm)</a>
+            <a data-accion="margenes:personalizado">Personalizado…</a>
+          </div>
+        </div>
+        <div class="sub">Tamaño de fuente
+          <div class="menu-drop subdrop">
+            <a data-accion="fuente:10">10 pt</a>
+            <a data-accion="fuente:11">11 pt</a>
+            <a data-accion="fuente:12">12 pt</a>
+          </div>
+        </div>
+        <div class="sub">Plantilla del CV
+          <div class="menu-drop subdrop">
+            <a data-accion="plantilla:clasico"><span class="marca" data-marca="plantilla-clasico"></span>Clásico</a>
+            <a data-accion="plantilla:harvard"><span class="marca" data-marca="plantilla-harvard"></span>Harvard (académica)</a>
+            <a data-accion="plantilla:moderno"><span class="marca" data-marca="plantilla-moderno"></span>Moderno</a>
+            <a data-accion="plantilla:creativo"><span class="marca" data-marca="plantilla-creativo"></span>Creativo</a>
+            <a data-accion="plantilla:chino"><span class="marca" data-marca="plantilla-chino"></span>Chino (estándar)</a>
+          </div>
+        </div>
+        <hr>
+        <a data-accion="cargar-ejemplo">Cargar CV de ejemplo</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Previsualización</button>
+      <div class="menu-drop">
+        <a data-accion="recompilar">Recompilar ahora</a>
+        <a data-accion="toggle:autocompilar"><span class="marca" data-marca="autocompilar"></span>Auto-recompilar</a>
+        <a data-accion="toggle:latex"><span class="marca" data-marca="latex"></span>Ver código LaTeX</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Tema</button>
+      <div class="menu-drop">
+        <a data-accion="tema:claro"><span class="marca" data-marca="tema-claro"></span>Claro</a>
+        <a data-accion="tema:oscuro"><span class="marca" data-marca="tema-oscuro"></span>Oscuro</a>
+        <a data-accion="tema:sistema"><span class="marca" data-marca="tema-sistema"></span>Sistema</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Ayuda</button>
+      <div class="menu-drop">
+        <a data-accion="ayuda">Guía rápida</a>
+      </div>
+    </div>
+
+    <div class="menu">
+      <button class="menu-btn">Créditos</button>
+      <div class="menu-drop">
+        <a data-accion="creditos">Créditos</a>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<main id="contenido">
+  <section id="panel-formulario">
+    <div id="form-panel"></div>
+  </section>
+
+  <section id="panel-preview">
+    <div id="barra-preview">
+      <button id="btn-recompilar" class="pequeño" data-accion="recompilar">Recompilar</button>
+      <button id="btn-auto" class="pequeño" data-accion="toggle:autocompilar" title="Actualizar automáticamente al escribir">
+        <span id="auto-ind" class="auto-punto"></span>Auto
+      </button>
+      <span id="estado-preview">Esperando…</span>
+    </div>
+    <div id="aviso-motor" hidden>
+      No hay un motor LaTeX configurado. La previsualización y la exportación a PDF requieren uno.
+      <button class="pequeño primary" data-accion="preferencias-motor">Configurar motor</button>
+    </div>
+    <div id="errores" hidden></div>
+    <iframe id="pdf" src="about:blank" title="Previsualización"></iframe>
+  </section>
+</main>
+
+<footer id="barra-estado"><span id="estado"></span></footer>
+
+<div class="modal" id="modal-wizard" hidden>
+  <div class="modal-box">
+    <h2>Motor LaTeX</h2>
+    <p>Para generar la previsualización y exportar a PDF, CVLaTeX necesita un motor LaTeX en tu equipo.</p>
+    <p>Si no tienes uno, CVLaTeX puede <b>descargar e instalar TinyTeX automáticamente</b> (una sola vez, requiero conexión a internet).</p>
+    <div class="wizard-opciones">
+      <button id="wz-instalar" class="primary">Descargar e instalar TinyTeX (recomendado)</button>
+      <button id="wz-tengo">Ya tengo LaTeX instalado</button>
+      <button id="wz-manual">Configurar la ruta manualmente…</button>
+      <a id="wz-ahora" href="#">Ahora no</a>
+    </div>
+    <div id="wz-progreso" hidden>
+      <div class="barra"><div id="wz-barra"></div></div>
+      <span id="wz-progreso-texto"></span>
+    </div>
+    <p id="wz-estado"></p>
+  </div>
+</div>
+
+<div class="modal" id="modal-prefs" hidden>
+  <div class="modal-box">
+    <h2>Preferencias</h2>
+    <div class="fila-campo">
+      <label for="pf-papel">Tamaño de hoja</label>
+      <select id="pf-papel">
+        <option value="a4">A4 (210×297 mm)</option>
+        <option value="letter">Carta (216×279 mm)</option>
+        <option value="legal">Legal (216×356 mm)</option>
+      </select>
+    </div>
+    <div class="fila-campo">
+      <label>Tamaño de fuente</label>
+      <select id="pf-fuente">
+        <option value="10">10 pt</option>
+        <option value="11">11 pt</option>
+        <option value="12">12 pt</option>
+      </select>
+    </div>
+    <fieldset>
+      <legend>Márgenes (cm)</legend>
+      <div class="margenes">
+        <div class="fila-campo"><label>Superior</label><input type="number" id="pf-m-sup" min="0" step="0.5"></div>
+        <div class="fila-campo"><label>Inferior</label><input type="number" id="pf-m-inf" min="0" step="0.5"></div>
+        <div class="fila-campo"><label>Izquierdo</label><input type="number" id="pf-m-izq" min="0" step="0.5"></div>
+        <div class="fila-campo"><label>Derecho</label><input type="number" id="pf-m-der" min="0" step="0.5"></div>
+      </div>
+    </fieldset>
+    <div class="fila-campo">
+      <label><input type="checkbox" id="pf-autocompilar"> Auto-recompilar al escribir</label>
+    </div>
+    <div class="fila-campo">
+      <label for="pf-breakpoint">Apilar paneles si el ancho es menor a (px)</label>
+      <input type="number" id="pf-breakpoint" min="500" max="2000" step="10">
+    </div>
+    <fieldset>
+      <legend>Motor LaTeX</legend>
+      <p id="pf-motor-estado">Comprobando…</p>
+      <div>
+        <button class="pequeño" id="pf-motor-comprobar">Comprobar</button>
+        <button class="pequeño" id="pf-motor-ruta">Cambiar ruta…</button>
+        <button class="pequeño" id="pf-motor-instalar">Instalar TinyTeX</button>
+      </div>
+    </fieldset>
+    <p id="pf-msj" class="msj"></p>
+    <div class="modal-pie">
+      <button class="primary" id="pf-cerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-margenes" hidden>
+  <div class="modal-box pequeño">
+    <h2>Márgenes personalizados</h2>
+    <div class="margenes">
+      <div class="fila-campo"><label>Superior (cm)</label><input type="number" id="mg-sup" min="0" step="0.5"></div>
+      <div class="fila-campo"><label>Inferior (cm)</label><input type="number" id="mg-inf" min="0" step="0.5"></div>
+      <div class="fila-campo"><label>Izquierdo (cm)</label><input type="number" id="mg-izq" min="0" step="0.5"></div>
+      <div class="fila-campo"><label>Derecho (cm)</label><input type="number" id="mg-der" min="0" step="0.5"></div>
+    </div>
+    <div class="modal-pie">
+      <button class="pequeño" id="mg-cancelar">Cancelar</button>
+      <button class="primary pequeño" id="mg-aplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-ayuda" hidden>
+  <div class="modal-box pequeño">
+    <h2>Guía rápida</h2>
+    <div class="texto-ayuda">
+      <p><b>Formulario:</b> completa los campos de la izquierda. La previsualización se actualiza automáticamente mientras escribes.</p>
+      <p><b>Experiencia, educación, etc.:</b> usa «Añadir» para crear más entradas y el botón ✕ para eliminarlas.</p>
+      <p><b>Editar:</b> cambia el tamaño de la hoja, los márgenes o la fuente del documento.</p>
+      <p><b>CV de ejemplo:</b> «Editar → Cargar CV de ejemplo» rellena el formulario con un ejemplo para ver cómo completar los campos.</p>
+      <p><b>Archivos:</b> guarda tu CV como archivo CVLaTeX (.cvjson), expórtalo a PDF o a código LaTeX, o impórtalo.</p>
+      <p><b>Código LaTeX:</b> desde «Previsualización → Ver código LaTeX» puedes ver y editar el código LaTeX generado. Al volver al formulario, el código se regenera desde los datos.</p>
+      <p><b>Exportar PDF:</b> requiere un motor LaTeX (TinyTeX instalado automáticamente o MiKTeX/TeX Live).</p>
+    </div>
+    <div class="modal-pie">
+      <button class="primary pequeño" data-accion="cerrar-modal">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-creditos" hidden>
+  <div class="modal-box pequeño">
+    <h2>Créditos</h2>
+    <div class="texto-ayuda">
+      <p><b>CVLaTeX</b> — Editor de currículums con control tipográfico LaTeX.</p>
+      <p>Desarrollado por: <span class="créditos-nombre">[por determinar]</span></p>
+      <p>Gracias a TinyTeX por la distribución LaTeX portable.</p>
+    </div>
+    <div class="modal-pie">
+      <button class="primary pequeño" data-accion="cerrar-modal">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-confirmar" hidden>
+  <div class="modal-box pequeño">
+    <p id="confirmar-msj"></p>
+    <div class="modal-pie">
+      <button class="pequeño" id="confirmar-no">Cancelar</button>
+      <button class="primary pequeño" id="confirmar-si">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-recorte" hidden>
+  <div class="modal-box">
+    <h2>Ajustar área de la foto</h2>
+    <p>Arrastra el recuadro para moverlo y las esquinas para ajustar el área que se mostrará en el CV.</p>
+    <div id="recorte-cont"></div>
+    <div class="modal-pie">
+      <button class="pequeño" id="recorte-cancelar">Cancelar</button>
+      <button class="primary pequeño" id="recorte-aplicar">Aplicar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

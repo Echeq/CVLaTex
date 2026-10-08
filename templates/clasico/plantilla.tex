@@ -1,0 +1,33 @@
+% Plantilla CV - CVLaTeX
+% El contenido dinamico se inyecta en los marcadores {{...}}
+\documentclass[{{fuente}}pt]{article}
+
+\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
+{{motor_tipografia}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{35,58,94}
+\definecolor{gris}{RGB}{110,118,132}
+
+\newcommand{\cvsection}[1]{%
+  \vspace{1.3em}%
+  {\Large\bfseries\color{accent}#1}\par
+  \vspace{0.15em}%
+  {\color{accent}\hrule height 0.7pt}\par
+  \vspace{0.5em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{cabecera}}
+
+{{cuerpo}}
+
+\end{document}

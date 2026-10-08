@@ -1,0 +1,16 @@
+# Entorno virtual de Python (no debe versionarse)
+.venv/
+
+# Bytecode de Python
+__pycache__/
+*.pyc
+
+# Artefactos de build (PyInstaller)
+build/
+dist/
+
+# Tooling del pipeline de agentes (dependencias npm, no de la app)
+.opencode/node_modules/
+
+# Documento personal del usuario: aprobado excluirlo de git; el archivo permanece en disco
+templates/chino/Elvis Chen CV.docx
