@@ -323,6 +323,7 @@ def _cabecera_clasico(d, L, piezas):
             "\\noindent\n"
             "\\begin{minipage}[t]{0.7\\textwidth}\n"
             f"  {titulo}\\par\n"
+            "  \\vspace{0.15em}\n"
             f"  {nombre}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contacto}\n"
@@ -333,6 +334,7 @@ def _cabecera_clasico(d, L, piezas):
         fila = (
             "\\noindent\n"
             f"  {titulo}\\par\n"
+            "  \\vspace{0.15em}\n"
             f"  {nombre}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contacto}\n"
@@ -344,7 +346,7 @@ def _cabecera_harvard(d, L, piezas):
     lineas = [
         "\\begin{center}\n",
         f"  {{\\small\\bfseries\\color{{gris}} {L['titulo']}}}\\par\n",
-        "  \\vspace{0.3em}\n",
+        "  \\vspace{0.45em}\n",
         f"  {{\\LARGE\\scshape {esc(d.get('nombre', ''))}}}\\par\n",
     ]
     contacto = _contactos(d, L)
@@ -370,6 +372,8 @@ def _cabecera_moderno(d, L, piezas):
             "\\noindent\n"
             "\\begin{minipage}[t]{0.7\\textwidth}\n"
             f"  {titulo}"
+            "  \\par\n"
+            "  \\vspace{0.2em}\n"
             f"  {nombre}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contacto}\n"
@@ -385,6 +389,8 @@ def _cabecera_moderno(d, L, piezas):
         fila = (
             "\\noindent\n"
             f"  {titulo}"
+            "  \\par\n"
+            "  \\vspace{0.2em}\n"
             f"  {nombre}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contacto}\n"
@@ -398,7 +404,7 @@ def _cabecera_creativo(d, L, piezas):
         "\\begin{minipage}{\\dimexpr\\textwidth-2\\fboxsep\\relax}\n"
         "\\vspace{0.55em}\n"
         f"{{\\color{{white}}\\Huge\\bfseries {esc(d.get('nombre', ''))}}}\\par\n"
-        "\\vspace{0.15em}\n"
+        "\\vspace{0.3em}\n"
         f"{{\\color{{white}}\\small\\bfseries {L['titulo']}}}\\par\n"
         "\\vspace{0.55em}\n"
         "\\end{minipage}}\n"
@@ -447,6 +453,7 @@ def _cabecera_chino(d, L, piezas):
 
     izquierda = [banda]
     if nombre:
+        izquierda.append("\\vspace{0.35em}\n")
         izquierda.append(f"{{\\color{{accent}}\\fontsize{{18}}{{21}}\\selectfont {nombre}}}\\par\n")
     if contacto:
         izquierda.append("\\vspace{0.45em}\n" + contacto + "\n")
