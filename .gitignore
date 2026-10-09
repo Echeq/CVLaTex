@@ -17,3 +17,8 @@ dist/
 
 # Documento personal del usuario: aprobado excluirlo de git; el archivo permanece en disco
 templates/chino/Elvis Chen CV.docx
+
+# Pipeline opencode (tooling local, no versionado)
+.opencode/
+opencode.json
+AGENTS.md
