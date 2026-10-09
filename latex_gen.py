@@ -31,6 +31,12 @@ _ESC_LATEX = {
 LOGO_EXTS = {".jpg", ".jpeg", ".png"}
 ANCHOS = {1: "1.0", 2: "0.48", 3: "0.31"}
 
+# Orden por defecto de las secciones estandar del cuerpo del CV.
+ORDEN_SECCIONES_DEFECTO = (
+    "perfil", "educacion", "proyectos", "proyectosu", "pasantia", "trabajo",
+    "habilidades", "idiomas", "referencias",
+)
+
 # Bloques libres que el usuario intercala entre las secciones del CV.
 # El ancla indica la seccion tras la cual se inserta el bloque; "inicio" va
 # antes de todo y "final" despues de todo.
@@ -125,6 +131,9 @@ def datos_vacios():
         "idiomas": [],
         "referencias": [],
         "bloques": [],
+        "titulos_seccion": {},
+        "secciones_ocultas": [],
+        "orden_secciones": [],
         "columnas": {"trabajo": 1, "pasantia": 1, "proyectos": 1, "proyectosu": 1, "educacion": 1},
     }
 
@@ -724,6 +733,67 @@ def _render_bloques(bloques):
     return "".join(partes)
 
 
+def normalizar_orden_secciones(data):
+    # Contrato replicado en main.py y docx_gen.py: solo claves validas, sin
+    # duplicados (gana la primera aparicion) y las que falten se anaden al
+    # final en el orden por defecto. Tolerante: nunca lanza.
+    try:
+        orden = data.get("orden_secciones") if isinstance(data, dict) else None
+    except Exception:
+        orden = None
+    resultado = []
+    if isinstance(orden, (list, tuple)):
+        for clave in orden:
+            try:
+                clave = str(clave)
+            except Exception:
+                continue
+            if clave in ORDEN_SECCIONES_DEFECTO and clave not in resultado:
+                resultado.append(clave)
+    for clave in ORDEN_SECCIONES_DEFECTO:
+        if clave not in resultado:
+            resultado.append(clave)
+    return resultado
+
+
+def titulo_personalizado(data, clave):
+    # Titulo recortado y no vacio de "titulos_seccion" o None. Nunca lanza.
+    try:
+        titulos = data.get("titulos_seccion") if isinstance(data, dict) else None
+    except Exception:
+        titulos = None
+    if not isinstance(titulos, dict):
+        return None
+    try:
+        valor = titulos.get(clave)
+    except Exception:
+        return None
+    if valor is None:
+        return None
+    try:
+        texto = str(valor).strip()
+    except Exception:
+        return None
+    return texto or None
+
+
+def seccion_oculta(data, clave):
+    # True solo si `clave` figura en "secciones_ocultas". Nunca lanza.
+    try:
+        ocultas = data.get("secciones_ocultas") if isinstance(data, dict) else None
+    except Exception:
+        ocultas = None
+    if not isinstance(ocultas, (list, tuple, set, frozenset)):
+        return False
+    for x in ocultas:
+        try:
+            if x == clave:
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def build_tex(data, p):
     pid = str(data.get("plantilla", "clasico") or "clasico").strip().lower()
     if pid not in PLANTILLAS:
@@ -739,25 +809,30 @@ def build_tex(data, p):
     )
     L = LANG.get(str(data.get("idioma_cv", "zh")), LANG["zh"])
 
-    # Los bloques libres se insertan tras su seccion ancla; "perfil" e "inicio"
-    # se resuelven aparte y "final" cierra el cuerpo. Una seccion vacia sigue
-    # mostrando los bloques anclados a ella.
+    # Los bloques libres se insertan tras su seccion ancla; "inicio" y "final"
+    # se resuelven aparte. Los bloques se emiten SIEMPRE tras su seccion, aunque
+    # esta quede vacia u oculta, para que su ancla conserve la posicion elegida.
     grupos = _agrupar_bloques(data)
     cuerpo = _render_bloques(grupos["inicio"])
-    perfil = esc(data.get("perfil", "").strip())
-    if perfil:
-        cuerpo += _seccion(L["perfil"], perfil + "\n")
-    cuerpo += _render_bloques(grupos["perfil"])
     render = _chino_render_seccion if pid == "chino" else _render_seccion
-    for clave in ("educacion", "proyectos", "proyectosu", "pasantia", "trabajo"):
-        cuerpo += render(clave, L[clave], data, L)
+    for clave in normalizar_orden_secciones(data):
+        if not seccion_oculta(data, clave):
+            titulo = titulo_personalizado(data, clave)
+            titulo = esc(titulo) if titulo is not None else L[clave]
+            if clave == "perfil":
+                perfil = esc(str(data.get("perfil", "") or "").strip())
+                if perfil:
+                    cuerpo += _seccion(titulo, perfil + "\n")
+            elif clave == "habilidades":
+                cuerpo += _seccion(titulo, _categorias(data.get("habilidades"), L))
+            elif clave == "idiomas":
+                cuerpo += _seccion(titulo, _parejas(data.get("idiomas"), "idioma", "nivel", " --- "))
+            elif clave == "referencias":
+                cuerpo += _seccion(titulo, _parejas(data.get("referencias"), "nombre", "contacto", " --- "))
+            else:
+                cuerpo += render(clave, titulo, data, L)
+        # Bloque anclado a esta seccion: se emite aunque la seccion este oculta.
         cuerpo += _render_bloques(grupos[clave])
-    cuerpo += _seccion(L["habilidades"], _categorias(data.get("habilidades"), L))
-    cuerpo += _render_bloques(grupos["habilidades"])
-    cuerpo += _seccion(L["idiomas"], _parejas(data.get("idiomas"), "idioma", "nivel", " --- "))
-    cuerpo += _render_bloques(grupos["idiomas"])
-    cuerpo += _seccion(L["referencias"], _parejas(data.get("referencias"), "nombre", "contacto", " --- "))
-    cuerpo += _render_bloques(grupos["referencias"])
     cuerpo += _render_bloques(grupos["final"])
 
     m = p["margenes"]

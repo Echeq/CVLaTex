@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest  # noqa: E402
 
 import latex_gen  # noqa: E402
+import tex_datos  # noqa: E402
 from main import _migrar_datos  # noqa: E402
 
 CLAVES_ESPERADAS = {
@@ -24,6 +25,7 @@ CLAVES_ESPERADAS = {
     "logo_egresado_ancho_cm", "logo_egresado_alto_cm", "perfil",
     "trabajo", "pasantia", "proyectos", "proyectosu", "educacion",
     "habilidades", "idiomas", "referencias", "bloques", "columnas",
+    "titulos_seccion", "secciones_ocultas", "orden_secciones",
 }
 
 CLAVES_TEXTO = (
@@ -35,6 +37,7 @@ CLAVES_TEXTO = (
 CLAVES_LISTA = (
     "datos_extra", "trabajo", "pasantia", "proyectos", "proyectosu",
     "educacion", "habilidades", "idiomas", "referencias", "bloques",
+    "secciones_ocultas", "orden_secciones",
 )
 
 CLAVES_MEDIDA = (
@@ -61,6 +64,9 @@ def test_datos_vacios_tipos_y_valores_por_defecto():
     for clave in CLAVES_MEDIDA:
         assert isinstance(d[clave], float), clave
     assert d["foto_recorte"] is None
+    assert d["titulos_seccion"] == {}
+    assert d["secciones_ocultas"] == []
+    assert d["orden_secciones"] == []
     columnas = d["columnas"]
     assert isinstance(columnas, dict)
     assert set(columnas) == {"trabajo", "pasantia", "proyectos", "proyectosu", "educacion"}
@@ -75,10 +81,16 @@ def test_datos_vacios_devuelve_estructuras_nuevas():
     a["datos_extra"].append({"etiqueta": "x", "valor": "y"})
     a["bloques"].append({"tipo": "separador"})
     a["columnas"]["trabajo"] = 3
+    a["titulos_seccion"]["perfil"] = "Sobre mí"
+    a["secciones_ocultas"].append("idiomas")
+    a["orden_secciones"].append("trabajo")
     assert b["nombre"] == ""
     assert b["datos_extra"] == []
     assert b["bloques"] == []
     assert b["columnas"]["trabajo"] == 1
+    assert b["titulos_seccion"] == {}
+    assert b["secciones_ocultas"] == []
+    assert b["orden_secciones"] == []
 
 
 def test_migrar_experiencia_y_habilidades_antiguas():
@@ -271,3 +283,231 @@ def test_bloques_formas_raras_nunca_lanzan():
         salida = _migrar_datos(datos)
         assert isinstance(salida, dict)
         assert isinstance(salida["bloques"], list)
+
+
+# ---------------------------------------------------------------------------
+# Orden, titulos y secciones ocultas
+# ---------------------------------------------------------------------------
+
+PREFS_PRUEBA = {
+    "papel": "a4",
+    "margenes": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
+    "fuente": 11,
+}
+
+
+class _Explosivo:
+    def __str__(self):
+        raise RuntimeError("boom")
+
+    def __eq__(self, other):
+        raise RuntimeError("boom")
+
+    __hash__ = None
+
+
+def _sin_bloque_datos(tex):
+    inicio = tex.index(tex_datos.MARCA_INICIO)
+    fin = tex.index(tex_datos.MARCA_FIN, inicio)
+    fin = tex.index("\n", fin) + 1
+    return tex[:inicio] + tex[fin:]
+
+
+def test_orden_secciones_defecto_exacto():
+    assert latex_gen.ORDEN_SECCIONES_DEFECTO == (
+        "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
+        "trabajo", "habilidades", "idiomas", "referencias",
+    )
+
+
+def test_normalizar_orden_secciones_contrato():
+    defecto = list(latex_gen.ORDEN_SECCIONES_DEFECTO)
+    assert latex_gen.normalizar_orden_secciones({}) == defecto
+    assert latex_gen.normalizar_orden_secciones({"orden_secciones": []}) == defecto
+    assert latex_gen.normalizar_orden_secciones(
+        {"orden_secciones": ["trabajo", "perfil"]}
+    ) == [
+        "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
+        "pasantia", "habilidades", "idiomas", "referencias",
+    ]
+    # Dedup conservando la primera aparicion y claves invalidas descartadas.
+    assert latex_gen.normalizar_orden_secciones(
+        {"orden_secciones": ["trabajo", "marte", "trabajo", "perfil", None, 7]}
+    ) == [
+        "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
+        "pasantia", "habilidades", "idiomas", "referencias",
+    ]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        None,
+        "x",
+        7,
+        [],
+        {"orden_secciones": None},
+        {"orden_secciones": "trabajo"},
+        {"orden_secciones": {"trabajo": 1}},
+        {"orden_secciones": [b"bytes"]},
+        {"orden_secciones": [_Explosivo()]},
+    ],
+)
+def test_normalizar_orden_secciones_no_lanza(data):
+    resultado = latex_gen.normalizar_orden_secciones(data)
+    assert list(resultado) == list(latex_gen.ORDEN_SECCIONES_DEFECTO)
+
+
+def test_titulo_personalizado_contrato():
+    assert latex_gen.titulo_personalizado({}, "perfil") is None
+    assert latex_gen.titulo_personalizado({"titulos_seccion": {}}, "perfil") is None
+    assert latex_gen.titulo_personalizado(
+        {"titulos_seccion": {"perfil": "  Sobre mí  "}}, "perfil"
+    ) == "Sobre mí"
+    assert latex_gen.titulo_personalizado(
+        {"titulos_seccion": {"perfil": 5}}, "perfil"
+    ) == "5"
+    assert latex_gen.titulo_personalizado(
+        {"titulos_seccion": {"perfil": "   "}}, "perfil"
+    ) is None
+    assert latex_gen.titulo_personalizado(
+        {"titulos_seccion": {"perfil": None}}, "perfil"
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        None,
+        "x",
+        7,
+        [],
+        {"titulos_seccion": None},
+        {"titulos_seccion": "x"},
+        {"titulos_seccion": 7},
+        {"titulos_seccion": {"perfil": _Explosivo()}},
+    ],
+)
+def test_titulo_personalizado_no_lanza(data):
+    assert latex_gen.titulo_personalizado(data, "perfil") is None
+
+
+def test_seccion_oculta_contrato():
+    assert latex_gen.seccion_oculta({}, "perfil") is False
+    assert latex_gen.seccion_oculta(
+        {"secciones_ocultas": ["perfil"]}, "perfil"
+    ) is True
+    assert latex_gen.seccion_oculta(
+        {"secciones_ocultas": ["idiomas"]}, "perfil"
+    ) is False
+    assert latex_gen.seccion_oculta(
+        {"secciones_ocultas": "perfil"}, "perfil"
+    ) is False
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        None,
+        "x",
+        7,
+        [],
+        {"secciones_ocultas": None},
+        {"secciones_ocultas": 7},
+        {"secciones_ocultas": {"perfil": True}},
+        {"secciones_ocultas": [_Explosivo()]},
+    ],
+)
+def test_seccion_oculta_no_lanza(data):
+    resultado = latex_gen.seccion_oculta(data, "perfil")
+    assert isinstance(resultado, bool)
+    assert resultado is False
+
+
+def test_build_tex_orden_titulos_y_ocultas():
+    d = latex_gen.datos_vacios()
+    d["idioma_cv"] = "es"
+    d["perfil"] = "Perfil visible."
+    d["trabajo"] = [{"puesto": "Desarrolladora", "empresa": "Acme"}]
+    d["idiomas"] = [{"idioma": "Español", "nivel": "Nativo"}]
+    d["orden_secciones"] = ["trabajo", "perfil", "idiomas"]
+    d["secciones_ocultas"] = ["idiomas"]
+    d["titulos_seccion"] = {"trabajo": "I+D 100% & ~"}
+    d["bloques"] = [
+        {"id": "b1", "tipo": "separador", "estilo": "linea", "posicion": "idiomas"},
+        {"id": "b2", "tipo": "separador", "estilo": "banda", "posicion": "referencias"},
+    ]
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    cuerpo = tex[tex.index("\\begin{document}"):]
+    # Titulo personalizado escapado y secciones en el orden pedido.
+    assert "\\cvsection{I+D 100\\% \\& \\textasciitilde{}}" in cuerpo
+    idx_trabajo = cuerpo.index("\\cvsection{I+D")
+    idx_perfil = cuerpo.index("\\cvsection{Perfil}")
+    assert idx_trabajo < idx_perfil
+    # La seccion oculta no emite titulo ni entradas...
+    assert "\\cvsection{Idiomas}" not in cuerpo
+    assert "Español" not in cuerpo
+    # ...pero su bloque anclado sigue renderizandose en esa posicion.
+    idx_linea = cuerpo.index("\\cvbloquelinea")
+    assert idx_perfil < idx_linea
+    assert "\\cvbloquebanda" in cuerpo
+
+
+@pytest.mark.parametrize(
+    "basura",
+    [
+        {"orden_secciones": "trabajo"},
+        {"orden_secciones": [None, 7, {"x": 1}, "perfil", "perfil"]},
+        {"titulos_seccion": ["no", "dict"]},
+        {"titulos_seccion": {"perfil": ""}},
+        {"secciones_ocultas": {"perfil": True}},
+        {"secciones_ocultas": None},
+        {"orden_secciones": None, "titulos_seccion": None, "secciones_ocultas": None},
+    ],
+)
+def test_build_tex_tolera_basura_en_las_tres_claves(basura):
+    d = latex_gen.datos_vacios()
+    d.update(basura)
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    assert "{{" not in tex
+    assert tex_datos.extraer(tex) == d
+
+
+@pytest.mark.parametrize("plantilla", latex_gen.PLANTILLAS)
+def test_build_tex_defaults_no_cambian_la_salida(plantilla):
+    d = latex_gen.datos_vacios()
+    d["plantilla"] = plantilla
+    d["idioma_cv"] = "es"
+    d["perfil"] = "Perfil breve."
+    d["trabajo"] = [{"puesto": "Dev", "empresa": "Acme"}]
+    d["habilidades"] = [{"categoria": "Lenguajes", "valores": "Python"}]
+    d["idiomas"] = [{"idioma": "Inglés", "nivel": "B2"}]
+    d["referencias"] = [{"nombre": "Ana", "contacto": "ana@example.com"}]
+    d["bloques"] = [
+        {"id": "b", "tipo": "separador", "estilo": "banda", "posicion": "trabajo"},
+    ]
+    sin_claves = {
+        k: v for k, v in d.items()
+        if k not in ("titulos_seccion", "secciones_ocultas", "orden_secciones")
+    }
+    tex_sin = _sin_bloque_datos(latex_gen.build_tex(sin_claves, PREFS_PRUEBA))
+    tex_con = _sin_bloque_datos(latex_gen.build_tex(d, PREFS_PRUEBA))
+    assert tex_con == tex_sin
+
+
+def test_build_tex_chino_respeta_titulos_y_ocultas():
+    d = latex_gen.datos_vacios()
+    d["plantilla"] = "chino"
+    d["trabajo"] = [{
+        "puesto": "工程师", "empresa": "公司", "desde": "2020", "hasta": "2024",
+    }]
+    d["educacion"] = [{"tipo": "本科", "titulo": "计算机", "institucion": "大学"}]
+    d["orden_secciones"] = ["trabajo"]
+    d["secciones_ocultas"] = ["educacion"]
+    d["titulos_seccion"] = {"trabajo": "Trabajo & I+D"}
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    cuerpo = tex[tex.index("\\begin{document}"):]
+    assert "\\cvsection{Trabajo \\& I+D}" in cuerpo
+    assert "计算机" not in cuerpo
+    assert "\\cvcnlinea" in cuerpo
+    assert tex_datos.extraer(tex) == d

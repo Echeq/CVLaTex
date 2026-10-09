@@ -523,3 +523,39 @@ button.pequeño:hover { background: var(--hover); }
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--scroll-pulgar-hover); }
 ::-webkit-scrollbar-corner { background: var(--scroll-fondo); }
+
+/* ---------- Secciones estándar: renombrar / ocultar / reordenar ---------- */
+.cab-seccion .inp-titulo-seccion {
+  flex: 1 1 auto; min-width: 0; width: auto; user-select: text;
+  font-family: var(--fuente-ui); font-size: 13px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.6px; color: var(--acento-oscuro);
+  padding: 3px 6px; background: none; border: 1px solid transparent;
+  border-bottom: 1px solid var(--borde); border-radius: 4px 4px 0 0;
+}
+.cab-seccion .inp-titulo-seccion::placeholder { color: var(--acento-oscuro); opacity: 0.75; }
+.cab-seccion .inp-titulo-seccion:hover { border-color: var(--borde); }
+.cab-seccion .inp-titulo-seccion:focus {
+  outline: 2px solid var(--acento); outline-offset: -1px;
+  border-color: var(--acento); background: var(--input-foco);
+}
+.sec-controles { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+.sec-controles .btn-seccion-ocultar,
+.sec-controles .btn-seccion-subir,
+.sec-controles .btn-seccion-bajar {
+  background: none; border: 1px solid transparent; color: var(--texto-suave);
+  border-radius: 4px; padding: 2px 6px; font-size: 12px; line-height: 1.4;
+  cursor: pointer; font-family: var(--fuente-ui);
+}
+.sec-controles .btn-seccion-ocultar:hover:not(:disabled),
+.sec-controles .btn-seccion-subir:hover:not(:disabled),
+.sec-controles .btn-seccion-bajar:hover:not(:disabled) {
+  background: var(--hover); color: var(--acento); border-color: var(--borde);
+}
+.sec-controles .btn-seccion-ocultar:disabled,
+.sec-controles .btn-seccion-subir:disabled,
+.sec-controles .btn-seccion-bajar:disabled { opacity: 0.35; cursor: default; }
+.sec-controles .btn-seccion-ocultar.oculta { color: var(--acento); }
+.tarjeta-seccion.seccion-oculta .cab-seccion .inp-titulo-seccion,
+.tarjeta-seccion.seccion-oculta .cab-seccion > h3 {
+  opacity: 0.55; text-decoration: line-through;
+}

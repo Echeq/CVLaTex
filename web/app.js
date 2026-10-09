@@ -181,14 +181,15 @@ const SECCIONES_DINAMICAS = {
   },
 };
 
-// Anclas de los bloques libres, en el mismo orden en que se insertan en el
-// documento (sincronizado con ANCLAS_BLOQUE de latex_gen.py).
-const ANCLAS_UI = [
-  "inicio", "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
-  "trabajo", "habilidades", "idiomas", "referencias", "final",
+// Orden por defecto de las secciones estándar del CV (sincronizado con
+// ORDEN_SECCIONES_DEFECTO de latex_gen.py). El usuario puede reordenarlas,
+// renombrarlas y ocultarlas desde el formulario.
+const ORDEN_SECCIONES_DEFECTO = [
+  "perfil", "educacion", "proyectos", "proyectosu", "pasantia", "trabajo",
+  "habilidades", "idiomas", "referencias",
 ];
 
-// Nombre visible de cada ancla para el indicador de posición.
+// Nombre visible por defecto de cada sección y ancla de bloque.
 const NOMBRES_ANCLA = {
   inicio: "Inicio",
   perfil: "Perfil",
@@ -202,6 +203,52 @@ const NOMBRES_ANCLA = {
   referencias: "Referencias",
   final: "Final",
 };
+
+/* ---------------- secciones estándar: nombre, orden y visibilidad ---------------- */
+
+function tituloSeccionGuardado(clave) {
+  const titulos = state.datos ? state.datos.titulos_seccion : null;
+  if (!titulos || typeof titulos !== "object") return "";
+  const valor = titulos[clave];
+  return valor == null ? "" : String(valor);
+}
+
+// Etiqueta visible de una sección: título personalizado si existe; si no, el
+// nombre por defecto ya presente en la UI (anclas) o en SECCIONES_DINAMICAS.
+function nombreSeccion(clave) {
+  const propio = tituloSeccionGuardado(clave).trim();
+  if (propio) return propio;
+  return NOMBRES_ANCLA[clave] ||
+    (SECCIONES_DINAMICAS[clave] ? SECCIONES_DINAMICAS[clave].titulo : "") ||
+    String(clave);
+}
+
+// Orden efectivo de las secciones estándar: solo claves válidas, sin
+// duplicados (gana la primera) y las ausentes al final en orden por defecto.
+// No muta state.datos: la lista completa se materializa al reordenar.
+function ordenSecciones() {
+  const bruto = state.datos && Array.isArray(state.datos.orden_secciones) ? state.datos.orden_secciones : [];
+  const orden = [];
+  bruto.forEach((valor) => {
+    if (typeof valor !== "string") return;
+    if (ORDEN_SECCIONES_DEFECTO.indexOf(valor) >= 0 && orden.indexOf(valor) < 0) orden.push(valor);
+  });
+  ORDEN_SECCIONES_DEFECTO.forEach((clave) => {
+    if (orden.indexOf(clave) < 0) orden.push(clave);
+  });
+  return orden;
+}
+
+function seccionOculta(clave) {
+  const ocultas = state.datos ? state.datos.secciones_ocultas : null;
+  return Array.isArray(ocultas) && ocultas.indexOf(clave) >= 0;
+}
+
+// Anclas de los bloques libres: inicio + secciones estándar en su orden
+// actual + final. Derivadas del orden para que cada bloque siga a su sección.
+function anclasUI() {
+  return ["inicio"].concat(ordenSecciones(), ["final"]);
+}
 
 /* ---------------- utilidades ---------------- */
 
@@ -338,7 +385,6 @@ function ejecutarAccion(accion, e) {
       case "rehacer": rehacer(); break;
       case "nuevo": accionNuevo(); break;
       case "abrir": accionAbrir(); break;
-      case "importar": accionAbrir(); break;
       case "guardar": accionGuardar(); break;
       case "exportar-pdf": accionExportarPDF(); break;
       case "exportar-tex": accionExportarTex(); break;
@@ -755,7 +801,7 @@ function alternarColapso(tipo, clave, el) {
   if (el) el.classList.toggle("colapsada", colapsoUI[tipo][clave]);
 }
 
-function seccionTitulo(texto, clave) {
+function seccionTitulo(texto, clave, estandar) {
   const t = document.createElement("div");
   t.className = "tarjeta-seccion";
   const cab = document.createElement("div");
@@ -763,10 +809,38 @@ function seccionTitulo(texto, clave) {
   const chev = document.createElement("span");
   chev.className = "chevron";
   chev.textContent = "▾";
-  const h = document.createElement("h3");
-  h.textContent = texto;
-  cab.append(chev, h);
-  if (clave && SECCIONES_DINAMICAS[clave].columnas) {
+  cab.appendChild(chev);
+  if (estandar) {
+    // Título inline: escribe/borra state.datos.titulos_seccion[clave]; vacío
+    // vuelve al nombre por defecto (el placeholder muestra ese nombre).
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "inp-titulo-seccion";
+    inp.dataset.clave = clave;
+    inp.value = tituloSeccionGuardado(clave);
+    inp.placeholder = texto;
+    inp.title = "Renombrar la sección (vacío = nombre por defecto)";
+    inp.addEventListener("click", (e) => e.stopPropagation());
+    inp.addEventListener("input", () => {
+      registrarHistorial(true);
+      if (!state.datos.titulos_seccion || typeof state.datos.titulos_seccion !== "object") {
+        state.datos.titulos_seccion = {};
+      }
+      const valor = inp.value.trim();
+      if (valor) state.datos.titulos_seccion[clave] = valor;
+      else delete state.datos.titulos_seccion[clave];
+      marcarSucio();
+    });
+    // El repintado se aplaza al siguiente turno para que el blur del input no
+    // destruya, antes de su click, los botones de la misma cabecera.
+    inp.addEventListener("change", () => setTimeout(renderFormulario, 0));
+    cab.appendChild(inp);
+  } else {
+    const h = document.createElement("h3");
+    h.textContent = texto;
+    cab.appendChild(h);
+  }
+  if (clave && SECCIONES_DINAMICAS[clave] && SECCIONES_DINAMICAS[clave].columnas) {
     if (!state.datos.columnas) state.datos.columnas = {};
     const rot = document.createElement("label");
     rot.className = "rot-col";
@@ -790,6 +864,70 @@ function seccionTitulo(texto, clave) {
     rot.appendChild(sel);
     cab.appendChild(rot);
   }
+  if (estandar) {
+    const oculta = seccionOculta(clave);
+    const orden = ordenSecciones();
+    const pos = orden.indexOf(clave);
+
+    const acciones = document.createElement("span");
+    acciones.className = "sec-controles";
+
+    const vis = document.createElement("button");
+    vis.className = "btn-seccion-ocultar" + (oculta ? " oculta" : "");
+    vis.textContent = oculta ? "○" : "◉";
+    vis.title = oculta ? "Mostrar esta sección en el CV" : "Ocultar esta sección del CV";
+    vis.addEventListener("click", (e) => {
+      e.stopPropagation();
+      registrarHistorial(true);
+      if (!Array.isArray(state.datos.secciones_ocultas)) state.datos.secciones_ocultas = [];
+      const i = state.datos.secciones_ocultas.indexOf(clave);
+      if (i >= 0) state.datos.secciones_ocultas.splice(i, 1);
+      else state.datos.secciones_ocultas.push(clave);
+      marcarSucio();
+      renderFormulario();
+    });
+
+    const subir = document.createElement("button");
+    subir.className = "btn-seccion-subir";
+    subir.textContent = "↑";
+    subir.title = "Subir esta sección en el CV";
+    subir.disabled = pos <= 0;
+    subir.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const o = ordenSecciones();
+      const j = o.indexOf(clave);
+      if (j <= 0) return;
+      registrarHistorial(true);
+      const tmp = o[j - 1];
+      o[j - 1] = o[j];
+      o[j] = tmp;
+      state.datos.orden_secciones = o;
+      marcarSucio();
+      renderFormulario();
+    });
+
+    const bajar = document.createElement("button");
+    bajar.className = "btn-seccion-bajar";
+    bajar.textContent = "↓";
+    bajar.title = "Bajar esta sección en el CV";
+    bajar.disabled = pos < 0 || pos >= orden.length - 1;
+    bajar.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const o = ordenSecciones();
+      const j = o.indexOf(clave);
+      if (j < 0 || j >= o.length - 1) return;
+      registrarHistorial(true);
+      const tmp = o[j + 1];
+      o[j + 1] = o[j];
+      o[j] = tmp;
+      state.datos.orden_secciones = o;
+      marcarSucio();
+      renderFormulario();
+    });
+
+    acciones.append(vis, subir, bajar);
+    cab.appendChild(acciones);
+  }
   const contenido = document.createElement("div");
   contenido.className = "sec-contenido";
   t.appendChild(cab);
@@ -798,7 +936,7 @@ function seccionTitulo(texto, clave) {
   const claveColapso = clave || texto;
   aplicarColapso("secciones", claveColapso, t);
   cab.addEventListener("click", (e) => {
-    if (e.target.closest("select")) return;
+    if (e.target.closest("select, button, input")) return;
     alternarColapso("secciones", claveColapso, t);
   });
   return t;
@@ -819,6 +957,32 @@ function campoBasico(k, label, area) {
   });
   div.append(lb, inp);
   return div;
+}
+
+/* Escala el lado mayor de una imagen servida en /media/ hasta maxLado
+   (nunca amplía) y devuelve un data URL (JPEG/PNG) para enviarla a
+   guardar_imagen. El canvas es legible porque la imagen es del mismo origen;
+   si la imagen no carga o el canvas no se puede leer (p. ej. contaminado),
+   rechaza: el llamante conserva entonces la ruta original. */
+function normalizarImagen(fuenteUrl, maxLado, mime, calidad) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const mayor = Math.max(img.naturalWidth, img.naturalHeight);
+        const esc = mayor > maxLado ? maxLado / mayor : 1;
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(img.naturalWidth * esc));
+        cv.height = Math.max(1, Math.round(img.naturalHeight * esc));
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        resolve(cv.toDataURL(mime, calidad));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error("No se pudo cargar la imagen"));
+    img.src = fuenteUrl;
+  });
 }
 
 function pintarFoto() {
@@ -908,15 +1072,34 @@ function fotoFila() {
   inpAl.addEventListener("change", () => { aplicarTam(); pintarFoto(); });
   elegir.onclick = async () => {
     const r = await api.elegir_foto("foto");
-    if (r.ok) {
-      registrarHistorial(false);
-      state.datos.foto = r.path;
-      state.datos.foto_original = r.path;
-      state.datos.foto_recorte = null;
-      actualizarTam();
-      pintarFoto();
-      marcarSucio();
-    } else if (r.error) toast(r.error);
+    if (!r.ok) {
+      if (r.error) toast(r.error);
+      return;
+    }
+    registrarHistorial(false);
+    let ruta = r.path;
+    let normalizada = false;
+    try {
+      const dataUrl = await normalizarImagen(r.url, 1600, "image/jpeg", 0.9);
+      const res = await api.guardar_imagen(dataUrl, "foto");
+      if (res.ok && res.path) {
+        ruta = res.path;
+        normalizada = true;
+      } else {
+        toast((res.errores && res.errores[0]) || "No se pudo normalizar la foto; se conserva la original");
+      }
+    } catch (e) {
+      toast("No se pudo normalizar la foto; se conserva la original");
+    }
+    state.datos.foto = ruta;
+    state.datos.foto_original = ruta;
+    state.datos.foto_recorte = { x: 0, y: 0, w: 1, h: 1 };
+    actualizarTam();
+    pintarFoto();
+    marcarSucio();
+    // Recorte automático sobre la imagen normalizada completa; si el usuario
+    // cancela, queda guardada la normalizada entera.
+    if (normalizada) abrirRecorte();
   };
   ajustar.onclick = () => abrirRecorte();
   quitar.onclick = () => {
@@ -1071,8 +1254,8 @@ function configurarRecorte() {
     cv.width = Math.round(sw * esc);
     cv.height = Math.round(sh * esc);
     cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
-    const dataUrl = cv.toDataURL("image/png");
-    const r = await api.guardar_foto_recorte(dataUrl);
+    const dataUrl = cv.toDataURL("image/jpeg", 0.9);
+    const r = await api.guardar_imagen(dataUrl, "recorte");
     if (r.ok) {
       state.datos.foto = r.path;
       $("#modal-recorte").hidden = true;
@@ -1080,7 +1263,7 @@ function configurarRecorte() {
       marcarSucio();
       toast("Área de la foto ajustada");
     } else {
-      toast(r.error || "No se pudo guardar el recorte");
+      toast((r.errores && r.errores[0]) || "No se pudo guardar el recorte");
     }
   });
 }
@@ -1222,12 +1405,23 @@ function listaDinamica(key) {
           boton.textContent = "Elegir logo…";
           boton.onclick = async () => {
             const r = await api.elegir_foto("logo");
-            if (r.ok) {
-              registrarHistorial(true);
-              ent[c.k] = r.path;
-              pintarLogo();
-              marcarSucio();
-            } else if (r.error) toast(r.error);
+            if (!r.ok) {
+              if (r.error) toast(r.error);
+              return;
+            }
+            registrarHistorial(true);
+            let ruta = r.path;
+            try {
+              const dataUrl = await normalizarImagen(r.url, 512, "image/png");
+              const res = await api.guardar_imagen(dataUrl, "logo");
+              if (res.ok && res.path) ruta = res.path;
+              else toast((res.errores && res.errores[0]) || "No se pudo normalizar el logo; se conserva el original");
+            } catch (e) {
+              toast("No se pudo normalizar el logo; se conserva el original");
+            }
+            ent[c.k] = ruta;
+            pintarLogo();
+            marcarSucio();
           };
           const quitar = document.createElement("button");
           quitar.className = "btn-quitar";
@@ -1293,12 +1487,23 @@ function campoLogoPersonal(k, label) {
   boton.textContent = "Elegir logo…";
   boton.onclick = async () => {
     const r = await api.elegir_foto("logo");
-    if (r.ok) {
-      registrarHistorial(false);
-      state.datos[k] = r.path;
-      pintar();
-      marcarSucio();
-    } else if (r.error) toast(r.error);
+    if (!r.ok) {
+      if (r.error) toast(r.error);
+      return;
+    }
+    registrarHistorial(false);
+    let ruta = r.path;
+    try {
+      const dataUrl = await normalizarImagen(r.url, 512, "image/png");
+      const res = await api.guardar_imagen(dataUrl, "logo");
+      if (res.ok && res.path) ruta = res.path;
+      else toast((res.errores && res.errores[0]) || "No se pudo normalizar el logo; se conserva el original");
+    } catch (e) {
+      toast("No se pudo normalizar el logo; se conserva el original");
+    }
+    state.datos[k] = ruta;
+    pintar();
+    marcarSucio();
   };
   const quitar = document.createElement("button");
   quitar.className = "btn-quitar";
@@ -1407,20 +1612,25 @@ function renderFormulario() {
   cont.appendChild(t1);
   pintarFoto(); // ahora #foto-vista ya está en el DOM
 
-  const t2 = seccionTitulo("Perfil");
-  t2.contenido.appendChild(campoBasico("perfil", "Resumen profesional", true));
-  cont.appendChild(t2);
-
   const td = seccionTitulo("Datos adicionales");
   td.title = "Estos datos se muestran en el encabezado del CV junto a los datos personales";
   td.contenido.appendChild(listaDinamica("datos_extra"));
   cont.appendChild(td);
 
-  Object.keys(SECCIONES_DINAMICAS).forEach((key) => {
-    if (key === "datos_extra") return;
-    const def = SECCIONES_DINAMICAS[key];
-    const t = seccionTitulo(def.titulo, def.columnas ? key : null);
-    t.contenido.appendChild(listaDinamica(key));
+  // Secciones estándar en el orden elegido por el usuario; cada cabecera
+  // permite renombrar, ocultar y reordenar. "Datos personales" y "Datos
+  // adicionales" quedan fijos arriba y la tarjeta "Bloques" al final.
+  ordenSecciones().forEach((key) => {
+    const t = seccionTitulo(nombreSeccion(key), key, true);
+    if (seccionOculta(key)) {
+      t.classList.add("seccion-oculta");
+      t.contenido.hidden = true;
+    }
+    if (key === "perfil") {
+      t.contenido.appendChild(campoBasico("perfil", "Resumen profesional", true));
+    } else {
+      t.contenido.appendChild(listaDinamica(key));
+    }
     cont.appendChild(t);
   });
 
@@ -1459,14 +1669,14 @@ function nuevoIdBloque() {
 
 function normalizarPosicion(pos) {
   const p = String(pos || "").trim();
-  return ANCLAS_UI.indexOf(p) >= 0 ? p : "final";
+  return anclasUI().indexOf(p) >= 0 ? p : "final";
 }
 
 function etiquetaPosicion(pos) {
   const p = normalizarPosicion(pos);
   if (p === "inicio") return "Al inicio";
   if (p === "final") return "Al final";
-  return "Después de " + (NOMBRES_ANCLA[p] || p);
+  return "Después de " + nombreSeccion(p);
 }
 
 function recortarTexto(s, max) {
@@ -1521,9 +1731,10 @@ function crearBloqueSeparador(estilo) {
 function moverBloque(b, paso) {
   mutarBloques((bloques) => {
     if (bloques.indexOf(b) < 0) return;
-    const j = ANCLAS_UI.indexOf(normalizarPosicion(b.posicion)) + paso;
-    if (j < 0 || j >= ANCLAS_UI.length) return;
-    b.posicion = ANCLAS_UI[j];
+    const anclas = anclasUI();
+    const j = anclas.indexOf(normalizarPosicion(b.posicion)) + paso;
+    if (j < 0 || j >= anclas.length) return;
+    b.posicion = anclas[j];
   });
 }
 
@@ -1577,7 +1788,8 @@ function filaBloque(b) {
   acciones.style.display = "flex";
   acciones.style.alignItems = "center";
   acciones.style.gap = "6px";
-  const ancla = ANCLAS_UI.indexOf(normalizarPosicion(b && b.posicion));
+  const anclas = anclasUI();
+  const ancla = anclas.indexOf(normalizarPosicion(b && b.posicion));
 
   const arriba = document.createElement("button");
   arriba.className = "pequeño";
@@ -1593,7 +1805,7 @@ function filaBloque(b) {
   abajo.className = "pequeño";
   abajo.textContent = "↓";
   abajo.title = "Mover una posición después en el CV";
-  abajo.disabled = ancla >= ANCLAS_UI.length - 1;
+  abajo.disabled = ancla >= anclas.length - 1;
   abajo.addEventListener("click", (e) => {
     e.stopPropagation();
     moverBloque(b, 1);

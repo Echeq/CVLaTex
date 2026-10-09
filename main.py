@@ -4,6 +4,7 @@ import http.server
 import json
 import mimetypes
 import os
+import re
 import shutil
 import sys
 import threading
@@ -200,6 +201,37 @@ class Api:
             return {"ok": True, "path": destino, "url": "/media/" + nombre}
         except Exception as e:
             return {"ok": False, "error": f"No se pudo guardar el recorte: {e}"}
+
+    def guardar_imagen(self, data_url, tipo=None):
+        """Guarda una imagen enviada como data URL base64 PNG/JPEG.
+
+        Acepta solo cabeceras ``data:image/png;base64,`` y
+        ``data:image/jpeg;base64,`` con base64 estricto. El prefijo del
+        fichero es ``foto`` salvo que ``tipo`` sea logo o recorte.
+        """
+        try:
+            if not isinstance(data_url, str):
+                raise ValueError("data URL no válida.")
+            coincidencia = re.fullmatch(
+                r"data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/]*={0,2})",
+                data_url,
+            )
+            if coincidencia is None:
+                raise ValueError("data URL no válida o MIME no admitido (usa PNG o JPEG).")
+            mime, b64 = coincidencia.group(1), coincidencia.group(2)
+            datos_img = base64.b64decode(b64, validate=True)
+            if not datos_img:
+                raise ValueError("la imagen está vacía.")
+            prefijo = tipo if tipo in ("foto", "logo", "recorte") else "foto"
+            ext = ".png" if mime == "image/png" else ".jpg"
+            os.makedirs(prefs.CACHE_DIR, exist_ok=True)
+            nombre = "%s_%s%s" % (prefijo, uuid.uuid4().hex, ext)
+            destino = os.path.join(prefs.CACHE_DIR, nombre)
+            with open(destino, "wb") as f:
+                f.write(datos_img)
+            return {"ok": True, "path": destino, "url": "/media/" + nombre}
+        except Exception as e:
+            return {"ok": False, "errores": [str(e)]}
 
     def exportar_pdf(self, datos, tex_manual=None):
         try:
@@ -465,6 +497,76 @@ def _sanear_bloques(bloques):
         return []
 
 
+def _sanear_secciones_nuevas(datos):
+    """Normaliza titulos_seccion / secciones_ocultas / orden_secciones.
+
+    Nunca lanza: entradas ausentes o mal formadas caen a los valores
+    canónicos (dict vacío, lista vacía, orden por defecto completo).
+    """
+    if not isinstance(datos, dict):
+        return datos
+    claves = latex_gen.ORDEN_SECCIONES_DEFECTO
+
+    # orden_secciones: mismo contrato que latex_gen.normalizar_orden_secciones
+    # (claves válidas, dedup conservando la primera, faltantes al final en
+    # orden por defecto; cualquier valor que no sea lista/tupla -> lista
+    # completa por defecto). Única excepción: la lista vacía es el centinela
+    # canónico de "orden por defecto" (lo devuelve datos_vacios y lo expande
+    # normalizar_orden_secciones al renderizar), así que se conserva para que
+    # abrir/importar un CV ya canónico no invente un orden no elegido.
+    try:
+        bruto_orden = datos.get("orden_secciones")
+        lista_vacia = isinstance(bruto_orden, (list, tuple)) and len(bruto_orden) == 0
+    except Exception:
+        lista_vacia = False
+    if lista_vacia:
+        orden = []
+    else:
+        try:
+            orden = latex_gen.normalizar_orden_secciones(datos)
+            if not isinstance(orden, list):
+                orden = list(claves)
+        except Exception:
+            orden = list(claves)
+
+    # titulos_seccion: solo claves válidas con valor str recortado y no vacío.
+    titulos = {}
+    try:
+        bruto_titulos = datos.get("titulos_seccion")
+    except Exception:
+        bruto_titulos = None
+    if isinstance(bruto_titulos, dict):
+        for clave in claves:
+            try:
+                valor = bruto_titulos.get(clave)
+                if not isinstance(valor, str):
+                    continue
+                valor = valor.strip()
+            except Exception:
+                continue
+            if valor:
+                titulos[clave] = valor
+
+    # secciones_ocultas: claves válidas sin duplicados (gana la primera).
+    ocultas = []
+    try:
+        bruto_ocultas = datos.get("secciones_ocultas")
+    except Exception:
+        bruto_ocultas = None
+    if isinstance(bruto_ocultas, (list, tuple)):
+        for valor in bruto_ocultas:
+            try:
+                if isinstance(valor, str) and valor in claves and valor not in ocultas:
+                    ocultas.append(valor)
+            except Exception:
+                continue
+
+    datos["titulos_seccion"] = titulos
+    datos["secciones_ocultas"] = ocultas
+    datos["orden_secciones"] = orden
+    return datos
+
+
 def _migrar_datos(datos):
     """Convierte archivos .cvjson antiguos al modelo actual."""
     if not isinstance(datos, dict):
@@ -490,7 +592,7 @@ def _migrar_datos(datos):
                 nuevas.append({"categoria": h["nombre"], "valores": h.get("nivel", "")})
         datos["habilidades"] = nuevas
     datos["bloques"] = _sanear_bloques(datos.get("bloques"))
-    return datos
+    return _sanear_secciones_nuevas(datos)
 
 
 def _recolectar_medios(datos):

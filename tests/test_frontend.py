@@ -156,3 +156,70 @@ def test_css_panel_latex_ocupa_la_altura_disponible():
     assert "flex: 1 1 auto" in bloque_texto
     assert "min-height: 0" in bloque_texto
 
+
+# ---------------- F3: menu Archivos (submenu Exportar + importar .tex) ----------------
+
+def test_index_submenu_exportar_con_opciones_dentro_de_subdrop():
+    """Exportar es un submenu desplegable con pdf/tex/docx antes de importar-tex."""
+    assert '<div class="sub">Exportar' in HTML
+    inicio_sub = HTML.index('<div class="sub">Exportar')
+    subdrop = HTML.index('<div class="menu-drop subdrop">', inicio_sub)
+    importar_tex = HTML.index('data-accion="importar-tex"', inicio_sub)
+    assert inicio_sub < subdrop < importar_tex
+    for accion in (
+        'data-accion="exportar-pdf"',
+        'data-accion="exportar-tex"',
+        'data-accion="exportar-docx"',
+    ):
+        pos = HTML.index(accion, inicio_sub)
+        assert subdrop < pos < importar_tex, accion
+
+
+def test_index_tiene_importar_tex_y_ya_no_importar():
+    """La importacion explicita de .tex sustituye a la antigua accion generica."""
+    assert HTML.count('data-accion="importar-tex"') == 1
+    assert 'data-accion="importar"' not in HTML
+
+
+def test_app_js_no_conserva_la_rama_case_importar():
+    """La rama antigua `case "importar": accionAbrir();` ya no existe."""
+    assert 'case "importar":' not in JS
+    assert 'case "importar-tex": accionImportarTex(); break;' in JS
+
+
+# ---------------- F1: orden, titulos y visibilidad de secciones ----------------
+
+def test_app_js_tiene_orden_y_visibilidad_de_secciones():
+    for token in (
+        "titulos_seccion",
+        "secciones_ocultas",
+        "orden_secciones",
+        "function ordenSecciones(",
+        "function anclasUI(",
+        "inp-titulo-seccion",
+        "btn-seccion-ocultar",
+        "btn-seccion-subir",
+        "btn-seccion-bajar",
+    ):
+        assert token in JS, token
+
+
+# ---------------- F2: normalizacion de imagenes antes de guardarlas ----------------
+
+def test_app_js_normaliza_imagenes_antes_de_enviarlas_al_backend():
+    for token in (
+        "normalizarImagen",
+        "guardar_imagen",
+        "1600",
+        "512",
+        "image/jpeg",
+        "image/png",
+        "toDataURL",
+    ):
+        assert token in JS, token
+    # Firma real del helper y llamadas de foto, logo y recorte.
+    assert "function normalizarImagen(fuenteUrl, maxLado, mime, calidad)" in JS
+    assert 'normalizarImagen(r.url, 1600, "image/jpeg", 0.9)' in JS
+    assert 'normalizarImagen(r.url, 512, "image/png")' in JS
+    assert 'toDataURL("image/jpeg", 0.9)' in JS
+

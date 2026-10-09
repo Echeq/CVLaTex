@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Generacion de curriculums en formato DOCX con python-docx.
 
-No depende de LaTeX ni de pywebview: solo de python-docx y de la tabla de
-traduccion (LANG) de latex_gen.
+No depende de LaTeX ni de pywebview: solo de python-docx y de los helpers de
+latex_gen (tabla de traduccion LANG, orden/visibilidad/titulos de seccion).
 """
 
 import os
@@ -13,6 +13,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+import latex_gen
 from latex_gen import ANCLAS_BLOQUE, ESTILOS_SEPARADOR, LANG
 
 # Tamano de pagina en centimetros: (ancho, alto).
@@ -247,7 +248,7 @@ def _entrada_proyecto(doc, ent, L, con_asignatura):
         parrafo.add_run(enlace)
 
 
-def _seccion_habilidades(doc, d, L):
+def _seccion_habilidades(doc, d, L, titulo=None):
     entradas = [e for e in (d.get("habilidades") or []) if isinstance(e, dict)]
     filas = []
     for e in entradas:
@@ -257,7 +258,7 @@ def _seccion_habilidades(doc, d, L):
             filas.append((categoria, valores))
     if not filas:
         return
-    _encabezado(doc, L["habilidades"])
+    _encabezado(doc, titulo or L["habilidades"])
     for categoria, valores in filas:
         parrafo = doc.add_paragraph()
         if categoria and valores:
@@ -269,7 +270,7 @@ def _seccion_habilidades(doc, d, L):
             parrafo.add_run(", ".join(valores))
 
 
-def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b):
+def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b, titulo=None):
     filas = []
     for e in entradas or []:
         if not isinstance(e, dict):
@@ -280,7 +281,7 @@ def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b):
             filas.append((a, b))
     if not filas:
         return
-    _encabezado(doc, L[clave])
+    _encabezado(doc, titulo or L[clave])
     for a, b in filas:
         parrafo = doc.add_paragraph()
         if a and b:
@@ -384,62 +385,66 @@ def _render_bloques(doc, bloques):
 
 
 def _cuerpo(doc, d, L):
-    """Secciones en el mismo orden que latex_gen.build_tex, a una columna.
+    """Secciones con el mismo orden, visibilidad y titulos que latex_gen.
+
+    El orden normalizado y las secciones ocultas se delegan en latex_gen
+    (normalizar_orden_secciones / seccion_oculta) y los titulos personalizados
+    en titulo_personalizado, con L[clave] como respaldo. El texto va en plano,
+    sin escapado LaTeX.
 
     Los bloques libres se intercalan tras su seccion ancla; las anclas
-    "inicio" y "final" abren y cierran el cuerpo. Una seccion vacia sigue
-    mostrando los bloques anclados a ella.
+    "inicio" y "final" abren y cierran el cuerpo. Una seccion vacia u oculta
+    sigue mostrando los bloques anclados a ella (ancla posicional).
     """
     grupos = _agrupar_bloques(d)
     _render_bloques(doc, grupos["inicio"])
 
-    perfil = _texto(d.get("perfil"))
-    if perfil:
-        _encabezado(doc, L["perfil"])
-        _parrafos(doc, d.get("perfil"))
-    _render_bloques(doc, grupos["perfil"])
-
-    educacion = _entradas_con_contenido(d.get("educacion"))
-    if educacion:
-        _encabezado(doc, L["educacion"])
-        for ent in educacion:
-            _entrada_educacion(doc, ent, L)
-    _render_bloques(doc, grupos["educacion"])
-
-    proyectos = _entradas_con_contenido(d.get("proyectos"))
-    if proyectos:
-        _encabezado(doc, L["proyectos"])
-        for ent in proyectos:
-            _entrada_proyecto(doc, ent, L, False)
-    _render_bloques(doc, grupos["proyectos"])
-
-    proyectosu = _entradas_con_contenido(d.get("proyectosu"))
-    if proyectosu:
-        _encabezado(doc, L["proyectosu"])
-        for ent in proyectosu:
-            _entrada_proyecto(doc, ent, L, True)
-    _render_bloques(doc, grupos["proyectosu"])
-
-    pasantia = _entradas_con_contenido(d.get("pasantia"))
-    if pasantia:
-        _encabezado(doc, L["pasantia"])
-        for ent in pasantia:
-            _entrada_trabajo(doc, ent, L)
-    _render_bloques(doc, grupos["pasantia"])
-
-    trabajo = _entradas_con_contenido(d.get("trabajo"))
-    if trabajo:
-        _encabezado(doc, L["trabajo"])
-        for ent in trabajo:
-            _entrada_trabajo(doc, ent, L)
-    _render_bloques(doc, grupos["trabajo"])
-
-    _seccion_habilidades(doc, d, L)
-    _render_bloques(doc, grupos["habilidades"])
-    _seccion_parejas(doc, d.get("idiomas"), L, "idiomas", "idioma", "nivel")
-    _render_bloques(doc, grupos["idiomas"])
-    _seccion_parejas(doc, d.get("referencias"), L, "referencias", "nombre", "contacto")
-    _render_bloques(doc, grupos["referencias"])
+    for clave in latex_gen.normalizar_orden_secciones(d):
+        if not latex_gen.seccion_oculta(d, clave):
+            titulo = latex_gen.titulo_personalizado(d, clave) or L[clave]
+            if clave == "perfil":
+                if _texto(d.get("perfil")):
+                    _encabezado(doc, titulo)
+                    _parrafos(doc, d.get("perfil"))
+            elif clave == "educacion":
+                entradas = _entradas_con_contenido(d.get("educacion"))
+                if entradas:
+                    _encabezado(doc, titulo)
+                    for ent in entradas:
+                        _entrada_educacion(doc, ent, L)
+            elif clave == "proyectos":
+                entradas = _entradas_con_contenido(d.get("proyectos"))
+                if entradas:
+                    _encabezado(doc, titulo)
+                    for ent in entradas:
+                        _entrada_proyecto(doc, ent, L, False)
+            elif clave == "proyectosu":
+                entradas = _entradas_con_contenido(d.get("proyectosu"))
+                if entradas:
+                    _encabezado(doc, titulo)
+                    for ent in entradas:
+                        _entrada_proyecto(doc, ent, L, True)
+            elif clave == "pasantia":
+                entradas = _entradas_con_contenido(d.get("pasantia"))
+                if entradas:
+                    _encabezado(doc, titulo)
+                    for ent in entradas:
+                        _entrada_trabajo(doc, ent, L)
+            elif clave == "trabajo":
+                entradas = _entradas_con_contenido(d.get("trabajo"))
+                if entradas:
+                    _encabezado(doc, titulo)
+                    for ent in entradas:
+                        _entrada_trabajo(doc, ent, L)
+            elif clave == "habilidades":
+                _seccion_habilidades(doc, d, L, titulo)
+            elif clave == "idiomas":
+                _seccion_parejas(doc, d.get("idiomas"), L, clave, "idioma", "nivel", titulo)
+            elif clave == "referencias":
+                _seccion_parejas(doc, d.get("referencias"), L, clave, "nombre", "contacto", titulo)
+        # Bloque anclado a esta seccion: se emite aunque la seccion este oculta
+        # o vacia, para conservar el ancla posicional elegida.
+        _render_bloques(doc, grupos[clave])
     _render_bloques(doc, grupos["final"])
 
 

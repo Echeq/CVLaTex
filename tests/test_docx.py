@@ -146,3 +146,122 @@ def test_exportar_docx_bloques_mal_formados_no_lanzan(tmp_path):
     ruta2 = tmp_path / "no_lista.docx"
     docx_gen.exportar(d, PREFS_PRUEBA, str(ruta2))
     assert ruta2.is_file()
+
+
+# ---------------------------------------------------------------------------
+# Orden, ocultacion y titulos personalizados de seccion
+# ---------------------------------------------------------------------------
+
+# Encabezados visibles con _datos_docx() en el orden por defecto (solo las
+# secciones que tienen contenido).
+ETIQUETAS_ES = [
+    "Perfil", "Educación", "Experiencia laboral", "Habilidades", "Idiomas",
+    "Referencias",
+]
+
+
+def _indice(textos, aguja):
+    """Primera posicion cuyo texto contiene `aguja`; falla si no aparece."""
+    for i, texto in enumerate(textos):
+        if aguja in texto:
+            return i
+    raise AssertionError(f"No se encontro {aguja!r}")
+
+
+def _secuencia_encabezados(textos, etiquetas):
+    """Solo los parrafos que son exactamente un encabezado de seccion."""
+    conocidas = set(etiquetas)
+    return [t for t in textos if t in conocidas]
+
+
+def test_exportar_docx_orden_por_defecto_no_cambia(tmp_path):
+    # _datos_docx() hereda de datos_vacios() orden_secciones vacio y ninguna
+    # seccion oculta: la secuencia por defecto debe ser la canonica.
+    textos = _textos_docx(_datos_docx(), tmp_path, "defecto.docx")
+    assert _secuencia_encabezados(textos, ETIQUETAS_ES) == ETIQUETAS_ES
+
+
+def test_exportar_docx_orden_secciones_invertido(tmp_path):
+    d = _datos_docx()
+    d["orden_secciones"] = list(reversed(latex_gen.ORDEN_SECCIONES_DEFECTO))
+    textos = _textos_docx(d, tmp_path, "orden_inverso.docx")
+
+    assert _secuencia_encabezados(textos, ETIQUETAS_ES) == [
+        "Referencias", "Idiomas", "Habilidades", "Experiencia laboral",
+        "Educación", "Perfil",
+    ]
+
+    # Las entradas acompanan a su seccion, no solo cambian las cabeceras.
+    indices = [
+        _indice(textos, aguja) for aguja in (
+            "Luis Pérez",                       # referencias
+            "Español",                          # idiomas
+            "Python, Java",                     # habilidades
+            "Ingeniera backend",                # trabajo
+            "Universidad de Madrid",            # educacion
+            "Perfil profesional de prueba",     # perfil
+        )
+    ]
+    assert indices == sorted(indices)
+
+
+def test_exportar_docx_seccion_oculta_sin_encabezado_ni_entradas(tmp_path):
+    d = _datos_docx()
+    d["secciones_ocultas"] = ["educacion"]
+    textos = _textos_docx(d, tmp_path, "oculta.docx")
+
+    assert "Educación" not in textos
+    assert not any("Universidad de Madrid" in t for t in textos)
+    assert not any("Ingeniería Informática" in t for t in textos)
+    assert not any("8.5/10" in t for t in textos)
+
+    assert _secuencia_encabezados(textos, ETIQUETAS_ES) == [
+        "Perfil", "Experiencia laboral", "Habilidades", "Idiomas",
+        "Referencias",
+    ]
+
+
+def test_exportar_docx_titulos_seccion_sustituyen_etiquetas(tmp_path):
+    d = _datos_docx()
+    d["titulos_seccion"] = {
+        "educacion": "Formación académica",
+        "trabajo": "Trayectoria profesional",
+        "habilidades": "Competencias",
+    }
+    textos = _textos_docx(d, tmp_path, "titulos.docx")
+
+    esperados = [
+        "Perfil", "Formación académica", "Trayectoria profesional",
+        "Competencias", "Idiomas", "Referencias",
+    ]
+    assert _secuencia_encabezados(textos, esperados) == esperados
+    for etiqueta in ("Educación", "Experiencia laboral", "Habilidades"):
+        assert etiqueta not in textos
+    # Las entradas de las secciones renombradas siguen presentes.
+    assert any("Universidad de Madrid" in t for t in textos)
+    assert any("Ingeniera backend" in t for t in textos)
+    assert any("Python" in t for t in textos)
+
+
+def test_exportar_docx_bloque_anclado_a_seccion_oculta_conserva_posicion(tmp_path):
+    d = _datos_docx()
+    d["secciones_ocultas"] = ["trabajo"]
+    d["bloques"] = [{
+        "id": "nota", "tipo": "seccion", "titulo": "Nota de trayectoria",
+        "contenido": "Bloque anclado a una seccion oculta.",
+        "posicion": "trabajo",
+    }]
+    textos = _textos_docx(d, tmp_path, "oculta_con_bloque.docx")
+
+    # La seccion oculta no deja encabezado ni entradas...
+    assert "Experiencia laboral" not in textos
+    assert not any("Ingeniera backend" in t for t in textos)
+    assert not any("Migramos a microservicios." in t for t in textos)
+
+    # ...pero el bloque anclado a ella conserva su posicion: entre la seccion
+    # visible anterior y la siguiente.
+    i_educacion = textos.index("Educación")
+    i_bloque = textos.index("Nota de trayectoria")
+    i_habilidades = textos.index("Habilidades")
+    assert i_educacion < i_bloque < i_habilidades
+    assert i_educacion < _indice(textos, "Bloque anclado a una seccion oculta.") < i_habilidades
