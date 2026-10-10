@@ -160,6 +160,19 @@ class Api:
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
+    def colores_plantilla(self, plantilla=None):
+        """Colores acento definidos por la plantilla indicada (o clasico)."""
+        try:
+            p = str(plantilla or "clasico").strip().lower()
+            if p not in latex_gen.PLANTILLAS:
+                p = "clasico"
+            ruta = os.path.join(latex_gen.BASE_DIR, "templates", latex_gen.ARCHIVOS[p])
+            with open(ruta, "r", encoding="utf-8") as f:
+                tex = f.read()
+            return {"ok": True, "colores": latex_gen.colores_de_plantilla(tex)}
+        except Exception as e:
+            return {"ok": False, "errores": [str(e)]}
+
     def elegir_archivo(self, tipos, guardar, nombre_sugerido):
         if guardar:
             ruta = self._w.create_file_dialog(
@@ -343,10 +356,37 @@ class Api:
             return {"ok": False, "errores": [str(e)]}
 
     def autosave_leer(self):
+        """Devuelve los datos del autosave listos para el formulario, o None.
+
+        Espeja la semantica de `abrir_cv`: migra los datos, materializa los
+        medios incrustados de un autosave v2 en CACHE_DIR y rellena las claves
+        ausentes del esquema. El frontend recibe datos planos, nunca el sobre
+        {version, datos, medios}. Nunca lanza: si el fichero no existe, esta
+        corrupto o no contiene datos, devuelve None.
+        """
         try:
             with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "r", encoding="utf-8") as f:
                 contenido = json.load(f)
-            return contenido if isinstance(contenido, dict) else None
+            if not isinstance(contenido, dict):
+                return None
+            if contenido.get("version") == 2:
+                datos = contenido.get("datos")
+            else:
+                # Autosave antiguo: el JSON era directamente el dict de datos.
+                datos = contenido
+            if not isinstance(datos, dict):
+                return None
+            datos = _migrar_datos(datos)
+            if contenido.get("version") == 2:
+                datos = _materializar_medios(datos, contenido.get("medios"))
+            # Rellene solo las claves ausentes, igual que abrir_cv. Si el valor
+            # por defecto es None (p. ej. foto_recorte), no se comprueba el
+            # tipo: un rectangulo dict valido debe sobrevivir.
+            vacios = latex_gen.datos_vacios()
+            for k, por_defecto in vacios.items():
+                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
+                    datos[k] = por_defecto
+            return datos
         except Exception:
             return None
 
@@ -442,6 +482,14 @@ CAMPOS_MEDIA = ("foto", "foto_original", "foto_recorte", "logo_egresado")
 CAMPOS_LOGO = ("trabajo", "pasantia", "proyectos", "proyectosu", "educacion")
 
 
+def _texto_bloque(valor):
+    """Convierte a texto sin lanzar (los valores hostiles caen a "")."""
+    try:
+        return "" if valor is None else str(valor)
+    except Exception:
+        return ""
+
+
 def _sanear_bloques(bloques):
     """Normaliza la lista de bloques libres; nunca lanza.
 
@@ -478,6 +526,40 @@ def _sanear_bloques(bloques):
                         "id": ident,
                         "tipo": tipo,
                         "estilo": estilo,
+                        "posicion": posicion,
+                    })
+                elif tipo == "listado":
+                    modo = _texto_bloque(bruto.get("modo")).strip()
+                    if modo not in latex_gen.MODOS_LISTADO:
+                        modo = "columnas"
+                    try:
+                        columnas = int(bruto.get("columnas") or 1)
+                    except Exception:
+                        columnas = 1
+                    columnas = min(max(columnas, 1), 3)
+                    entradas = []
+                    crudas = bruto.get("entradas")
+                    if isinstance(crudas, (list, tuple)):
+                        for ent in crudas:
+                            if not isinstance(ent, dict):
+                                continue
+                            if modo == "periodo":
+                                entradas.append({
+                                    "periodo": _texto_bloque(ent.get("periodo")),
+                                    "descripcion": _texto_bloque(ent.get("descripcion")),
+                                })
+                            else:
+                                entradas.append({
+                                    "titulo": _texto_bloque(ent.get("titulo")),
+                                    "detalle": _texto_bloque(ent.get("detalle")),
+                                })
+                    limpios.append({
+                        "id": ident,
+                        "tipo": tipo,
+                        "modo": modo,
+                        "titulo": _texto_bloque(bruto.get("titulo")),
+                        "columnas": columnas,
+                        "entradas": entradas,
                         "posicion": posicion,
                     })
                 else:
@@ -695,6 +777,11 @@ def main():
         import multiprocessing
 
         multiprocessing.freeze_support()
+    # El visor PDF integrado de WebView2 guarda con una descarga: pywebview la
+    # cancela por defecto (ALLOW_DOWNLOADS=False), así que el botón de disquete
+    # de la previsualización no haría nada. Al activarlo, WebView2 abre su
+    # diálogo nativo de guardado.
+    webview.settings["ALLOW_DOWNLOADS"] = True
     servidor, puerto = _iniciar_servidor()
     api = Api(None)
     win = webview.create_window(

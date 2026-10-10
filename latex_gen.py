@@ -44,13 +44,25 @@ ANCLAS_BLOQUE = (
     "inicio", "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
     "trabajo", "habilidades", "idiomas", "referencias", "final",
 )
-TIPOS_BLOQUE = ("separador", "seccion")
+TIPOS_BLOQUE = ("separador", "seccion", "listado")
 ESTILOS_SEPARADOR = ("linea", "banda", "espacio")
+# Plantillas genericas del bloque "listado": pares titulo+detalle repartidos
+# en 1-3 columnas, o linea de periodo + descripcion (cronologia).
+MODOS_LISTADO = ("columnas", "periodo")
 _MACROS_SEPARADOR = {
     "linea": "\\cvbloquelinea",
     "banda": "\\cvbloquebanda",
     "espacio": "\\cvbloqueespacio",
 }
+
+# Paleta de color editable desde prefs: clave de prefs -> \definecolor de la
+# plantilla. "texto" no tiene color propio en las plantillas y se inyecta.
+_MAPA_COLORES = {"primario": "accent", "secundario": "acento2", "gris": "gris"}
+_COLORES_PLANTILLA = ("accent", "acento2", "acento3", "gris")
+_RE_DEFINECOLOR = re.compile(
+    r"\\definecolor\s*\{\s*([A-Za-z0-9_]+)\s*\}\s*\{\s*RGB\s*\}\s*"
+    r"\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}"
+)
 
 LANG = {
     "zh": {
@@ -729,12 +741,85 @@ def _bloque_separador(bloque):
     return _MACROS_SEPARADOR[estilo] + "\n"
 
 
+def _listado_columna(ent):
+    encabezado = esc(ent.get("titulo", "")).strip()
+    detalle = esc(ent.get("detalle", "")).strip()
+    if not encabezado and not detalle:
+        return ""
+    if encabezado and detalle:
+        return f"\\noindent\\textbf{{{encabezado}}} --- {detalle}\n"
+    if encabezado:
+        return f"\\noindent\\textbf{{{encabezado}}}\n"
+    return f"\\noindent {detalle}\n"
+
+
+def _listado_periodo(ent):
+    periodo = esc(ent.get("periodo", "")).strip()
+    descripcion = _parrafos(ent.get("descripcion", ""))
+    if not periodo and not descripcion.strip():
+        return ""
+    if periodo and descripcion.strip():
+        return (
+            "\\noindent\n"
+            "\\begin{minipage}[t]{0.22\\linewidth}\n"
+            "\\raggedright\n"
+            f"{{\\itshape {periodo}}}\n"
+            "\\end{minipage}%\n"
+            "\\hfill\n"
+            "\\begin{minipage}[t]{0.74\\linewidth}\n"
+            "\\raggedright\n"
+            f"{descripcion}"
+            "\\end{minipage}\n"
+        )
+    if periodo:
+        return f"\\noindent{{\\itshape {periodo}}}\n"
+    return descripcion
+
+
+def _bloque_listado(bloque):
+    modo = str(bloque.get("modo") or "").strip()
+    if modo not in MODOS_LISTADO:
+        modo = "columnas"
+    titulo = str(bloque.get("titulo") or "").strip()
+    try:
+        col = int(bloque.get("columnas") or 1)
+    except (TypeError, ValueError):
+        col = 1
+    col = min(max(col, 1), 3)
+    render = _listado_periodo if modo == "periodo" else _listado_columna
+    entradas = bloque.get("entradas")
+    filas = []
+    for ent in entradas if isinstance(entradas, (list, tuple)) else []:
+        if not isinstance(ent, dict):
+            continue
+        cuerpo = render(ent)
+        if not cuerpo.strip():
+            continue
+        filas.append(_caja(ANCHOS[col], cuerpo) if col > 1 else cuerpo)
+    if not filas:
+        return ""
+    if col > 1:
+        lineas = []
+        for inicio in range(0, len(filas), col):
+            lineas.append(
+                "\\noindent " + " \\hfill\n".join(filas[inicio:inicio + col])
+                + "\n\\par\n\\vspace{0.7em}\n"
+            )
+        contenido = "\n".join(lineas)
+    else:
+        contenido = "\n\n".join(filas) + "\n"
+    cabecera = f"\\cvsection{{{esc(titulo)}}}\n" if titulo else ""
+    return cabecera + contenido
+
+
 def _render_bloques(bloques):
     partes = []
     for bloque in bloques:
         tipo = str(bloque.get("tipo") or "").strip()
         if tipo == "seccion":
             partes.append(_bloque_seccion(bloque))
+        elif tipo == "listado":
+            partes.append(_bloque_listado(bloque))
         elif tipo == "separador":
             partes.append(_bloque_separador(bloque))
     return "".join(partes)
@@ -799,6 +884,117 @@ def seccion_oculta(data, clave):
         except Exception:
             continue
     return False
+
+
+def normalizar_hex(valor):
+    """Normaliza un color "#RGB" o "#RRGGBB" a la tupla (r, g, b).
+
+    Acepta mayusculas y minusculas, recorta los espacios de fuera y expande
+    la forma corta duplicando cada digito (#ABC -> #AABBCC). Cualquier otro
+    valor (incluido lo que no sea str) cae a None; nunca lanza.
+    """
+    if not isinstance(valor, str):
+        return None
+    texto = valor.strip()
+    if not texto.startswith("#"):
+        return None
+    hexa = texto[1:]
+    if len(hexa) == 3 and re.fullmatch(r"[0-9A-Fa-f]{3}", hexa):
+        hexa = "".join(c * 2 for c in hexa)
+    if re.fullmatch(r"[0-9A-Fa-f]{6}", hexa) is None:
+        return None
+    return int(hexa[0:2], 16), int(hexa[2:4], 16), int(hexa[4:6], 16)
+
+
+def colores_de_plantilla(tex):
+    """Colores acento presentes en una plantilla LaTeX.
+
+    Devuelve solo las claves encontradas entre accent, acento2, acento3 y
+    gris, en formato "#RRGGBB" en mayusculas. Nunca lanza.
+    """
+    colores = {}
+    try:
+        for coincidencia in _RE_DEFINECOLOR.finditer(tex):
+            nombre = coincidencia.group(1)
+            if nombre not in _COLORES_PLANTILLA:
+                continue
+            r = min(max(int(coincidencia.group(2)), 0), 255)
+            g = min(max(int(coincidencia.group(3)), 0), 255)
+            b = min(max(int(coincidencia.group(4)), 0), 255)
+            colores[nombre] = "#%02X%02X%02X" % (r, g, b)
+    except Exception:
+        return colores
+    return colores
+
+
+def _valor_color(colores, clave):
+    """Valor de colores[clave] tolerando dicts hostiles; nunca lanza."""
+    try:
+        return colores.get(clave)
+    except Exception:
+        return None
+
+
+def _re_color(nombre):
+    """Regex del triplete de un \\definecolor{nombre}{RGB}{r,g,b}."""
+    return re.compile(
+        r"(\\definecolor\s*\{\s*" + re.escape(nombre) + r"\s*\}\s*\{\s*RGB\s*\}\s*\{)"
+        r"[^}]*(\})"
+    )
+
+
+def _aplicar_colores(tex, p):
+    """Aplica la paleta de prefs (clave "colores") a la plantilla LaTeX.
+
+    primario -> accent, secundario -> acento2 y gris -> gris: si el color ya
+    esta definido en la plantilla se reemplaza solo su triplete RGB (nada mas
+    de la linea); si no existe, se anade su definicion. texto -> se inyecta
+    como \\definecolor{cvtexto} antes de \\begin{document} y se activa con
+    \\color{cvtexto} justo despues. Tolerante a tipos hostiles: nunca lanza y,
+    si no se aplica ningun color valido, devuelve el tex original sin
+    reconstruirlo.
+    """
+    try:
+        colores = p.get("colores") if isinstance(p, dict) else None
+    except Exception:
+        colores = None
+    if not isinstance(colores, dict):
+        return tex
+    try:
+        resultado = tex
+        aplicado = False
+        inyecciones = []
+        for clave, nombre in _MAPA_COLORES.items():
+            rgb = normalizar_hex(_valor_color(colores, clave))
+            if rgb is None:
+                continue
+            triplete = "%d,%d,%d" % rgb
+            resultado, n = _re_color(nombre).subn(
+                lambda m, t=triplete: m.group(1) + t + m.group(2), resultado
+            )
+            if n:
+                aplicado = True
+            else:
+                inyecciones.append("\\definecolor{%s}{RGB}{%s}" % (nombre, triplete))
+        rgb_texto = normalizar_hex(_valor_color(colores, "texto"))
+        if rgb_texto is not None:
+            inyecciones.append("\\definecolor{cvtexto}{RGB}{%d,%d,%d}" % rgb_texto)
+        if inyecciones and isinstance(resultado, str):
+            marca = "\\begin{document}"
+            pos = resultado.find(marca)
+            if pos != -1:
+                bloque = "\n".join(inyecciones) + "\n"
+                resultado = resultado[:pos] + bloque + resultado[pos:]
+                aplicado = True
+                if rgb_texto is not None:
+                    # El color de texto se activa justo despues del begin.
+                    fin = pos + len(bloque) + len(marca)
+                    resultado = resultado[:fin] + "\n\\color{cvtexto}" + resultado[fin:]
+        if not aplicado:
+            return tex
+        return resultado
+    except Exception:
+        return tex
 
 
 def build_tex(data, p):
@@ -867,4 +1063,5 @@ def build_tex(data, p):
     tex = tex.replace("{{fuente}}", str(p["fuente"]))
     tex = tex.replace("{{cabecera}}", _cabecera(data, L, pid))
     tex = tex.replace("{{cuerpo}}", cuerpo)
+    tex = _aplicar_colores(tex, p)
     return tex_datos.incrustar(tex, data)

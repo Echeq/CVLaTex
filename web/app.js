@@ -83,6 +83,8 @@ const PLANTILLAS_CV = [
 
 const TEMAS = ["claro", "oscuro", "sistema"];
 
+const CAMPOS_COLOR = ["primario", "secundario", "texto", "gris"];
+
 const SECCIONES_DINAMICAS = {
   trabajo: {
     titulo: "Trabajo",
@@ -379,6 +381,9 @@ function ejecutarAccion(accion, e) {
   else if (accion.startsWith("plantilla:")) aplicarPlantilla(accion.split(":")[1]);
   else if (accion.startsWith("zoom:")) aplicarZoom(Number(accion.split(":")[1]));
   else if (accion.startsWith("toggle:")) alternarToggle(accion.split(":")[1]);
+  else if (accion.startsWith("bloque:columnas:")) {
+    abrirModalBloqueListado("columnas", null, Number(accion.split(":")[2]));
+  }
   else {
     switch (accion) {
       case "deshacer": deshacer(); break;
@@ -397,6 +402,7 @@ function ejecutarAccion(accion, e) {
       case "bloque:banda": crearBloqueSeparador("banda"); break;
       case "bloque:espacio": crearBloqueSeparador("espacio"); break;
       case "bloque:seccion": abrirModalBloqueSeccion(null); break;
+      case "bloque:periodo": abrirModalBloqueListado("periodo", null); break;
       case "bloques:gestion": abrirModalBloques(); break;
       case "ayuda": $("#modal-ayuda").hidden = false; break;
       case "creditos": $("#modal-creditos").hidden = false; break;
@@ -409,11 +415,15 @@ function ejecutarAccion(accion, e) {
   }
 }
 
-function hayContenido() {
-  if (!datosVacios || !state.datos) return false;
+function datosConContenido(d) {
+  if (!datosVacios || !d) return false;
   return Object.keys(datosVacios).some(
-    (k) => k !== "plantilla" && JSON.stringify(state.datos[k]) !== JSON.stringify(datosVacios[k])
+    (k) => k !== "plantilla" && JSON.stringify(d[k]) !== JSON.stringify(datosVacios[k])
   );
+}
+
+function hayContenido() {
+  return datosConContenido(state.datos);
 }
 
 async function accionNuevo() {
@@ -722,12 +732,9 @@ function registrarHistorial(estructural) {
 function actualizarBotonesHistorial() {
   const marcar = (accion, habilitado) => {
     const enlace = $("#menus [data-accion='" + accion + "']");
-    if (enlace) {
-      enlace.classList.toggle("deshabilitado", !habilitado);
-      enlace.setAttribute("aria-disabled", habilitado ? "false" : "true");
-    }
-    const span = $("#menus [data-marca='" + accion + "']");
-    if (span) span.classList.toggle("deshabilitado", !habilitado);
+    if (!enlace) return;
+    enlace.classList.toggle("deshabilitado", !habilitado);
+    enlace.setAttribute("aria-disabled", habilitado ? "false" : "true");
   };
   marcar("deshacer", !!(state.pilaDeshacer && state.pilaDeshacer.length));
   marcar("rehacer", !!(state.pilaRehacer && state.pilaRehacer.length));
@@ -1700,6 +1707,11 @@ function etiquetaBloque(b) {
     };
     return "Separador: " + (estilos[b.estilo] || estilos.linea);
   }
+  if (b.tipo === "listado") {
+    const base = nombreLista(b.modo, b.columnas);
+    const titulo = String(b.titulo || "").trim();
+    return titulo ? base + ": " + recortarTexto(titulo, 40) : base;
+  }
   return "Bloque";
 }
 
@@ -1813,14 +1825,15 @@ function filaBloque(b) {
 
   acciones.append(arriba, abajo);
 
-  if (b && b.tipo === "seccion") {
+  if (b && (b.tipo === "seccion" || b.tipo === "listado")) {
     const editar = document.createElement("button");
     editar.className = "pequeño";
     editar.textContent = "Editar";
-    editar.title = "Editar el título y el contenido";
+    editar.title = b.tipo === "listado" ? "Editar el título, las columnas y las entradas" : "Editar el título y el contenido";
     editar.addEventListener("click", (e) => {
       e.stopPropagation();
-      abrirModalBloqueSeccion(b);
+      if (b.tipo === "listado") abrirModalBloqueListado(b.modo, b);
+      else abrirModalBloqueSeccion(b);
     });
     acciones.appendChild(editar);
   }
@@ -1872,6 +1885,159 @@ function aceptarBloqueSeccion() {
   cerrarModal($("#modal-bloque-seccion"));
 }
 
+/* Plantillas genericas de lista (tipo "listado"): pares titulo+detalle en
+   1-3 columnas o periodo+descripcion. El backend las sanea y las pinta igual
+   en LaTeX y en Word. */
+
+const MODOS_LISTA = {
+  columnas: {
+    nombre: "Lista en columnas",
+    ayuda: "Cada entrada es un título corto con un detalle opcional; se reparten en columnas en el CV.",
+  },
+  periodo: {
+    nombre: "Periodo + descripción",
+    ayuda: "Cada entrada tiene un periodo (fechas) y una descripción, como una cronología.",
+  },
+};
+
+let _listaModo = "columnas";
+let _listaEditando = null;
+
+function nombreLista(modo, columnas) {
+  if (modo === "periodo") return "Periodo + descripción";
+  const n = Math.min(Math.max(Number(columnas) || 1, 1), 3);
+  return n === 1 ? "Lista en 1 columna" : "Lista en " + n + " columnas";
+}
+
+function campoLista(campo, label, area) {
+  const div = document.createElement("div");
+  div.className = "campo" + (area ? " ancho" : "");
+  const lb = document.createElement("label");
+  lb.textContent = label;
+  const inp = document.createElement(area ? "textarea" : "input");
+  if (!area) inp.type = "text";
+  if (area) inp.rows = 3;
+  inp.dataset.campo = campo;
+  div.append(lb, inp);
+  return div;
+}
+
+function renumerarLista() {
+  $$("#bl-entradas .numero-lista").forEach((el, i) => {
+    el.textContent = "Entrada " + (i + 1);
+  });
+}
+
+function filaLista(datos) {
+  const d = datos || {};
+  const div = document.createElement("div");
+  div.className = "entrada";
+  const cab = document.createElement("div");
+  cab.className = "cab-entrada";
+  const num = document.createElement("span");
+  num.className = "cab-txt numero-lista";
+  const quitar = document.createElement("button");
+  quitar.className = "btn-quitar";
+  quitar.textContent = "✕";
+  quitar.title = "Eliminar entrada";
+  quitar.addEventListener("click", () => {
+    div.remove();
+    renumerarLista();
+  });
+  cab.append(num, quitar);
+  const campos = document.createElement("div");
+  campos.className = "campos";
+  const texto = (v) => (v == null ? "" : String(v));
+  if (_listaModo === "periodo") {
+    const p = campoLista("periodo", "Periodo (fechas)");
+    p.querySelector("input").value = texto(d.periodo);
+    const desc = campoLista("descripcion", "Descripción", true);
+    desc.querySelector("textarea").value = texto(d.descripcion);
+    campos.append(p, desc);
+  } else {
+    const t = campoLista("titulo", "Título");
+    t.querySelector("input").value = texto(d.titulo);
+    const det = campoLista("detalle", "Detalle (opcional)", true);
+    det.querySelector("textarea").value = texto(d.detalle);
+    campos.append(t, det);
+  }
+  div.append(cab, campos);
+  return div;
+}
+
+function anadirEntradaLista(datos) {
+  const cont = $("#bl-entradas");
+  if (!cont) return;
+  const fila = filaLista(datos);
+  cont.appendChild(fila);
+  renumerarLista();
+  cont.scrollTop = cont.scrollHeight;
+  const primer = fila.querySelector("input, textarea");
+  if (primer) primer.focus();
+}
+
+function leerEntradasLista() {
+  const entradas = [];
+  $$("#bl-entradas .entrada").forEach((fila) => {
+    const ent = {};
+    let vacia = true;
+    $$("[data-campo]", fila).forEach((inp) => {
+      const valor = String(inp.value || "").trim();
+      ent[inp.dataset.campo] = valor;
+      if (valor) vacia = false;
+    });
+    if (!vacia) entradas.push(ent);
+  });
+  return entradas;
+}
+
+function abrirModalBloqueListado(modo, bloque, columnas) {
+  _listaModo = modo === "periodo" ? "periodo" : "columnas";
+  _listaEditando = bloque || null;
+  const edit = _listaEditando;
+  $("#bl-titulo-modal").textContent = MODOS_LISTA[_listaModo].nombre;
+  $("#bl-titulo").value = edit ? String(edit.titulo || "") : "";
+  const col = edit ? Number(edit.columnas) || 1 : Number(columnas) || 1;
+  $("#bl-columnas").value = String(Math.min(Math.max(col, 1), 3));
+  $("#bl-columnas-campo").hidden = _listaModo !== "columnas";
+  $("#bl-ayuda").textContent = MODOS_LISTA[_listaModo].ayuda;
+  const cont = $("#bl-entradas");
+  cont.innerHTML = "";
+  const previas = edit && Array.isArray(edit.entradas) ? edit.entradas : [];
+  if (previas.length) previas.forEach((ent) => cont.appendChild(filaLista(ent)));
+  else cont.appendChild(filaLista({}));
+  renumerarLista();
+  $("#modal-bloque-lista").hidden = false;
+  $("#bl-titulo").focus();
+}
+
+function aceptarBloqueListado() {
+  const titulo = $("#bl-titulo").value.trim();
+  const modo = _listaModo;
+  const columnas = modo === "columnas" ? Number($("#bl-columnas").value) || 1 : 1;
+  const entradas = leerEntradasLista();
+  if (!titulo && !entradas.length) {
+    toast("Escribe un título o añade al menos una entrada");
+    return;
+  }
+  const editando = _listaEditando;
+  _listaEditando = null;
+  mutarBloques((bloques) => {
+    if (editando && bloques.indexOf(editando) >= 0) {
+      editando.modo = modo;
+      editando.titulo = titulo;
+      editando.columnas = columnas;
+      editando.entradas = entradas;
+    } else {
+      bloques.push({
+        id: nuevoIdBloque(), tipo: "listado", modo, titulo, columnas, entradas,
+        posicion: "final",
+      });
+    }
+  });
+  cerrarModal($("#modal-bloque-lista"));
+}
+
 function abrirModalBloques() {
   pintarListaBloques($("#bloques-lista"));
   $("#modal-bloques").hidden = false;
@@ -1883,6 +2049,12 @@ function configurarBloques() {
     cerrarModal($("#modal-bloque-seccion"));
   });
   $("#bs-aceptar").addEventListener("click", aceptarBloqueSeccion);
+  $("#bl-cancelar").addEventListener("click", () => {
+    _listaEditando = null;
+    cerrarModal($("#modal-bloque-lista"));
+  });
+  $("#bl-aceptar").addEventListener("click", aceptarBloqueListado);
+  $("#bl-anadir").addEventListener("click", () => anadirEntradaLista({}));
   $("#bloques-cerrar").addEventListener("click", () => cerrarModal($("#modal-bloques")));
 }
 
@@ -2018,6 +2190,92 @@ window.__onInstallDone = function (r) {
 
 /* ---------------- preferencias ---------------- */
 
+// Devuelve "" si el valor está vacío, "#RRGGBB" en mayúsculas si es un color
+// válido (#RGB o #RRGGBB) y null si no es un hexadecimal válido.
+function normalizarHex(valor) {
+  const v = String(valor == null ? "" : valor).trim();
+  if (!v) return "";
+  if (/^#[0-9a-fA-F]{3}$/.test(v)) {
+    const c = v.slice(1).toUpperCase();
+    return "#" + c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toUpperCase();
+  return null;
+}
+
+function leerColoresPrefs() {
+  const colores = {};
+  CAMPOS_COLOR.forEach((campo) => {
+    const v = normalizarHex($("#pf-color-" + campo).value);
+    colores[campo] = v === null ? "" : v;
+  });
+  return colores;
+}
+
+// Si el campo vacío tiene un marcador válido, la rueda lo muestra; si no,
+// conserva su último valor.
+function sincronizarRuedaColores(campo) {
+  const texto = $("#pf-color-" + campo);
+  const rueda = $("#pf-color-" + campo + "-rueda");
+  const v = normalizarHex(texto.value) || normalizarHex(texto.placeholder);
+  if (v) rueda.value = v;
+}
+
+async function cargarColoresPlantilla() {
+  let colores = {};
+  try {
+    const r = await api.colores_plantilla(state.datos.plantilla);
+    if (r && r.ok && r.colores) colores = r.colores;
+  } catch (e) {
+    console.error(e);
+  }
+  const porCampo = {
+    primario: colores.accent,
+    secundario: colores.acento2,
+    texto: "#000000",
+    gris: colores.gris,
+  };
+  CAMPOS_COLOR.forEach((campo) => {
+    const ph = normalizarHex(porCampo[campo]);
+    $("#pf-color-" + campo).placeholder = ph === null ? "" : ph;
+  });
+}
+
+function guardarColoresPrefs() {
+  state.prefs.colores = leerColoresPrefs();
+  api.set_prefs("colores", state.prefs.colores);
+  programarCompilacion();
+}
+
+function configurarColoresPrefs() {
+  CAMPOS_COLOR.forEach((campo) => {
+    const texto = $("#pf-color-" + campo);
+    const rueda = $("#pf-color-" + campo + "-rueda");
+    const reset = $("#pf-color-" + campo + "-reset");
+    texto.addEventListener("change", () => {
+      const v = normalizarHex(texto.value);
+      if (v === null) {
+        const previo = normalizarHex((state.prefs.colores || {})[campo]);
+        texto.value = previo === null ? "" : previo;
+        return;
+      }
+      texto.value = v;
+      sincronizarRuedaColores(campo);
+      guardarColoresPrefs();
+    });
+    rueda.addEventListener("input", () => {
+      texto.value = normalizarHex(rueda.value) || "";
+      guardarColoresPrefs();
+    });
+    reset.addEventListener("click", () => {
+      texto.value = "";
+      const ph = normalizarHex(texto.placeholder);
+      if (ph) rueda.value = ph;
+      guardarColoresPrefs();
+    });
+  });
+}
+
 async function abrirPrefs() {
   $("#pf-msj").textContent = "";
   $("#pf-papel").value = state.prefs.papel;
@@ -2028,8 +2286,15 @@ async function abrirPrefs() {
   $("#pf-m-inf").value = state.prefs.margenes.bottom;
   $("#pf-m-izq").value = state.prefs.margenes.left;
   $("#pf-m-der").value = state.prefs.margenes.right;
+  const colores = state.prefs.colores || {};
+  CAMPOS_COLOR.forEach((campo) => {
+    const v = normalizarHex(colores[campo]);
+    $("#pf-color-" + campo).value = v === null ? "" : v;
+  });
   $("#modal-prefs").hidden = false;
   comprobarMotorPrefs();
+  await cargarColoresPlantilla();
+  CAMPOS_COLOR.forEach(sincronizarRuedaColores);
 }
 
 async function comprobarMotorPrefs() {
@@ -2092,6 +2357,7 @@ function configurarPrefs() {
     $("#modal-prefs").hidden = true;
     $("#pf-msj").textContent = "";
   });
+  configurarColoresPrefs();
 }
 
 /* ---------------- márgenes personalizados ---------------- */
@@ -2207,11 +2473,83 @@ function configurarAtajos() {
   });
 }
 
+/* ---------------- separador central ---------------- */
+
+// Ancho mínimo del formulario y de la previsualización al arrastrar el
+// separador. La posición elegida se guarda en prefs ("split", en %); es solo
+// interfaz: nunca afecta al .tex ni al PDF. Doble clic restablece el 50 %.
+const SEPARADOR_MIN_FORM = 300;
+const SEPARADOR_MIN_PREVIEW = 320;
+
+function aplicarSeparacion(pct) {
+  const cont = $("#contenido");
+  if (!cont) return;
+  const valor = Number(pct);
+  if (!(valor > 0) || document.body.classList.contains("apilado")) {
+    cont.style.removeProperty("--ancho-form");
+    return;
+  }
+  cont.style.setProperty("--ancho-form", valor + "%");
+}
+
+function configurarSeparador() {
+  const sep = $("#separador");
+  const cont = $("#contenido");
+  const form = $("#panel-formulario");
+  if (!sep || !cont || !form) return;
+  let arrastrando = false;
+  let x0 = 0;
+  let ancho0 = 0;
+
+  const limitar = (px) => {
+    const total = cont.getBoundingClientRect().width || 1;
+    const min = Math.min(SEPARADOR_MIN_FORM, total * 0.35);
+    const max = Math.max(min, total - SEPARADOR_MIN_PREVIEW);
+    return Math.min(Math.max(px, min), max);
+  };
+
+  sep.addEventListener("pointerdown", (e) => {
+    if (document.body.classList.contains("apilado")) return;
+    arrastrando = true;
+    x0 = e.clientX;
+    ancho0 = form.getBoundingClientRect().width;
+    document.body.classList.add("redimensionando");
+    e.preventDefault();
+  });
+
+  document.addEventListener("pointermove", (e) => {
+    if (!arrastrando) return;
+    const ancho = limitar(ancho0 + (e.clientX - x0));
+    cont.style.setProperty("--ancho-form", ancho + "px");
+  });
+
+  const soltar = () => {
+    if (!arrastrando) return;
+    arrastrando = false;
+    document.body.classList.remove("redimensionando");
+    const total = cont.getBoundingClientRect().width;
+    if (total > 0) {
+      const pct = Math.round((form.getBoundingClientRect().width / total) * 1000) / 10;
+      state.prefs.split = pct;
+      api.set_prefs("split", pct);
+    }
+  };
+  document.addEventListener("pointerup", soltar);
+  document.addEventListener("pointercancel", soltar);
+
+  sep.addEventListener("dblclick", () => {
+    if (state.prefs) state.prefs.split = 50;
+    api.set_prefs("split", 50);
+    aplicarSeparacion(50);
+  });
+}
+
 /* ---------------- responsive ---------------- */
 
 function aplicarResponsive() {
   const bp = Number(state.prefs && state.prefs.breakpoint) || 960;
   document.body.classList.toggle("apilado", window.innerWidth < bp);
+  aplicarSeparacion(state.prefs && state.prefs.split);
 }
 
 /* ---------------- inicio ---------------- */
@@ -2252,10 +2590,12 @@ async function iniciar() {
     configurarModales();
     configurarRecorte();
     configurarBloques();
+    configurarSeparador();
     configurarAtajos();
     setInterval(autosaveYa, 30000);
 
-    if (autosavePendiente) ofrecerRecuperacion(autosavePendiente);
+    if (autosavePendiente && datosConContenido(autosavePendiente)) ofrecerRecuperacion(autosavePendiente);
+    else if (autosavePendiente) borrarAutosave();
     if (info.needs_setup) abrirWizard();
     else compilar();
   } catch (e) {

@@ -216,6 +216,7 @@ body {
   font-size: 13px; white-space: nowrap;
 }
 .menu-drop a:hover { background: var(--hover); }
+.menu-drop a.deshabilitado { opacity: 0.45; pointer-events: none; }
 .menu-drop hr { border: none; border-top: 1px solid var(--borde); margin: 5px 4px; }
 .marca { display: inline-block; width: 14px; text-align: center; }
 
@@ -228,17 +229,30 @@ body {
 /* ---------- Paneles ---------- */
 #contenido {
   flex: 1 1 auto; min-height: 0;
-  display: grid; grid-template-columns: 1fr 1fr;
-  gap: 1px; background: var(--borde);
+  display: flex; gap: 1px; background: var(--borde);
 }
-body.apilado #contenido { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+body.apilado #contenido { flex-direction: column; }
 body.apilado #panel-preview { order: 1; }
 body.apilado #panel-formulario { order: 2; }
+body.apilado #panel-formulario, body.apilado #panel-preview { flex: 1 1 50%; }
+body.apilado #separador { display: none; }
+
+#separador { flex: 0 0 5px; cursor: col-resize; background: var(--borde); }
+#separador:hover { background: var(--acento); }
+body.redimensionando { cursor: col-resize; user-select: none; }
+body.redimensionando #separador { background: var(--acento); }
+/* Velo transparente durante el arrastre: evita que el iframe del PDF se quede
+   con el puntero y el redimensionado se interrumpa. */
+body.redimensionando::after {
+  content: ""; position: fixed; inset: 0; z-index: 80; cursor: col-resize;
+}
 
 #panel-formulario, #panel-preview {
   background: var(--fondo); min-height: 0; min-width: 0;
   display: flex; flex-direction: column;
 }
+#panel-formulario { flex: 0 0 var(--ancho-form, 50%); }
+#panel-preview { flex: 1 1 auto; }
 
 #panel-formulario {
   background: linear-gradient(180deg, var(--form-ini) 0%, var(--form-fin) 100%);
@@ -448,6 +462,26 @@ button.pequeño:hover { background: var(--hover); }
 #modal-margenes .margenes, #modal-prefs .margenes { margin-top: 8px; }
 .msj { color: var(--ok); font-size: 13px; min-height: 18px; }
 
+/* ---------- Colores del documento (Preferencias) ---------- */
+.fila-color { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.fila-color label { flex: 0 0 76px; font-size: 12.5px; color: var(--texto-suave); }
+.fila-color input[type="text"] {
+  flex: 1 1 auto; min-width: 0; font-family: var(--fuente-ui); font-size: 13px;
+  padding: 6px 8px; border: 1px solid var(--borde); border-radius: 5px;
+  background: var(--input-plano); color: var(--texto);
+}
+.fila-color input[type="text"]:focus {
+  outline: 2px solid var(--acento); outline-offset: -1px;
+  border-color: var(--acento); background: var(--input-foco);
+}
+.fila-color input[type="color"] {
+  flex: 0 0 32px; width: 32px; height: 30px; padding: 2px;
+  border: 1px solid var(--borde); border-radius: 5px;
+  background: var(--input-plano); cursor: pointer;
+}
+.fila-color button { flex: 0 0 auto; }
+.nota-colores { font-size: 11.5px; color: var(--texto-suave); margin-top: 6px; line-height: 1.4; }
+
 /* ---------- Recorte de foto ---------- */
 #modal-recorte .modal-box { max-width: 560px; }
 #recorte-cont {
@@ -501,6 +535,12 @@ button.pequeño:hover { background: var(--hover); }
   max-height: 55vh; overflow-y: auto;
 }
 #bloques-lista .entrada { margin-bottom: 0; }
+#bl-entradas {
+  display: flex; flex-direction: column; gap: 10px;
+  max-height: 45vh; overflow-y: auto; margin-bottom: 10px;
+}
+#bl-entradas .entrada { margin-bottom: 0; padding-top: 2px; }
+#bl-ayuda { margin: 8px 0; }
 .bloque-posicion {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;

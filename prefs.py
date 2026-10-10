@@ -18,6 +18,9 @@ DEFAULTS = {
     "latex_path": None,
     "setup_dismissed": False,
     "tema": "sistema",
+    # Paleta del documento: valores "#RRGGBB" o "" (vacio = color propio de
+    # la plantilla). "texto" tiñe todo el cuerpo del PDF.
+    "colores": {"primario": "", "secundario": "", "texto": "", "gris": ""},
 }
 
 _CACHE = None
@@ -40,8 +43,10 @@ def load():
                 saved = json.load(f)
             if isinstance(saved, dict):
                 for k, v in saved.items():
-                    if k == "margenes" and isinstance(v, dict):
-                        data["margenes"].update(v)
+                    # margenes y colores se fusionan clave a clave: un dict
+                    # guardado parcialmente no debe perder las claves nuevas.
+                    if k in ("margenes", "colores") and isinstance(v, dict):
+                        data[k].update(v)
                     else:
                         data[k] = v
         except (json.JSONDecodeError, OSError):

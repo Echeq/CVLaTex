@@ -173,3 +173,103 @@ def test_abrir_cv_v1_conserva_rutas_y_relena_vacios(prefs_tmp, monkeypatch):
         assert isinstance(datos[clave], type(valor))
     # Un archivo antiguo sin la clave foto_recorte la recibe como None.
     assert datos["foto_recorte"] is None
+
+
+# ---------------- autosave ----------------
+
+def _escribir_autosave(contenido):
+    os.makedirs(prefs.APP_DIR, exist_ok=True)
+    with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "w", encoding="utf-8") as f:
+        json.dump(contenido, f, ensure_ascii=False)
+
+
+def test_autosave_v2_round_trip_devuelve_datos_planos(prefs_tmp):
+    tmp = prefs_tmp
+    origenes = tmp / "medios"
+    origenes.mkdir()
+    foto = origenes / "foto.png"
+    foto.write_bytes(b"foto-autosave")
+    logo = origenes / "logo.png"
+    logo.write_bytes(b"logo-autosave")
+
+    datos = latex_gen.datos_vacios()
+    datos["idioma_cv"] = "es"
+    datos["nombre"] = "Ana"
+    datos["foto"] = str(foto)
+    datos["trabajo"] = [{"puesto": "Dev", "empresa": "Acme", "logo": str(logo)}]
+
+    api = main.Api(None)
+    assert api.autosave(datos) == {"ok": True}
+
+    leidos = api.autosave_leer()
+    assert isinstance(leidos, dict)
+    # El sobre v2 no debe filtrarse al frontend.
+    assert not ({"version", "medios", "datos"} & set(leidos))
+    assert set(leidos) == set(latex_gen.datos_vacios())
+
+    # Los campos no-media vuelven identicos.
+    for clave in latex_gen.datos_vacios():
+        if clave in ("foto", "trabajo"):
+            continue
+        assert leidos[clave] == datos[clave], clave
+    assert leidos["trabajo"][0]["puesto"] == "Dev"
+    assert leidos["trabajo"][0]["empresa"] == "Acme"
+
+    # Los medios se rematerializan en CACHE_DIR.
+    for vieja, nueva, esperado in (
+        (str(foto), leidos["foto"], b"foto-autosave"),
+        (str(logo), leidos["trabajo"][0]["logo"], b"logo-autosave"),
+    ):
+        assert nueva != vieja
+        assert os.path.isfile(nueva)
+        assert os.path.basename(nueva).startswith("cv_")
+        assert os.path.realpath(os.path.dirname(nueva)) == os.path.realpath(prefs.CACHE_DIR)
+        with open(nueva, "rb") as f:
+            assert f.read() == esperado
+
+
+def test_autosave_legacy_plano_se_migra_y_relena(prefs_tmp):
+    _escribir_autosave(
+        {
+            "nombre": "CV antiguo",
+            "experiencia": [
+                {"tipo": "Trabajo", "puesto": "Dev"},
+                {"tipo": "Pasantía", "puesto": "Becaria"},
+            ],
+        }
+    )
+
+    leidos = main.Api(None).autosave_leer()
+    assert isinstance(leidos, dict)
+    # Migracion experiencia -> trabajo/pasantia.
+    assert leidos["trabajo"] == [{"tipo": "Trabajo", "puesto": "Dev"}]
+    assert leidos["pasantia"] == [{"tipo": "Pasantía", "puesto": "Becaria"}]
+    assert "experiencia" not in leidos
+    assert leidos["nombre"] == "CV antiguo"
+    # Relleno de claves ausentes con el esquema vacio.
+    for clave, valor in latex_gen.datos_vacios().items():
+        assert clave in leidos
+        assert isinstance(leidos[clave], type(valor)), clave
+    assert leidos["foto_recorte"] is None
+
+
+def test_autosave_leer_ausente_o_invalido_devuelve_none(prefs_tmp):
+    api = main.Api(None)
+    ruta = os.path.join(prefs.APP_DIR, "autosave.cvjson")
+
+    # Fichero ausente.
+    assert api.autosave_leer() is None
+
+    # JSON corrupto.
+    os.makedirs(prefs.APP_DIR, exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as f:
+        f.write("{no-es-json")
+    assert api.autosave_leer() is None
+
+    # JSON valido pero no dict.
+    _escribir_autosave([1, 2, 3])
+    assert api.autosave_leer() is None
+
+    # Sobre v2 sin datos utilizables.
+    _escribir_autosave({"version": 2, "datos": "texto", "medios": {}})
+    assert api.autosave_leer() is None

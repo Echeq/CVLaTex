@@ -11,10 +11,10 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Cm, Pt
+from docx.shared import Cm, Pt, RGBColor
 
 import latex_gen
-from latex_gen import ANCLAS_BLOQUE, ESTILOS_SEPARADOR, LANG
+from latex_gen import ANCLAS_BLOQUE, ESTILOS_SEPARADOR, LANG, MODOS_LISTADO
 
 # Tamano de pagina en centimetros: (ancho, alto).
 PAPELES = {
@@ -49,6 +49,55 @@ def _num(valor, defecto):
         return float(valor)
     except (TypeError, ValueError):
         return float(defecto)
+
+
+def _rgb_de_hex(valor):
+    """Normaliza "#RGB" o "#RRGGBB" a RGBColor.
+
+    Acepta mayusculas y minusculas, recorta los espacios de fuera y expande
+    la forma corta duplicando cada digito (#ABC -> #AABBCC). Cualquier otro
+    valor (incluido lo que no sea str) cae a None; nunca lanza.
+    """
+    if not isinstance(valor, str):
+        return None
+    texto = valor.strip()
+    if not texto.startswith("#"):
+        return None
+    hexa = texto[1:]
+    if len(hexa) == 3 and all(c in "0123456789abcdefABCDEF" for c in hexa):
+        hexa = "".join(c * 2 for c in hexa)
+    if len(hexa) != 6 or any(c not in "0123456789abcdefABCDEF" for c in hexa):
+        return None
+    try:
+        return RGBColor(int(hexa[0:2], 16), int(hexa[2:4], 16), int(hexa[4:6], 16))
+    except (TypeError, ValueError):
+        return None
+
+
+def _color_prefs(prefs_dict, clave):
+    """Color RGBColor de prefs["colores"][clave]; vacio o invalido -> None."""
+    try:
+        colores = prefs_dict.get("colores") if isinstance(prefs_dict, dict) else None
+        if not isinstance(colores, dict):
+            return None
+        return _rgb_de_hex(colores.get(clave))
+    except Exception:
+        return None
+
+
+def _hex_de_color(color):
+    """RGBColor o "#RRGGBB" -> "RRGGBB"; None o invalido -> None."""
+    if isinstance(color, RGBColor):
+        return str(color)
+    rgb = _rgb_de_hex(color)
+    return str(rgb) if rgb is not None else None
+
+
+def _color_rgb(color):
+    """Normaliza el parametro color a RGBColor; None o invalido -> None."""
+    if isinstance(color, RGBColor):
+        return color
+    return _rgb_de_hex(color)
 
 
 def _entradas_con_contenido(lista):
@@ -88,14 +137,20 @@ def _vineta(doc, texto):
         doc.add_paragraph("• " + texto)
 
 
-def _encabezado(doc, titulo):
-    """Titulo de seccion en negrita, dos puntos mayor que la fuente normal."""
+def _encabezado(doc, titulo, color=None):
+    """Titulo de seccion en negrita, dos puntos mayor que la fuente normal.
+
+    ``color`` (RGBColor) tiñe el titulo; None conserva el color por defecto.
+    """
     parrafo = doc.add_paragraph()
     run = parrafo.add_run(titulo)
     run.bold = True
     tamano = doc.styles["Normal"].font.size
     base = tamano.pt if tamano is not None else FUENTE_DEFECTO
     run.font.size = Pt(base + 2)
+    rgb = _color_rgb(color)
+    if rgb is not None:
+        run.font.color.rgb = rgb
     return parrafo
 
 
@@ -248,7 +303,7 @@ def _entrada_proyecto(doc, ent, L, con_asignatura):
         parrafo.add_run(enlace)
 
 
-def _seccion_habilidades(doc, d, L, titulo=None):
+def _seccion_habilidades(doc, d, L, titulo=None, color=None):
     entradas = [e for e in (d.get("habilidades") or []) if isinstance(e, dict)]
     filas = []
     for e in entradas:
@@ -258,7 +313,7 @@ def _seccion_habilidades(doc, d, L, titulo=None):
             filas.append((categoria, valores))
     if not filas:
         return
-    _encabezado(doc, titulo or L["habilidades"])
+    _encabezado(doc, titulo or L["habilidades"], color)
     for categoria, valores in filas:
         parrafo = doc.add_paragraph()
         if categoria and valores:
@@ -270,7 +325,7 @@ def _seccion_habilidades(doc, d, L, titulo=None):
             parrafo.add_run(", ".join(valores))
 
 
-def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b, titulo=None):
+def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b, titulo=None, color=None):
     filas = []
     for e in entradas or []:
         if not isinstance(e, dict):
@@ -281,7 +336,7 @@ def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b, titulo=None):
             filas.append((a, b))
     if not filas:
         return
-    _encabezado(doc, titulo or L[clave])
+    _encabezado(doc, titulo or L[clave], color)
     for a, b in filas:
         parrafo = doc.add_paragraph()
         if a and b:
@@ -334,130 +389,185 @@ def _sombreado(parrafo, color):
     p_pr.append(shd)
 
 
-def _separador_linea(doc):
+def _separador_linea(doc, color=None):
     """Separador fino: parrafo vacio con borde inferior en el color de acento."""
     parrafo = doc.add_paragraph()
-    _borde_inferior(parrafo, COLOR_ACENTO)
+    _borde_inferior(parrafo, _hex_de_color(color) or COLOR_ACENTO)
     return parrafo
 
 
-def _separador_banda(doc):
+def _separador_banda(doc, color=None):
     """Separador ancho: parrafo vacio sombreado con el color de acento."""
+    hexa = _hex_de_color(color) or COLOR_ACENTO
     parrafo = doc.add_paragraph()
-    _borde_inferior(parrafo, COLOR_ACENTO, grosor=24)
-    _sombreado(parrafo, COLOR_ACENTO)
+    _borde_inferior(parrafo, hexa, grosor=24)
+    _sombreado(parrafo, hexa)
     return parrafo
 
 
-def _bloque_separador(doc, bloque):
+def _bloque_separador(doc, bloque, color=None):
     """Un separador siempre se dibuja; un estilo desconocido cae a "linea"."""
     estilo = _texto(bloque.get("estilo"))
     if estilo not in ESTILOS_SEPARADOR:
         estilo = "linea"
     if estilo == "banda":
-        _separador_banda(doc)
+        _separador_banda(doc, color)
     elif estilo == "espacio":
         doc.add_paragraph()
     else:
-        _separador_linea(doc)
+        _separador_linea(doc, color)
 
 
-def _bloque_seccion(doc, bloque):
+def _bloque_seccion(doc, bloque, color=None):
     """Titulo en negrita y contenido por lineas; se omite solo si esta todo vacio."""
     titulo = _texto(bloque.get("titulo"))
     if not titulo and not _texto(bloque.get("contenido")):
         return
     if titulo:
-        _encabezado(doc, titulo)
+        _encabezado(doc, titulo, color)
     _parrafos(doc, bloque.get("contenido"))
 
 
-def _render_bloques(doc, bloques):
+def _bloque_listado(doc, bloque, color=None):
+    """Lista generica: pares titulo/detalle o periodo/descripcion.
+
+    Las columnas del bloque degradan a una sola columna (igual que el resto
+    de secciones con ``columnas`` en la exportacion Word).
+    """
+    modo = _texto(bloque.get("modo"))
+    if modo not in MODOS_LISTADO:
+        modo = "columnas"
+    titulo = _texto(bloque.get("titulo"))
+    entradas = bloque.get("entradas")
+    filas = []
+    for ent in entradas if isinstance(entradas, (list, tuple)) else []:
+        if not isinstance(ent, dict):
+            continue
+        if modo == "periodo":
+            periodo = _texto(ent.get("periodo"))
+            descripcion = _texto(ent.get("descripcion"))
+            if periodo or descripcion:
+                filas.append((periodo, descripcion))
+        else:
+            encabezado = _texto(ent.get("titulo"))
+            detalle = _texto(ent.get("detalle"))
+            if encabezado or detalle:
+                filas.append((encabezado, detalle))
+    if not filas:
+        return
+    if titulo:
+        _encabezado(doc, titulo, color)
+    for a, b in filas:
+        if modo == "periodo":
+            if a:
+                doc.add_paragraph().add_run(a).italic = True
+            if b:
+                doc.add_paragraph(b)
+        else:
+            parrafo = doc.add_paragraph()
+            if a and b:
+                parrafo.add_run(a).bold = True
+                parrafo.add_run(" --- " + b)
+            elif a:
+                parrafo.add_run(a).bold = True
+            else:
+                parrafo.add_run(b)
+
+
+def _render_bloques(doc, bloques, color=None):
     """Dibuja los bloques de un ancla en el mismo orden de la lista."""
     for bloque in bloques:
         if not isinstance(bloque, dict):
             continue
         tipo = _texto(bloque.get("tipo"))
         if tipo == "separador":
-            _bloque_separador(doc, bloque)
+            _bloque_separador(doc, bloque, color)
         elif tipo == "seccion":
-            _bloque_seccion(doc, bloque)
+            _bloque_seccion(doc, bloque, color)
+        elif tipo == "listado":
+            _bloque_listado(doc, bloque, color)
 
 
-def _cuerpo(doc, d, L):
+def _cuerpo(doc, d, L, color=None):
     """Secciones con el mismo orden, visibilidad y titulos que latex_gen.
 
     El orden normalizado y las secciones ocultas se delegan en latex_gen
     (normalizar_orden_secciones / seccion_oculta) y los titulos personalizados
     en titulo_personalizado, con L[clave] como respaldo. El texto va en plano,
-    sin escapado LaTeX.
+    sin escapado LaTeX. ``color`` (RGBColor) tiñe los encabezados; None los
+    deja con el color por defecto.
 
     Los bloques libres se intercalan tras su seccion ancla; las anclas
     "inicio" y "final" abren y cierran el cuerpo. Una seccion vacia u oculta
     sigue mostrando los bloques anclados a ella (ancla posicional).
     """
     grupos = _agrupar_bloques(d)
-    _render_bloques(doc, grupos["inicio"])
+    _render_bloques(doc, grupos["inicio"], color)
 
     for clave in latex_gen.normalizar_orden_secciones(d):
         if not latex_gen.seccion_oculta(d, clave):
             titulo = latex_gen.titulo_personalizado(d, clave) or L[clave]
             if clave == "perfil":
                 if _texto(d.get("perfil")):
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     _parrafos(doc, d.get("perfil"))
             elif clave == "educacion":
                 entradas = _entradas_con_contenido(d.get("educacion"))
                 if entradas:
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     for ent in entradas:
                         _entrada_educacion(doc, ent, L)
             elif clave == "proyectos":
                 entradas = _entradas_con_contenido(d.get("proyectos"))
                 if entradas:
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     for ent in entradas:
                         _entrada_proyecto(doc, ent, L, False)
             elif clave == "proyectosu":
                 entradas = _entradas_con_contenido(d.get("proyectosu"))
                 if entradas:
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     for ent in entradas:
                         _entrada_proyecto(doc, ent, L, True)
             elif clave == "pasantia":
                 entradas = _entradas_con_contenido(d.get("pasantia"))
                 if entradas:
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     for ent in entradas:
                         _entrada_trabajo(doc, ent, L)
             elif clave == "trabajo":
                 entradas = _entradas_con_contenido(d.get("trabajo"))
                 if entradas:
-                    _encabezado(doc, titulo)
+                    _encabezado(doc, titulo, color)
                     for ent in entradas:
                         _entrada_trabajo(doc, ent, L)
             elif clave == "habilidades":
-                _seccion_habilidades(doc, d, L, titulo)
+                _seccion_habilidades(doc, d, L, titulo, color)
             elif clave == "idiomas":
-                _seccion_parejas(doc, d.get("idiomas"), L, clave, "idioma", "nivel", titulo)
+                _seccion_parejas(doc, d.get("idiomas"), L, clave, "idioma", "nivel", titulo, color)
             elif clave == "referencias":
-                _seccion_parejas(doc, d.get("referencias"), L, clave, "nombre", "contacto", titulo)
+                _seccion_parejas(doc, d.get("referencias"), L, clave, "nombre", "contacto", titulo, color)
         # Bloque anclado a esta seccion: se emite aunque la seccion este oculta
         # o vacia, para conservar el ancla posicional elegida.
-        _render_bloques(doc, grupos[clave])
-    _render_bloques(doc, grupos["final"])
+        _render_bloques(doc, grupos[clave], color)
+    _render_bloques(doc, grupos["final"], color)
 
 
 def exportar(datos, prefs_dict, ruta):
     """Exporta `datos` a un fichero DOCX en `ruta`.
 
-    `prefs_dict` usa las mismas claves que prefs.load(): papel, margenes y
-    fuente. Las columnas de las secciones degradan a una sola columna.
+    `prefs_dict` usa las mismas claves que prefs.load(): papel, margenes,
+    fuente y colores (primario y texto). Las columnas de las secciones
+    degradan a una sola columna.
     """
     datos = datos or {}
     L = LANG.get(str(datos.get("idioma_cv", "zh")), LANG["zh"])
     doc = Document()
     _configurar_documento(doc, prefs_dict or {})
+    # texto -> color base del estilo Normal; primario -> separadores y titulos.
+    color_texto = _color_prefs(prefs_dict, "texto")
+    if color_texto is not None:
+        doc.styles["Normal"].font.color.rgb = color_texto
     _cabecera(doc, datos, L)
-    _cuerpo(doc, datos, L)
+    _cuerpo(doc, datos, L, _color_prefs(prefs_dict, "primario"))
     doc.save(ruta)

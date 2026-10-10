@@ -223,3 +223,88 @@ def test_app_js_normaliza_imagenes_antes_de_enviarlas_al_backend():
     assert 'normalizarImagen(r.url, 512, "image/png")' in JS
     assert 'toDataURL("image/jpeg", 0.9)' in JS
 
+
+# ---------------- Separador central y plantillas genericas de bloque ----------------
+
+def test_index_tiene_separador_central_redimensionable():
+    assert 'id="separador"' in HTML
+    assert "function configurarSeparador(" in JS
+    assert "function aplicarSeparacion(" in JS
+    assert "#separador { flex: 0 0 5px; cursor: col-resize;" in CSS
+
+
+def test_index_tiene_plantillas_genericas_en_anadir():
+    for accion in (
+        'data-accion="bloque:columnas:1"',
+        'data-accion="bloque:columnas:2"',
+        'data-accion="bloque:columnas:3"',
+        'data-accion="bloque:periodo"',
+    ):
+        assert accion in HTML, accion
+    assert 'id="modal-bloque-lista"' in HTML
+    for id_campo in (
+        "bl-titulo", "bl-columnas", "bl-entradas", "bl-anadir",
+        "bl-aceptar", "bl-cancelar",
+    ):
+        assert 'id="%s"' % id_campo in HTML, id_campo
+    for token in (
+        "function abrirModalBloqueListado(",
+        "function aceptarBloqueListado(",
+        "function leerEntradasLista(",
+    ):
+        assert token in JS, token
+
+
+def test_app_js_deshacer_rehacer_sin_marca_vacia():
+    # La marca vacia (<span class="marca">) sangraba Deshacer/Rehacer 22 px.
+    assert 'data-marca="deshacer"' not in HTML
+    assert 'data-marca="rehacer"' not in HTML
+    assert ".menu-drop a.deshabilitado" in CSS
+
+
+# ---------------- Preferencias: paleta de colores del documento ----------------
+
+def test_index_tiene_paleta_de_colores_en_preferencias():
+    assert 'id="pf-colores"' in HTML
+    assert "<legend>Colores del documento</legend>" in HTML
+    for campo in ("primario", "secundario", "texto", "gris"):
+        for sufijo in ("", "-rueda", "-reset"):
+            assert 'id="pf-color-%s%s"' % (campo, sufijo) in HTML, campo + sufijo
+    assert HTML.count('type="color"') == 4
+    # La nota aclara que la paleta afecta al documento exportado PDF/Word.
+    assert "PDF/Word" in HTML
+
+
+def test_app_js_tiene_paleta_de_colores_en_preferencias():
+    for token in (
+        "const CAMPOS_COLOR",
+        "function normalizarHex(",
+        "function leerColoresPrefs(",
+        "async function cargarColoresPlantilla(",
+        "function guardarColoresPrefs(",
+        "function configurarColoresPrefs(",
+        "function sincronizarRuedaColores(",
+        "colores_plantilla",
+        'set_prefs("colores"',
+    ):
+        assert token in JS, token
+    # Las funciones nuevas se enganchan a los flujos existentes.
+    assert "configurarColoresPrefs()" in _cuerpo_funcion("configurarPrefs")
+    assert "await cargarColoresPlantilla()" in _cuerpo_funcion("abrirPrefs")
+
+
+def test_css_tiene_la_fila_de_color_de_la_paleta():
+    assert "display: flex" in _bloque_css(".fila-color")
+    assert ".nota-colores" in CSS
+
+
+# ---------------- Recuperacion del autosave ----------------
+
+def test_app_js_solo_ofrece_recuperacion_con_contenido_real():
+    """El autosave se ofrece solo si sus datos difieren del formulario vacio."""
+    assert "function datosConContenido(" in JS
+    assert "if (autosavePendiente && datosConContenido(autosavePendiente)) ofrecerRecuperacion(autosavePendiente);" in JS
+    assert "else if (autosavePendiente) borrarAutosave();" in JS
+    # hayContenido delega en el helper generico.
+    assert "datosConContenido(state.datos)" in _cuerpo_funcion("hayContenido")
+

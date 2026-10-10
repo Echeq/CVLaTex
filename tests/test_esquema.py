@@ -252,6 +252,45 @@ def test_bloques_solo_conservan_claves_canonicas():
     assert set(salida[1]) == {"id", "tipo", "titulo", "contenido", "posicion"}
 
 
+def test_bloques_listado_se_sanean():
+    salida = _bloques_saneados([
+        {"id": "a", "tipo": "listado", "modo": "zzz", "columnas": 9,
+         "titulo": 5, "entradas": [{"titulo": "A", "detalle": "B", "basura": 1},
+                                   None, "x", 3]},
+        {"id": "b", "tipo": "listado", "modo": "periodo", "columnas": "2",
+         "entradas": [{"periodo": "2020", "descripcion": "D", "otra": 2}]},
+    ])
+    assert set(salida[0]) == {
+        "id", "tipo", "modo", "titulo", "columnas", "entradas", "posicion",
+    }
+    assert salida[0]["modo"] == "columnas"
+    assert salida[0]["columnas"] == 3
+    assert salida[0]["titulo"] == "5"
+    assert salida[0]["posicion"] == "final"
+    assert salida[0]["entradas"] == [{"titulo": "A", "detalle": "B"}]
+    assert salida[1]["modo"] == "periodo"
+    assert salida[1]["columnas"] == 2
+    assert salida[1]["entradas"] == [{"periodo": "2020", "descripcion": "D"}]
+
+
+def test_bloques_listado_formas_raras_nunca_lanzan():
+    class Explosivo:
+        def __str__(self):
+            raise RuntimeError("boom")
+
+    casos = [
+        {"bloques": [{"tipo": "listado"}]},
+        {"bloques": [{"tipo": "listado", "modo": Explosivo()}]},
+        {"bloques": [{"tipo": "listado", "columnas": Explosivo(),
+                      "entradas": Explosivo()}]},
+        {"bloques": [{"tipo": "listado", "titulo": Explosivo(),
+                      "entradas": [None, 3, "x", {"titulo": Explosivo()}]}]},
+    ]
+    for datos in casos:
+        salida = _migrar_datos(datos)
+        assert isinstance(salida["bloques"], list)
+
+
 def test_bloques_validos_se_conservan_intactos():
     validos = [
         {"id": "s1", "tipo": "separador", "estilo": "espacio", "posicion": "inicio"},

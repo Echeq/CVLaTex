@@ -34,8 +34,8 @@
     <div class="menu">
       <button class="menu-btn">Editar</button>
       <div class="menu-drop">
-        <a data-accion="deshacer"><span class="marca" data-marca="deshacer"></span>Deshacer</a>
-        <a data-accion="rehacer"><span class="marca" data-marca="rehacer"></span>Rehacer</a>
+        <a data-accion="deshacer">Deshacer</a>
+        <a data-accion="rehacer">Rehacer</a>
         <hr>
         <div class="sub">Tamaño de hoja
           <div class="menu-drop subdrop">
@@ -75,6 +75,15 @@
     <div class="menu">
       <button class="menu-btn">Añadir</button>
       <div class="menu-drop">
+        <div class="sub">En columnas
+          <div class="menu-drop subdrop">
+            <a data-accion="bloque:columnas:1">1 columna</a>
+            <a data-accion="bloque:columnas:2">2 columnas</a>
+            <a data-accion="bloque:columnas:3">3 columnas</a>
+          </div>
+        </div>
+        <a data-accion="bloque:periodo">Periodo + descripción…</a>
+        <hr>
         <a data-accion="bloque:linea">Línea separadora</a>
         <a data-accion="bloque:banda">Banda de color</a>
         <a data-accion="bloque:espacio">Espacio en blanco</a>
@@ -122,6 +131,9 @@
   <section id="panel-formulario">
     <div id="form-panel"></div>
   </section>
+
+  <div id="separador" role="separator" aria-orientation="vertical"
+       title="Arrastra para cambiar el ancho del formulario; doble clic para restablecer"></div>
 
   <section id="panel-preview">
     <div id="barra-preview">
@@ -199,6 +211,34 @@
       <label for="pf-breakpoint">Apilar paneles si el ancho es menor a (px)</label>
       <input type="number" id="pf-breakpoint" min="500" max="2000" step="10">
     </div>
+    <fieldset id="pf-colores">
+      <legend>Colores del documento</legend>
+      <div class="fila-color">
+        <label for="pf-color-primario">Primario</label>
+        <input type="text" id="pf-color-primario" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-primario-rueda" aria-label="Elegir color primario" title="Elegir color primario">
+        <button class="pequeño" id="pf-color-primario-reset" title="Usar el color de la plantilla">Auto</button>
+      </div>
+      <div class="fila-color">
+        <label for="pf-color-secundario">Secundario</label>
+        <input type="text" id="pf-color-secundario" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-secundario-rueda" aria-label="Elegir color secundario" title="Elegir color secundario">
+        <button class="pequeño" id="pf-color-secundario-reset" title="Usar el color de la plantilla">Auto</button>
+      </div>
+      <div class="fila-color">
+        <label for="pf-color-texto">Letras</label>
+        <input type="text" id="pf-color-texto" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-texto-rueda" aria-label="Elegir color de las letras" title="Elegir color de las letras">
+        <button class="pequeño" id="pf-color-texto-reset" title="Usar el color de la plantilla">Auto</button>
+      </div>
+      <div class="fila-color">
+        <label for="pf-color-gris">Gris</label>
+        <input type="text" id="pf-color-gris" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-gris-rueda" aria-label="Elegir color gris" title="Elegir color gris">
+        <button class="pequeño" id="pf-color-gris-reset" title="Usar el color de la plantilla">Auto</button>
+      </div>
+      <p class="nota-colores">Estos colores afectan al documento exportado (PDF/Word/.tex), no al tema de la interfaz. Un campo vacío usa el color propio de la plantilla.</p>
+    </fieldset>
     <fieldset>
       <legend>Motor LaTeX</legend>
       <p id="pf-motor-estado">Comprobando…</p>
@@ -247,6 +287,33 @@
     <div class="modal-pie">
       <button class="pequeño" id="bs-cancelar">Cancelar</button>
       <button class="primary pequeño" id="bs-aceptar">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-bloque-lista" hidden>
+  <div class="modal-box">
+    <h2 id="bl-titulo-modal">Lista en columnas</h2>
+    <div class="campos">
+      <div class="campo ancho">
+        <label for="bl-titulo">Título de la sección (opcional)</label>
+        <input type="text" id="bl-titulo">
+      </div>
+      <div class="campo" id="bl-columnas-campo">
+        <label for="bl-columnas">Columnas en el CV</label>
+        <select id="bl-columnas">
+          <option value="1">1 columna</option>
+          <option value="2">2 columnas</option>
+          <option value="3">3 columnas</option>
+        </select>
+      </div>
+    </div>
+    <p id="bl-ayuda" class="sin-entradas"></p>
+    <div id="bl-entradas"></div>
+    <button class="btn-anadir" id="bl-anadir">+ Añadir entrada</button>
+    <div class="modal-pie">
+      <button class="pequeño" id="bl-cancelar">Cancelar</button>
+      <button class="primary pequeño" id="bl-aceptar">Aceptar</button>
     </div>
   </div>
 </div>

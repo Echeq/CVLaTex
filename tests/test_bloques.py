@@ -191,6 +191,38 @@ def test_bloque_con_posicion_invalida_cae_al_final(plantilla, idioma, prefs_tmp)
     assert _indice(tex, "\\cvsection{Ancla desconocida}") > _ultima_seccion(tex, idioma)
 
 
+def test_build_tex_bloques_listado_columnas_y_periodo(prefs_tmp):
+    datos = latex_gen.datos_vacios()
+    datos["idioma_cv"] = "es"
+    datos["bloques"] = [
+        {"id": "lista-2", "tipo": "listado", "modo": "columnas",
+         "titulo": "Enlaces", "columnas": 2, "posicion": "inicio",
+         "entradas": [
+             {"titulo": "Web", "detalle": "example.com"},
+             {"titulo": "Github", "detalle": "github.com/ana"},
+         ]},
+        {"id": "crono", "tipo": "listado", "modo": "periodo",
+         "titulo": "Cronología", "columnas": 1, "posicion": "final",
+         "entradas": [{"periodo": "2020 -- 2024",
+                       "descripcion": "Etapa uno.\nLínea dos."}]},
+    ]
+    tex = latex_gen.build_tex(datos, prefs.load())
+    assert "{{" not in tex
+    assert tex_datos.extraer(tex) == datos
+    assert "\\cvsection{Enlaces}" in tex
+    assert "\\cvsection{Cronología}" in tex
+    assert "\\textbf{Web}" in tex and "example.com" in tex
+    assert "\\itshape 2020 -- 2024" in tex
+    assert "Etapa uno." in tex and "Línea dos." in tex
+    # Las dos entradas de la lista en 2 columnas comparten fila (2 minipages)
+    # y el bloque de cronología va despues del de enlaces.
+    assert _indice(tex, "\\cvsection{Enlaces}") < _indice(tex, "\\cvsection{Cronología}")
+    cuerpo = tex[tex.index("\\begin{document}"):]
+    fila = cuerpo[cuerpo.index("\\cvsection{Enlaces}"):cuerpo.index("\\cvsection{Cronología}")]
+    assert fila.count("\\begin{minipage}") == 2
+    assert "\\hfill" in fila
+
+
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", PLANTILLAS)
 def test_compila_pdf_bloques_es(plantilla, prefs_tmp):

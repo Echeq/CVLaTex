@@ -122,6 +122,24 @@ def test_exportar_docx_bloque_seccion_vacio_se_omite(tmp_path):
     assert con_vacios == sin_bloque
 
 
+def test_exportar_docx_bloques_listado(tmp_path):
+    d = _datos_docx()
+    d["bloques"] = [
+        {"id": "l1", "tipo": "listado", "modo": "columnas", "titulo": "Enlaces",
+         "columnas": 2, "posicion": "final",
+         "entradas": [{"titulo": "Web", "detalle": "example.com"}]},
+        {"id": "l2", "tipo": "listado", "modo": "periodo", "titulo": "Cronología",
+         "columnas": 1, "posicion": "final",
+         "entradas": [{"periodo": "2020", "descripcion": "Hito uno."}]},
+    ]
+    textos = _textos_docx(d, tmp_path, "listado.docx")
+    assert "Enlaces" in textos
+    assert any("Web" in t and "example.com" in t for t in textos)
+    assert "Cronología" in textos
+    assert "2020" in textos
+    assert any("Hito uno." in t for t in textos)
+
+
 def test_exportar_docx_bloques_mal_formados_no_lanzan(tmp_path):
     d = _datos_docx()
     d["bloques"] = [
