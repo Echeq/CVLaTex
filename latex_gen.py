@@ -53,6 +53,16 @@ SEPARATOR_STYLES = ("line", "band", "space")
 # 1-3 columns, or a period + description line (timeline).
 LIST_MODES = ("columns", "period")
 
+# zh font_engine: fontspec fallback chains, resolved at compile time with
+# \IfFontExistsTF. Main/sans candidates cover Windows (Microsoft YaHei),
+# macOS (PingFang SC) and common Linux CJK fonts; the mono chain covers
+# Windows, macOS and Linux. The last candidate is applied unconditionally.
+CJK_MAIN_FONTS = (
+    "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC",
+    "WenQuanYi Zen Hei", "Source Han Sans SC",
+)
+CJK_MONO_FONTS = ("Consolas", "Menlo", "DejaVu Sans Mono", "Noto Sans Mono")
+
 # Dynamic social entries of the header (`data["socials"]`): canonical network
 # keys. Any other value falls back to "other" during migration/sanitizing.
 SOCIAL_NETWORKS = (
@@ -1215,6 +1225,23 @@ def _apply_colors(tex, p):
         return tex
 
 
+def _font_chain(template, candidates):
+    """Nested ``\\IfFontExistsTF`` chain over `candidates`.
+
+    `template` selects the font (`%s`, repeated per engine command); the first
+    candidate that exists on the system wins and the last one is applied
+    unconditionally as the final fallback.
+    """
+
+    def render(font):
+        return template % ((font,) * template.count("%s"))
+
+    body = render(candidates[-1])
+    for font in reversed(candidates[:-1]):
+        body = "\\IfFontExistsTF{%s}{%s}{%s}" % (font, render(font), body)
+    return body
+
+
 def build_tex(data, p):
     template_id = str(data.get("template", "classic") or "classic").strip().lower()
     if template_id not in TEMPLATES:
@@ -1269,9 +1296,9 @@ def build_tex(data, p):
     if L is LANG["zh"]:
         font_engine = (
             "\\usepackage{fontspec}\n"
-            "\\setmainfont{Microsoft YaHei}\n"
-            "\\setsansfont{Microsoft YaHei}\n"
-            "\\setmonofont{Consolas}"
+            + _font_chain("\\setmainfont{%s}\\setsansfont{%s}", CJK_MAIN_FONTS)
+            + "\n"
+            + _font_chain("\\setmonofont{%s}", CJK_MONO_FONTS)
         )
     else:
         font_engine = (

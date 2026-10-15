@@ -161,6 +161,11 @@
       <span data-i18n="engine_warning">No LaTeX engine is configured. Preview and PDF export require one.</span>
       <button class="small primary" data-accion="setup-engine" data-i18n="setup_engine">Set up engine</button>
     </div>
+    <div id="preview-notice" hidden>
+      <span data-i18n="preview_linux_notice">The integrated preview is not available on Linux; use the button to open the PDF with your system viewer.</span>
+      <button class="small primary" id="open-preview-button" data-accion="open-preview"
+              data-i18n="preview_linux_open">Open PDF with the system viewer</button>
+    </div>
     <div id="errors" hidden></div>
     <iframe id="pdf" src="about:blank" data-i18n-title="preview_title" title="Preview"></iframe>
   </section>

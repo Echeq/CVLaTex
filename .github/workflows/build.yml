@@ -1,0 +1,81 @@
+# Build-only CI: compiles CVLaTeX on the three platforms and uploads the
+# bundles as artifacts. It never publishes a release.
+#
+# Linux runtime note: the frozen bundle still needs the system WebKitGTK and
+# GObject-introspection packages on the TARGET machine (Debian/Ubuntu:
+# python3-gi, gir1.2-webkit2-4.1 and libwebkit2gtk-4.1-dev, or the Qt5/Qt6
+# equivalent), because PyInstaller cannot bundle the native webview engine.
+# The Linux job installs them only so the build environment is complete.
+
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: CVLaTeX-windows
+            path: CVLaTeX-windows.exe
+          - os: ubuntu-latest
+            artifact: CVLaTeX-linux
+            path: CVLaTeX-linux
+          - os: macos-latest
+            artifact: CVLaTeX-macos
+            path: CVLaTeX-macos.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Linux webview packages (build environment)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onefile --windowed --name CVLaTeX --icon "assets/CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
+          Copy-Item dist/CVLaTeX.exe CVLaTeX-windows.exe
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x build.sh
+          ./build.sh
+          cp dist/CVLaTeX CVLaTeX-linux
+          chmod +x CVLaTeX-linux
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          chmod +x build.sh
+          ./build.sh
+          if [ -d dist/CVLaTeX.app ]; then
+            cd dist && zip -r ../CVLaTeX-macos.zip CVLaTeX.app
+          else
+            zip CVLaTeX-macos.zip dist/CVLaTeX
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error

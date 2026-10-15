@@ -431,6 +431,7 @@ function runAction(action, e) {
       case "reset-all": newCv(); break;
       case "settings": case "setup-engine": openPrefs(); break;
       case "recompile": clearTimeout(state.timer); compileNow(); break;
+      case "open-preview": openPreview(); break;
       case "add:block-line": createSeparatorBlock("line"); break;
       case "add:block-band": createSeparatorBlock("band"); break;
       case "add:block-space": createSeparatorBlock("space"); break;
@@ -700,6 +701,21 @@ function renderPreviewStatus() {
   else if (preview.state === "ok") el.textContent = t("preview_ready");
   else if (preview.state === "error") el.textContent = t("compile_errors").replace("{n}", preview.errors || 0);
   else el.textContent = t("waiting");
+}
+
+/* Linux webviews cannot render PDFs inline: show the notice with the button
+   that opens the last compiled PDF with the system viewer. Hidden elsewhere. */
+function setupPreviewFallback(platform) {
+  const notice = $("#preview-notice");
+  if (!notice) return;
+  notice.hidden = platform !== "linux";
+}
+
+async function openPreview() {
+  const r = await api.open_preview();
+  if (r && r.ok) return;
+  const message = r && r.errores && r.errores.length ? r.errores[0] : t("preview_linux_notice");
+  toast(message);
 }
 
 /* ---------------- preview zoom ---------------- */
@@ -2412,6 +2428,12 @@ function setupWizard() {
 }
 
 window.__onInstallProgress = function (p) {
+  if (p.warning) {
+    // Non-fatal backend warning (e.g. checksum unavailable): keep the bar
+    // where it is and show the localized message.
+    $("#wz-progress-text").textContent = p.warning;
+    return;
+  }
   if (p.total) {
     const percent = Math.min(100, Math.round((100 * p.hecho) / p.total));
     $("#wz-bar").style.width = percent + "%";
@@ -2432,7 +2454,7 @@ window.__onInstallDone = function (r) {
   $("#wz-bar").style.width = "100%";
   if (r.ok) {
     $("#wz-progress").hidden = true;
-    toast(r.msg);
+    toast(r.warning ? r.msg + " " + r.warning : r.msg);
     closeWizard(true);
   } else {
     $("#wz-progress").hidden = true;
@@ -2861,6 +2883,7 @@ async function startApp() {
     window.addEventListener("resize", applyResponsive);
     $("#engine-warning").hidden = info.latex_ok;
     renderPreviewStatus();
+    setupPreviewFallback(info.platform);
 
     setupWizard();
     setupPrefs();

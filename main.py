@@ -17,6 +17,8 @@ import sys
 import threading
 import time
 import uuid
+import webbrowser
+from pathlib import Path
 
 import webview
 
@@ -239,6 +241,7 @@ class Api:
             "prefs": prefs.load(),
             "latex_ok": latex_path is not None,
             "needs_setup": latex_path is None and not prefs.get("setup_dismissed"),
+            "platform": sys.platform,
         }
 
     def empty_data(self):
@@ -536,12 +539,23 @@ class Api:
         return {"ok": True}
 
     def _install_thread(self, cancel_event):
+        warnings = []
+
         def progress(done, total):
             self._push("__onInstallProgress", {"hecho": done, "total": total})
 
+        def warn(message):
+            # Non-fatal warnings (e.g. checksum unavailable): show them live
+            # and repeat them with the success message.
+            warnings.append(message)
+            self._push("__onInstallProgress", {"warning": message})
+
         try:
-            path = latex_engine.install_tinytex(progress, cancel_event)
-            self._push("__onInstallDone", {"ok": True, "msg": messages.t("install_done"), "path": path})
+            path = latex_engine.install_tinytex(progress, cancel_event, warn)
+            result = {"ok": True, "msg": messages.t("install_done"), "path": path}
+            if warnings:
+                result["warning"] = " ".join(dict.fromkeys(warnings))
+            self._push("__onInstallDone", result)
         except latex_engine.LatexError as e:
             self._push("__onInstallDone", {"ok": False, "msg": str(e)})
         except Exception as e:
@@ -560,6 +574,23 @@ class Api:
     def check_latex(self):
         path = latex_engine.find_pdflatex()
         return {"ok": path is not None, "path": path}
+
+    def open_preview(self):
+        """Open the last compiled PDF with the system default viewer.
+
+        Linux webviews cannot display a PDF inline, so the frontend offers
+        this fallback when `init()` reports platform "linux". Uses the PDF of
+        the last successful compile; without one it returns an error.
+        """
+        result = self._last_result if isinstance(self._last_result, dict) else {}
+        pdf = result.get("pdf")
+        if result.get("ok") and pdf and os.path.isfile(pdf):
+            try:
+                webbrowser.open(Path(pdf).as_uri())
+                return {"ok": True}
+            except Exception as e:
+                return {"ok": False, "errores": [str(e)]}
+        return {"ok": False, "errores": [messages.t("preview_not_available")]}
 
     # ------------------------------------------------------------ prefs
 

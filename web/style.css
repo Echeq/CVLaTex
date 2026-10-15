@@ -391,6 +391,11 @@ body.resizing::after {
   border-bottom: 1px solid var(--warning-border); display: flex; align-items: center; gap: 10px;
   flex: 0 0 auto;
 }
+#preview-notice {
+  padding: 10px 14px; font-size: 13px; background: var(--warning-background);
+  border-bottom: 1px solid var(--warning-border); display: flex; align-items: center; gap: 10px;
+  flex: 0 0 auto;
+}
 #errors {
   max-height: 35%; overflow-y: auto; background: var(--errors-background); color: var(--error);
   border-bottom: 1px solid var(--errors-border); font-size: 12.5px; padding: 10px 14px;

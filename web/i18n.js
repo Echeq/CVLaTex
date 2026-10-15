@@ -90,6 +90,8 @@ const I18N = {
     engine_warning: "No hay un motor LaTeX configurado. La previsualización y la exportación a PDF requieren uno.",
     setup_engine: "Configurar motor",
     preview_title: "Previsualización",
+    preview_linux_notice: "La previsualización integrada no está disponible en Linux; usa el botón para abrir el PDF con el visor del sistema.",
+    preview_linux_open: "Abrir PDF con el visor del sistema",
     // Setup wizard
     wizard_title: "Motor LaTeX",
     wizard_p1: "Para generar la previsualización y exportar a PDF, CVLaTeX necesita un motor LaTeX en tu equipo.",
@@ -434,6 +436,8 @@ const I18N = {
     engine_warning: "No LaTeX engine is configured. Preview and PDF export require one.",
     setup_engine: "Set up engine",
     preview_title: "Preview",
+    preview_linux_notice: "The integrated preview is not available on Linux; use the button to open the PDF with your system viewer.",
+    preview_linux_open: "Open PDF with the system viewer",
     // Setup wizard
     wizard_title: "LaTeX engine",
     wizard_p1: "To generate the preview and export to PDF, CVLaTeX needs a LaTeX engine on your computer.",
@@ -778,6 +782,8 @@ const I18N = {
     engine_warning: "未配置 LaTeX 引擎。预览和导出 PDF 需要 LaTeX 引擎。",
     setup_engine: "配置引擎",
     preview_title: "预览",
+    preview_linux_notice: "Linux 上不支持内置预览；请使用按钮通过系统查看器打开 PDF。",
+    preview_linux_open: "用系统查看器打开 PDF",
     // Setup wizard
     wizard_title: "LaTeX 引擎",
     wizard_p1: "要生成预览并导出 PDF，CVLaTeX 需要在你的电脑上安装 LaTeX 引擎。",
@@ -1122,6 +1128,8 @@ const I18N = {
     engine_warning: "LaTeX-движок не настроен. Для предпросмотра и экспорта в PDF он необходим.",
     setup_engine: "Настроить движок",
     preview_title: "Предпросмотр",
+    preview_linux_notice: "Встроенный предпросмотр недоступен в Linux; используйте кнопку, чтобы открыть PDF в системной программе просмотра.",
+    preview_linux_open: "Открыть PDF в системной программе просмотра",
     // Setup wizard
     wizard_title: "LaTeX-движок",
     wizard_p1: "Для создания предпросмотра и экспорта в PDF CVLaTeX нужен LaTeX-движок на вашем компьютере.",

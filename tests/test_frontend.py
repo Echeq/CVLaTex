@@ -39,8 +39,8 @@ FROZEN_API = {
     "choose_photo", "save_image", "export_pdf", "export_tex", "export_docx",
     "export_cv", "open_cv", "autosave", "autosave_read", "autosave_clear",
     "import_tex", "install_latex", "cancel_install", "choose_latex_path",
-    "check_latex", "set_prefs", "get_prefs", "dismiss_setup", "compile",
-    "compile_tex", "set_dirty", "quit_app",
+    "check_latex", "open_preview", "set_prefs", "get_prefs", "dismiss_setup",
+    "compile", "compile_tex", "set_dirty", "quit_app",
 }
 
 # Legacy Spanish bridge names that must not survive the rewrite.
@@ -65,7 +65,7 @@ FROZEN_ACTIONS = (
     "manage-blocks", "recompile", "toggle:auto-compile", "toggle:latex",
     "theme:light", "theme:dark", "theme:system", "help", "credits",
     "setup-engine", "close-modal", "zoom:75", "zoom:100", "zoom:125",
-    "exit-without-saving",
+    "exit-without-saving", "open-preview",
 )
 
 OLD_ACTIONS = (
@@ -95,6 +95,7 @@ FROZEN_IDS = (
     "pf-color-gray", "pf-color-gray-wheel", "pf-color-gray-reset",
     "ui-language", "install-cancel", "latex-panel", "latex-text",
     "confirm-message", "confirm-cancel", "confirm-accept", "confirm-exit",
+    "preview-notice",
 )
 
 # Frozen JS function names.
@@ -107,6 +108,7 @@ FROZEN_FUNCTIONS = (
     "createSeparatorBlock", "applyCollapse", "toggleCollapse", "normalizeImage",
     "dataHasContent", "hasContent", "openListBlockModal", "acceptListBlock",
     "readListEntries", "setupPrefs", "openPrefs", "blockAnchorsUI",
+    "setupPreviewFallback", "openPreview",
 )
 
 # Social networks data contract shared with the backend (order matters).
@@ -725,6 +727,44 @@ def test_app_installer_cancel_tokens():
     assert '"#install-cancel"' in JS
     assert 'id="install-cancel"' in HTML
     assert '"#modal-wizard"' in JS
+
+
+def test_app_install_warning_tokens():
+    """The wizard surfaces the non-fatal checksum warning (live + on done)."""
+    assert "__onInstallProgress = function (p)" in JS
+    assert "if (p.warning)" in JS
+    assert '$("#wz-progress-text").textContent = p.warning;' in JS
+    assert "__onInstallDone = function (r)" in JS
+    assert 'toast(r.warning ? r.msg + " " + r.warning : r.msg);' in JS
+
+
+# ---------------- Linux preview fallback ----------------
+
+def test_index_linux_preview_notice_tokens():
+    """Linux-only notice + system-viewer button, wired to api.open_preview()."""
+    assert 'id="preview-notice"' in HTML
+    assert 'data-accion="open-preview"' in HTML
+    assert 'data-i18n="preview_linux_notice"' in HTML
+    assert 'data-i18n="preview_linux_open"' in HTML
+    # Hidden by default and only Linux unhides it.
+    notice = re.search(r'<div id="preview-notice"[^>]*>', HTML)
+    assert notice and "hidden" in notice.group(0), "the notice must start hidden"
+    assert 'notice.hidden = platform !== "linux"' in _function_body("setupPreviewFallback")
+    assert "setupPreviewFallback(info.platform)" in JS
+    assert "api.open_preview(" in _function_body("openPreview")
+    # The system viewer opens a file:// URI through the backend.
+    assert "api.open_preview(" in JS
+
+
+def test_i18n_linux_preview_keys_in_four_languages():
+    tables = {lang: _i18n_pairs(lang) for lang in ("es", "en", "zh", "ru")}
+    for lang in ("es", "en", "zh", "ru"):
+        assert tables[lang].get("preview_linux_notice"), lang
+        assert tables[lang].get("preview_linux_open"), lang
+    assert tables["es"]["preview_linux_notice"] == (
+        "La previsualización integrada no está disponible en Linux; usa el botón "
+        "para abrir el PDF con el visor del sistema."
+    )
 
 
 # ---------------- LaTeX mode and form regressions ----------------

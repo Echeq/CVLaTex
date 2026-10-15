@@ -40,6 +40,7 @@ MESSAGES = {
         "install_broken": "TinyTeX se instaló pero pdflatex no funciona.",
         "install_checksum_unavailable": "No se pudo verificar la descarga: no hay checksum SHA-256 disponible.",
         "install_checksum_mismatch": "La verificación SHA-256 de la descarga falló: el archivo no coincide con el checksum.",
+        "install_checksum_warning": "No se pudo verificar la integridad de la descarga (no hay checksum SHA-256 disponible); la instalación continuará.",
         "install_cancelled": "Instalación de TinyTeX cancelada.",
         # Compile errors (latex_engine.py).
         "compile_no_engine": "No se encontró un motor LaTeX. Configúralo en Preferencias o instálalo desde el asistente.",
@@ -50,6 +51,8 @@ MESSAGES = {
         "compile_emergency_stop": "Compilación detenida por un error fatal.",
         "compile_fatal_error": "Error fatal de LaTeX.",
         "compile_unclosed_brace": "Hay una llave { o } sin cerrar en el contenido.",
+        # Linux preview fallback (main.py).
+        "preview_not_available": "No hay una previsualización compilada para abrir. Compila el CV primero.",
     },
     "en": {
         "export_bad_format": "Unsupported format (use JPG or PNG).",
@@ -77,6 +80,7 @@ MESSAGES = {
         "install_broken": "TinyTeX was installed but pdflatex does not work.",
         "install_checksum_unavailable": "Could not verify the download: no SHA-256 checksum is available.",
         "install_checksum_mismatch": "SHA-256 verification of the download failed: the file does not match the checksum.",
+        "install_checksum_warning": "Could not verify the integrity of the download (no SHA-256 checksum available); the installation will continue.",
         "install_cancelled": "TinyTeX installation cancelled.",
         "compile_no_engine": "No LaTeX engine found. Configure it in Preferences or install it from the setup wizard.",
         "compile_needs_xelatex": "The CV contains Chinese text and needs XeLaTeX. Install TinyTeX (or a full distribution) from the setup wizard.",
@@ -86,6 +90,7 @@ MESSAGES = {
         "compile_emergency_stop": "Compilation stopped by a fatal error.",
         "compile_fatal_error": "LaTeX fatal error.",
         "compile_unclosed_brace": "There is an unclosed { or } brace in the content.",
+        "preview_not_available": "There is no compiled preview to open. Compile the CV first.",
     },
     "zh": {
         "export_bad_format": "不支持该格式（请使用 JPG 或 PNG）。",
@@ -110,6 +115,7 @@ MESSAGES = {
         "install_broken": "TinyTeX 已安装，但 pdflatex 无法运行。",
         "install_checksum_unavailable": "无法验证下载：没有可用的 SHA-256 校验和。",
         "install_checksum_mismatch": "下载的 SHA-256 校验失败：文件与校验和不符。",
+        "install_checksum_warning": "无法验证下载的完整性（没有可用的 SHA-256 校验和）；安装将继续进行。",
         "install_cancelled": "TinyTeX 安装已取消。",
         "compile_no_engine": "未找到 LaTeX 引擎。请在设置中配置，或通过安装向导安装。",
         "compile_needs_xelatex": (
@@ -125,6 +131,7 @@ MESSAGES = {
         "compile_emergency_stop": "编译因致命错误而停止。",
         "compile_fatal_error": "LaTeX 致命错误。",
         "compile_unclosed_brace": "内容中有未闭合的 { 或 } 括号。",
+        "preview_not_available": "没有可打开的已编译预览。请先编译简历。",
     },
     "ru": {
         "export_bad_format": "Формат не поддерживается (используйте JPG или PNG).",
@@ -152,6 +159,7 @@ MESSAGES = {
         "install_broken": "TinyTeX установлен, но pdflatex не работает.",
         "install_checksum_unavailable": "Не удалось проверить загрузку: контрольная сумма SHA-256 недоступна.",
         "install_checksum_mismatch": "Проверка SHA-256 не пройдена: файл не совпадает с контрольной суммой.",
+        "install_checksum_warning": "Не удалось проверить целостность загрузки (контрольная сумма SHA-256 недоступна); установка продолжится.",
         "install_cancelled": "Установка TinyTeX отменена.",
         "compile_no_engine": (
             "Движок LaTeX не найден. Настройте его в параметрах "
@@ -171,6 +179,7 @@ MESSAGES = {
         "compile_emergency_stop": "Компиляция остановлена из-за фатальной ошибки.",
         "compile_fatal_error": "Фатальная ошибка LaTeX.",
         "compile_unclosed_brace": "В содержимом есть незакрытая скобка { или }.",
+        "preview_not_available": "Нет скомпилированного предпросмотра для открытия. Сначала скомпилируйте резюме.",
     },
 }
 

@@ -379,7 +379,7 @@ def test_install_done_uses_ui_language(prefs_tmp, monkeypatch):
     monkeypatch.setattr(
         latex_engine,
         "install_tinytex",
-        lambda progress, cancel_event=None: r"C:\fake\pdflatex.exe",
+        lambda progress, cancel_event=None, warn=None: r"C:\fake\pdflatex.exe",
     )
     api = main.Api(None)
     pushes = []
@@ -400,10 +400,42 @@ def test_install_done_uses_ui_language(prefs_tmp, monkeypatch):
     assert pushes[0][1]["msg"] == "TinyTeX installed successfully."
 
 
+def test_install_checksum_warning_is_pushed_and_repeated(prefs_tmp, monkeypatch):
+    """A non-fatal install warning surfaces live and with the done envelope."""
+    prefs.set("ui_language", "en")
+
+    def fake_install(progress, cancel_event=None, warn=None):
+        progress(1, 2)
+        warn(messages.t("install_checksum_warning"))
+        return r"C:\fake\pdflatex.exe"
+
+    monkeypatch.setattr(latex_engine, "install_tinytex", fake_install)
+    api = main.Api(None)
+    pushes = []
+    monkeypatch.setattr(api, "_push", lambda name, data: pushes.append((name, data)))
+
+    assert api.install_latex() == "ok"
+    _wait_until(lambda: len(pushes) >= 3)
+    warning = messages.t("install_checksum_warning")
+    assert pushes == [
+        ("__onInstallProgress", {"hecho": 1, "total": 2}),
+        ("__onInstallProgress", {"warning": warning}),
+        (
+            "__onInstallDone",
+            {
+                "ok": True,
+                "msg": messages.t("install_done"),
+                "path": r"C:\fake\pdflatex.exe",
+                "warning": warning,
+            },
+        ),
+    ]
+
+
 def test_cancel_install_sets_the_event(prefs_tmp, monkeypatch):
     seen = {}
 
-    def fake_install(progress, cancel_event=None):
+    def fake_install(progress, cancel_event=None, warn=None):
         seen["event"] = cancel_event
         assert cancel_event is not None
         assert cancel_event.wait(5)  # released by Api.cancel_install
@@ -528,3 +560,59 @@ def test_collect_media_cache_hits_by_path_mtime_size(prefs_tmp):
     third = main.collect_media(data, cache)
     assert third[str(photo)]["b64"] == base64.b64encode(b"abcd").decode("ascii")
     assert len(cache) == 2
+
+
+# ---------------------------------------------------------------------------
+# Frozen bridge surface, platform report and Linux preview fallback
+# ---------------------------------------------------------------------------
+
+FROZEN_API_METHODS = {
+    "init", "empty_data", "load_sample", "template_colors", "choose_file",
+    "choose_photo", "save_image", "export_pdf", "export_tex", "export_docx",
+    "export_cv", "open_cv", "autosave", "autosave_read", "autosave_clear",
+    "import_tex", "install_latex", "cancel_install", "choose_latex_path",
+    "check_latex", "open_preview", "set_prefs", "get_prefs", "dismiss_setup",
+    "compile", "compile_tex", "set_dirty", "quit_app",
+}
+
+
+def test_api_exposes_exactly_the_frozen_methods():
+    """The exact public bridge surface of main.Api (frozen contract)."""
+    defined = {
+        name
+        for name, member in vars(main.Api).items()
+        if not name.startswith("_") and callable(member)
+    }
+    assert defined == FROZEN_API_METHODS
+
+
+def test_init_reports_the_platform(prefs_tmp, monkeypatch):
+    monkeypatch.setattr(latex_engine, "find_pdflatex", lambda *a, **k: None)
+    info = main.Api(None).init()
+    assert set(info) == {"prefs", "latex_ok", "needs_setup", "platform"}
+    assert info["platform"] == sys.platform
+
+
+def test_open_preview_opens_the_last_compiled_pdf(prefs_tmp, monkeypatch):
+    api = main.Api(None)
+    assert api.open_preview() == {
+        "ok": False,
+        "errores": [messages.t("preview_not_available")],
+    }
+
+    opened = []
+    monkeypatch.setattr(main.webbrowser, "open", lambda uri: opened.append(uri))
+    pdf = prefs_tmp / "result.pdf"
+    pdf.write_bytes(b"%PDF")
+    api._last_result = {"ok": True, "pdf": str(pdf), "errores": []}
+
+    assert api.open_preview() == {"ok": True}
+    assert opened == [pdf.as_uri()]
+
+    # A vanished PDF reports the localized error instead of opening anything.
+    os.remove(pdf)
+    assert api.open_preview() == {
+        "ok": False,
+        "errores": [messages.t("preview_not_available")],
+    }
+    assert len(opened) == 1

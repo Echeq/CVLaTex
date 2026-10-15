@@ -1,7 +1,10 @@
 import hashlib
 import os
+import platform as _platform
 import shutil
 import subprocess
+import sys
+import tarfile
 import threading
 import urllib.error
 import urllib.request
@@ -12,9 +15,60 @@ import messages
 import prefs
 
 TINYTEX_VERSION = "2026.08"
-TINYTEX_URLS = [
-    f"https://github.com/rstudio/tinytex-releases/releases/download/v{TINYTEX_VERSION}/TinyTeX-v{TINYTEX_VERSION}.zip",
-]
+_TINYTEX_RELEASE = (
+    f"https://github.com/rstudio/tinytex-releases/releases/download/v{TINYTEX_VERSION}"
+)
+
+
+def _tinyttex_bin_dirs(platform=None, machine=None):
+    """Candidate bin dirs inside TINYTEX_DIR for `platform`, best first.
+
+    Windows: bin/windows. macOS: bin/universal-darwin. Linux: the native
+    architecture first (bin/aarch64-linux on arm64, bin/x86_64-linux
+    otherwise) and the other one as fallback.
+    """
+    platform = sys.platform if platform is None else platform
+    if platform == "win32":
+        return ["bin/windows"]
+    if platform == "darwin":
+        return ["bin/universal-darwin"]
+    arch = str(machine if machine is not None else _platform.machine()).lower()
+    if arch in ("aarch64", "arm64"):
+        return ["bin/aarch64-linux", "bin/x86_64-linux"]
+    return ["bin/x86_64-linux", "bin/aarch64-linux"]
+
+
+def _engine_exe(name, platform=None):
+    """Executable file name of a TeX engine on `platform`."""
+    platform = sys.platform if platform is None else platform
+    return name + ".exe" if platform == "win32" else name
+
+
+def _engine_path(root, relative, name, platform=None):
+    """Native path of the engine `name` inside `root/<relative>`."""
+    return os.path.join(
+        root, *relative.replace("\\", "/").split("/"), _engine_exe(name, platform)
+    )
+
+
+def _archive_kind(platform=None):
+    """Archive type of the TinyTeX asset for `platform` ("zip" or "tar")."""
+    platform = sys.platform if platform is None else platform
+    return "zip" if platform == "win32" else "tar"
+
+
+# TinyTeX assets pinned for TINYTEX_VERSION, verified against the GitHub API
+# for v2026.08: the Windows .zip keeps the historical name; Linux uses the
+# x86_64 .tar.gz (root .TinyTeX, bin/x86_64-linux) and macOS the universal
+# .tgz (root TinyTeX, bin/universal-darwin).
+TINYTEX_URLS_BY_PLATFORM = {
+    "win32": [f"{_TINYTEX_RELEASE}/TinyTeX-v{TINYTEX_VERSION}.zip"],
+    "darwin": [f"{_TINYTEX_RELEASE}/TinyTeX-v{TINYTEX_VERSION}.tgz"],
+    "linux": [f"{_TINYTEX_RELEASE}/TinyTeX-v{TINYTEX_VERSION}.tar.gz"],
+}
+TINYTEX_URLS = list(
+    TINYTEX_URLS_BY_PLATFORM.get(sys.platform, TINYTEX_URLS_BY_PLATFORM["linux"])
+)
 ALLOWED_PHOTOS = {".jpg", ".jpeg", ".png"}
 _LOCK = threading.Lock()
 _SUBPROCESS_FLAGS = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW: no console window
@@ -37,13 +91,15 @@ def _check(path):
         return False
 
 
-def find_pdflatex():
+def find_pdflatex(platform=None):
+    platform = sys.platform if platform is None else platform
     path = prefs.get("latex_path")
     if path and os.path.isfile(path) and _check(path):
         return path
-    bundled = os.path.join(prefs.TINYTEX_DIR, "bin", "windows", "pdflatex.exe")
-    if os.path.isfile(bundled) and _check(bundled):
-        return bundled
+    for relative in _tinyttex_bin_dirs(platform):
+        bundled = _engine_path(prefs.TINYTEX_DIR, relative, "pdflatex", platform)
+        if os.path.isfile(bundled) and _check(bundled):
+            return bundled
     found = shutil.which("pdflatex")
     if found:
         return found
@@ -109,32 +165,25 @@ def verify_sha256(path, expected):
 
 
 def _fetch_checksum(url, cancel_event=None):
-    """Download `<url>.sha256` and return its first hex digest.
+    """Best-effort download of `<url>.sha256`: digest or None.
 
-    Raises LatexError with a localized message when the checksum cannot be
-    fetched or parsed.
+    Some tinytex-releases assets have no `.sha256` sibling (they 404): a
+    missing, unreachable or unparseable checksum returns None so the caller
+    can continue the install with a warning instead of aborting. A cancelled
+    install still raises the localized LatexError.
     """
     request = urllib.request.Request(url, headers={"User-Agent": "CVLaTeX/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             text = response.read().decode("utf-8", errors="replace")
-    except (urllib.error.URLError, OSError, ValueError) as e:
-        raise LatexError(messages.t("install_checksum_unavailable")) from e
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
     _raise_if_cancelled(cancel_event)
-    digest = _parse_checksum(text)
-    if not digest:
-        raise LatexError(messages.t("install_checksum_unavailable"))
-    return digest
+    return _parse_checksum(text)
 
 
-def _extract_zip(zip_path, progress):
-    staging = prefs.TINYTEX_DIR + ".tmp"
-    if os.path.exists(staging):
-        shutil.rmtree(staging, ignore_errors=True)
-    if os.path.exists(prefs.TINYTEX_DIR):
-        shutil.rmtree(prefs.TINYTEX_DIR, ignore_errors=True)
-    os.makedirs(staging)
-    with zipfile.ZipFile(zip_path) as zf:
+def _extract_zip(archive_path, staging, progress):
+    with zipfile.ZipFile(archive_path) as zf:
         infos = zf.infolist()
         total = sum(i.file_size for i in infos) or 1
         done = 0
@@ -143,6 +192,49 @@ def _extract_zip(zip_path, progress):
             zf.extract(info, staging)
             done += info.file_size
             progress(done, total)
+
+
+def _tar_extract_member(tf, member, staging):
+    """Extract one tar member; `filter="data"` on Python 3.12+."""
+    try:
+        tf.extract(member, staging, filter="data")
+    except TypeError:
+        # Python without extraction filters (no `filter` kwarg).
+        tf.extract(member, staging)
+
+
+def _extract_tar(archive_path, staging, progress):
+    with tarfile.open(archive_path, "r:*") as tf:
+        members = tf.getmembers()
+        total = sum(m.size for m in members) or 1
+        done = 0
+        progress(0, total if total > 1 else None)
+        for member in members:
+            _tar_extract_member(tf, member, staging)
+            done += member.size
+            progress(done, total)
+
+
+def _find_extracted_pdflatex(root, platform):
+    for relative in _tinyttex_bin_dirs(platform):
+        candidate = _engine_path(root, relative, "pdflatex", platform)
+        if os.path.isfile(candidate):
+            return relative
+    return None
+
+
+def _extract_archive(archive_path, progress, platform=None):
+    platform = sys.platform if platform is None else platform
+    staging = prefs.TINYTEX_DIR + ".tmp"
+    if os.path.exists(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+    if os.path.exists(prefs.TINYTEX_DIR):
+        shutil.rmtree(prefs.TINYTEX_DIR, ignore_errors=True)
+    os.makedirs(staging)
+    if _archive_kind(platform) == "zip":
+        _extract_zip(archive_path, staging, progress)
+    else:
+        _extract_tar(archive_path, staging, progress)
     directories = [
         d
         for d in os.listdir(staging)
@@ -151,23 +243,30 @@ def _extract_zip(zip_path, progress):
     root = staging
     if len(directories) == 1:
         root = os.path.join(staging, directories[0])
-    pdflatex = os.path.join(root, "bin", "windows", "pdflatex.exe")
-    if not os.path.isfile(pdflatex):
+    relative = _find_extracted_pdflatex(root, platform)
+    if relative is None:
         shutil.rmtree(staging, ignore_errors=True)
         raise LatexError(messages.t("install_invalid_zip"))
     os.makedirs(prefs.TINYTEX_DIR)
     for name in os.listdir(root):
         shutil.move(os.path.join(root, name), prefs.TINYTEX_DIR)
     shutil.rmtree(staging, ignore_errors=True)
-    return os.path.join(prefs.TINYTEX_DIR, "bin", "windows", "pdflatex.exe")
+    return _engine_path(prefs.TINYTEX_DIR, relative, "pdflatex", platform)
 
 
-def install_tinytex(progress, cancel_event=None):
+def install_tinytex(progress, cancel_event=None, warn=None):
     """Download and install TinyTeX. progress(done, total), total None if unknown.
 
     Pass a ``threading.Event`` as ``cancel_event`` to abort promptly: the
     download loop checks it on every chunk and it is checked again before
     extraction. Aborting raises LatexError with a localized message.
+
+    ``warn(message)`` (optional) receives localized warnings that do not stop
+    the install. SHA-256 policy: when the release publishes `<url>.sha256` and
+    it matches, the install continues silently; when the checksum asset is
+    unavailable (the tinytex-releases v2026.08 assets have no `.sha256`), the
+    install continues after ``warn``; an available checksum that mismatches
+    always aborts with LatexError.
     """
     _raise_if_cancelled(cancel_event)
     os.makedirs(prefs.APP_DIR, exist_ok=True)
@@ -179,11 +278,15 @@ def install_tinytex(progress, cancel_event=None):
             _download(url, tmp, progress, cancel_event)
             _raise_if_cancelled(cancel_event)
             checksum = _fetch_checksum(url + ".sha256", cancel_event)
-            verify_sha256(tmp, checksum)
+            if checksum is None:
+                if warn is not None:
+                    warn(messages.t("install_checksum_warning"))
+            else:
+                verify_sha256(tmp, checksum)
             try:
-                pdflatex = _extract_zip(tmp, progress)
+                pdflatex = _extract_archive(tmp, progress)
                 break
-            except (zipfile.BadZipFile, OSError) as e:
+            except (zipfile.BadZipFile, tarfile.TarError, EOFError, OSError) as e:
                 raise LatexError(messages.t("install_unzip_error").format(error=e)) from e
     finally:
         if os.path.exists(tmp):
@@ -240,10 +343,11 @@ def _parse_errors(log):
     return errors[:25]
 
 
-def find_xelatex():
-    path = find_pdflatex()
+def find_xelatex(platform=None):
+    platform = sys.platform if platform is None else platform
+    path = find_pdflatex(platform)
     if path:
-        candidate = os.path.join(os.path.dirname(path), "xelatex.exe")
+        candidate = os.path.join(os.path.dirname(path), _engine_exe("xelatex", platform))
         if os.path.isfile(candidate):
             return candidate
     return shutil.which("xelatex")

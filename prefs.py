@@ -1,4 +1,8 @@
-"""Preferencias del usuario en %LOCALAPPDATA%\\CVLaTeX\\prefs.json.
+"""User preferences in the per-OS application data directory.
+
+Windows keeps %LOCALAPPDATA%\\CVLaTeX\\prefs.json; macOS uses
+~/Library/Application Support/CVLaTeX and other systems follow the XDG base
+directory spec ($XDG_DATA_HOME or ~/.local/share) + /CVLaTeX.
 
 Las claves son inglesas desde la migracion: paper, margins, font_size,
 auto_compile, breakpoint, latex_path, setup_dismissed, theme, colors, split y
@@ -9,10 +13,29 @@ antiguas en espanol y guarda una copia prefs.json.bak que nunca se pisa.
 import json
 import os
 import shutil
+import sys
+
+
+def _app_dir_for(platform=None, env=None, home=None):
+    """Application data directory (with the CVLaTeX subfolder) for a platform.
+
+    Pure function so the per-OS paths are unit-testable: `platform` defaults
+    to `sys.platform`, `env` to `os.environ` and `home` to the user home.
+    """
+    platform = sys.platform if platform is None else platform
+    env = os.environ if env is None else env
+    home = os.path.expanduser("~") if home is None else home
+    if platform == "win32":
+        base = env.get("LOCALAPPDATA") or home
+    elif platform == "darwin":
+        base = os.path.join(home, "Library", "Application Support")
+    else:
+        base = env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
+    return os.path.join(base, "CVLaTeX")
 
 
 LOCALAPPDATA = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-APP_DIR = os.path.join(LOCALAPPDATA, "CVLaTeX")
+APP_DIR = _app_dir_for()
 CACHE_DIR = os.path.join(APP_DIR, "cache")
 BUILD_DIR = os.path.join(CACHE_DIR, "build")
 TINYTEX_DIR = os.path.join(APP_DIR, "tinytex")
