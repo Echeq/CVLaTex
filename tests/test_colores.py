@@ -23,18 +23,18 @@ import prefs  # noqa: E402
 import tex_datos  # noqa: E402
 from main import Api  # noqa: E402
 
-# Misma forma que tests/test_esquema.py: sin la clave "colores".
+# Misma forma que tests/test_esquema.py: sin la clave "colors".
 PREFS_PRUEBA = {
-    "papel": "a4",
-    "margenes": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
-    "fuente": 11,
+    "paper": "a4",
+    "margins": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
+    "font_size": 11,
 }
 
 COLORES_VALIDOS = {
-    "primario": "#12AB34",
-    "secundario": "#00AA88",
-    "texto": "#112233",
-    "gris": "#A1B2C3",
+    "primary": "#12AB34",
+    "secondary": "#00AA88",
+    "text": "#112233",
+    "gray": "#A1B2C3",
 }
 
 MOTOR_PDF = latex_engine.find_pdflatex()
@@ -63,20 +63,20 @@ class _DictExplosivo(dict):
 
 def _prefs_con(colores):
     p = dict(PREFS_PRUEBA)
-    p["colores"] = colores
+    p["colors"] = colores
     return p
 
 
 def _datos_prueba():
-    d = latex_gen.datos_vacios()
-    d["idioma_cv"] = "es"
-    d["perfil"] = "Perfil con colores."
-    d["trabajo"] = [{"puesto": "Desarrolladora", "empresa": "Acme"}]
+    d = latex_gen.empty_data()
+    d["cv_language"] = "es"
+    d["summary"] = "Perfil con colores."
+    d["work"] = [{"position": "Desarrolladora", "company": "Acme"}]
     return d
 
 
 def _tex_de_plantilla(pid):
-    ruta = os.path.join(latex_gen.BASE_DIR, "templates", latex_gen.ARCHIVOS[pid])
+    ruta = os.path.join(latex_gen.BASE_DIR, "templates", latex_gen.TEMPLATE_FILES[pid])
     with open(ruta, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -99,7 +99,7 @@ def _tex_de_plantilla(pid):
     ],
 )
 def test_normalizar_hex_acepta_formas_validas(valor, esperado):
-    assert latex_gen.normalizar_hex(valor) == esperado
+    assert latex_gen.parse_hex_color(valor) == esperado
 
 
 @pytest.mark.parametrize(
@@ -120,60 +120,60 @@ def test_normalizar_hex_acepta_formas_validas(valor, esperado):
     ],
 )
 def test_normalizar_hex_rechaza_invalidos(valor):
-    assert latex_gen.normalizar_hex(valor) is None
+    assert latex_gen.parse_hex_color(valor) is None
 
 
 # ---------------------------------------------------------------------------
 # colores_de_plantilla sobre los templates reales
 # ---------------------------------------------------------------------------
 
-def test_colores_de_plantilla_clasico():
-    assert latex_gen.colores_de_plantilla(_tex_de_plantilla("clasico")) == {
+def test_colores_de_plantilla_classic():
+    assert latex_gen.template_colors(_tex_de_plantilla("classic")) == {
         "accent": "#233A5E",
         "gris": "#6E7684",
     }
 
 
-def test_colores_de_plantilla_creativo():
-    colores = latex_gen.colores_de_plantilla(_tex_de_plantilla("creativo"))
+def test_colores_de_plantilla_creative():
+    colores = latex_gen.template_colors(_tex_de_plantilla("creative"))
     assert colores["accent"] == "#E05244"
     assert colores["acento2"] == "#00897B"
     # El template real define acento3 como RGB{244,180,64} (#F4B440).
     assert colores["acento3"] == "#F4B440"
 
 
-def test_colores_de_plantilla_chino():
-    assert latex_gen.colores_de_plantilla(_tex_de_plantilla("chino"))["accent"] == "#1F347D"
+def test_colores_de_plantilla_chinese():
+    assert latex_gen.template_colors(_tex_de_plantilla("chinese"))["accent"] == "#1F347D"
 
 
 @pytest.mark.parametrize("tex", ["", None, 7, b"%", _Explosivo()])
 def test_colores_de_plantilla_no_lanza(tex):
-    assert latex_gen.colores_de_plantilla(tex) == {}
+    assert latex_gen.template_colors(tex) == {}
 
 
 # ---------------------------------------------------------------------------
 # build_tex: sustituciones de la paleta
 # ---------------------------------------------------------------------------
 
-def test_build_tex_primario_reemplaza_accent():
-    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"primario": "#123456"}))
+def test_build_tex_primary_reemplaza_accent():
+    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"primary": "#123456"}))
     assert "\\definecolor{accent}{RGB}{18,52,86}" in tex
     assert "35,58,94" not in tex
 
 
-def test_build_tex_secundario_reemplaza_acento2_en_creativo():
+def test_build_tex_secondary_reemplaza_acento2_en_creative():
     d = _datos_prueba()
-    d["plantilla"] = "creativo"
-    tex = latex_gen.build_tex(d, _prefs_con({"secundario": "#00AA88"}))
+    d["template"] = "creative"
+    tex = latex_gen.build_tex(d, _prefs_con({"secondary": "#00AA88"}))
     assert "\\definecolor{acento2}{RGB}{0,170,136}" in tex
     assert tex.count("\\definecolor{acento2}") == 1
 
 
-def test_build_tex_secundario_en_clasico_inyecta_acento2():
-    # Comportamiento congelado de t1: clasico no define acento2, asi que la
+def test_build_tex_secondary_en_classic_inyecta_acento2():
+    # Comportamiento congelado de t1: classic no define acento2, asi que la
     # definicion se inyecta antes de \begin{document} en vez de reemplazar
     # nada; las definiciones existentes (accent y gris) quedan intactas.
-    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"secundario": "#00AA88"}))
+    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"secondary": "#00AA88"}))
     inyectado = "\\definecolor{acento2}{RGB}{0,170,136}"
     assert inyectado in tex
     assert tex.index(inyectado) < tex.index("\\begin{document}")
@@ -181,14 +181,14 @@ def test_build_tex_secundario_en_clasico_inyecta_acento2():
     assert "\\definecolor{gris}{RGB}{110,118,132}" in tex
 
 
-def test_build_tex_gris_reemplaza_gris():
-    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"gris": "#A1B2C3"}))
+def test_build_tex_gray_reemplaza_gris():
+    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"gray": "#A1B2C3"}))
     assert "\\definecolor{gris}{RGB}{161,178,195}" in tex
     assert "110,118,132" not in tex
 
 
-def test_build_tex_texto_inyecta_cvtexto_antes_y_color_despues():
-    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"texto": "#112233"}))
+def test_build_tex_text_inyecta_cvtexto_antes_y_color_despues():
+    tex = latex_gen.build_tex(_datos_prueba(), _prefs_con({"text": "#112233"}))
     definicion = tex.index("\\definecolor{cvtexto}{RGB}{17,34,51}")
     begin = tex.index("\\begin{document}")
     activacion = tex.index("\\color{cvtexto}", begin)
@@ -207,7 +207,7 @@ def test_build_tex_roundtrip_con_paleta_completa():
         "\\definecolor{cvtexto}{RGB}{17,34,51}",
     ):
         assert esperado in tex
-    assert tex_datos.extraer(tex) == d
+    assert tex_datos.extract(tex) == d
 
 
 # ---------------------------------------------------------------------------
@@ -217,76 +217,76 @@ def test_build_tex_roundtrip_con_paleta_completa():
 @pytest.mark.parametrize(
     "colores",
     [
-        None,  # prefs sin la clave "colores"
+        None,  # prefs sin la clave "colors"
         "no-es-dict",
-        {"primario": "", "secundario": "", "texto": "", "gris": ""},
-        {"primario": "red", "secundario": "#12", "texto": "#GGGGGG", "gris": "  "},
-        {"primario": 123, "secundario": [], "texto": {"x": 1}, "gris": None},
-        {"primario": "#", "secundario": "#12345", "texto": "#12345Z", "gris": True},
+        {"primary": "", "secondary": "", "text": "", "gray": ""},
+        {"primary": "red", "secondary": "#12", "text": "#GGGGGG", "gray": "  "},
+        {"primary": 123, "secondary": [], "text": {"x": 1}, "gray": None},
+        {"primary": "#", "secondary": "#12345", "text": "#12345Z", "gray": True},
     ],
 )
 def test_build_tex_sin_colores_validos_no_cambia_la_salida(colores):
     d = _datos_prueba()
     p = dict(PREFS_PRUEBA)
     if colores is not None:
-        p["colores"] = colores
+        p["colors"] = colores
     assert latex_gen.build_tex(d, p) == latex_gen.build_tex(d, PREFS_PRUEBA)
 
 
 def test_build_tex_colores_hostiles_no_cambian_la_salida():
     d = _datos_prueba()
     base = latex_gen.build_tex(d, PREFS_PRUEBA)
-    for colores in (_Explosivo(), _DictExplosivo(), _DictExplosivo(primario="#123456")):
+    for colores in (_Explosivo(), _DictExplosivo(), _DictExplosivo(primary="#123456")):
         assert latex_gen.build_tex(d, _prefs_con(colores)) == base
 
 
 # ---------------------------------------------------------------------------
-# Api.colores_plantilla
+# Api.template_colors
 # ---------------------------------------------------------------------------
 
-def test_api_colores_plantilla_creativo():
-    r = Api(None).colores_plantilla("creativo")
+def test_api_template_colors_creative():
+    r = Api(None).template_colors("creative")
     assert r["ok"] is True
     assert r["colores"]["accent"] == "#E05244"
     assert r["colores"]["acento2"] == "#00897B"
 
 
 @pytest.mark.parametrize("plantilla", [None, "marte", "", 123, []])
-def test_api_colores_plantilla_desconocida_cae_a_clasico(plantilla):
-    r = Api(None).colores_plantilla(plantilla)
+def test_api_template_colors_desconocida_cae_a_classic(plantilla):
+    r = Api(None).template_colors(plantilla)
     assert r["ok"] is True
     assert r["colores"]["accent"] == "#233A5E"
     assert r["colores"]["gris"] == "#6E7684"
 
 
-def test_api_colores_plantilla_no_lanza():
+def test_api_template_colors_no_lanza():
     api = Api(None)
-    for plantilla in (_Explosivo(), {"x": 1}, b"chino", object()):
-        r = api.colores_plantilla(plantilla)
+    for plantilla in (_Explosivo(), {"x": 1}, b"chinese", object()):
+        r = api.template_colors(plantilla)
         assert isinstance(r, dict)
         assert isinstance(r.get("ok"), bool)
-    r = api.colores_plantilla(_Explosivo())
+    r = api.template_colors(_Explosivo())
     assert r["ok"] is False
     assert isinstance(r["errores"], list) and r["errores"]
 
 
 # ---------------------------------------------------------------------------
-# docx_gen: primario en encabezados y separadores, texto en Normal
+# docx_gen: primary en encabezados y separadores, text en Normal
 # ---------------------------------------------------------------------------
 
 def _datos_docx():
-    d = latex_gen.datos_vacios()
-    d["idioma_cv"] = "es"
-    d["nombre"] = "Ana García"
-    d["perfil"] = "Perfil de prueba."
-    d["educacion"] = [{
-        "tipo": "Grado", "titulo": "Informática", "institucion": "UM",
-        "desde": "2012", "hasta": "2016",
+    d = latex_gen.empty_data()
+    d["cv_language"] = "es"
+    d["name"] = "Ana García"
+    d["summary"] = "Perfil de prueba."
+    d["education"] = [{
+        "degree_type": "bachelor", "degree": "Informática", "institution": "UM",
+        "start": "2012", "end": "2016",
     }]
-    d["trabajo"] = [{"puesto": "Dev", "empresa": "Acme", "desde": "2020", "hasta": "2024"}]
-    d["bloques"] = [
-        {"id": "linea", "tipo": "separador", "estilo": "linea", "posicion": "final"},
-        {"id": "banda", "tipo": "separador", "estilo": "banda", "posicion": "final"},
+    d["work"] = [{"position": "Dev", "company": "Acme", "start": "2020", "end": "2024"}]
+    d["blocks"] = [
+        {"id": "linea", "type": "separator", "style": "line", "position": "end"},
+        {"id": "banda", "type": "separator", "style": "band", "position": "end"},
     ]
     return d
 
@@ -318,10 +318,10 @@ def _colores_de_encabezado(doc, titulo):
     raise AssertionError("No se encontro el encabezado %r" % titulo)
 
 
-def test_docx_primario_y_texto_con_paleta(tmp_path):
+def test_docx_primary_y_text_con_paleta(tmp_path):
     ruta = tmp_path / "colores.docx"
-    prefs_colores = dict(PREFS_PRUEBA, colores={"primario": "#12AB34", "texto": "#112233"})
-    docx_gen.exportar(_datos_docx(), prefs_colores, str(ruta))
+    prefs_colores = dict(PREFS_PRUEBA, colors={"primary": "#12AB34", "text": "#112233"})
+    docx_gen.export(_datos_docx(), prefs_colores, str(ruta))
     doc = Document(str(ruta))
 
     primario = RGBColor(0x12, 0xAB, 0x34)
@@ -337,12 +337,12 @@ def test_docx_primario_y_texto_con_paleta(tmp_path):
 
 def test_docx_sin_paleta_usa_el_acento_por_defecto(tmp_path):
     ruta = tmp_path / "sin_colores.docx"
-    docx_gen.exportar(_datos_docx(), PREFS_PRUEBA, str(ruta))
+    docx_gen.export(_datos_docx(), PREFS_PRUEBA, str(ruta))
     doc = Document(str(ruta))
 
     lineas, bandas = _separadores(doc)
-    assert lineas == [docx_gen.COLOR_ACENTO]
-    assert bandas == [(docx_gen.COLOR_ACENTO, docx_gen.COLOR_ACENTO)]
+    assert lineas == [docx_gen.COLOR_ACCENT]
+    assert bandas == [(docx_gen.COLOR_ACCENT, docx_gen.COLOR_ACCENT)]
     for titulo in ETIQUETAS_ES:
         assert _colores_de_encabezado(doc, titulo) == [None], titulo
 

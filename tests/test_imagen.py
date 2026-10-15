@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Api.guardar_imagen: data URLs base64 (PNG/JPEG) con prefijos foto/logo/recorte.
+"""Api.save_image: data URLs base64 (PNG/JPEG) con prefijos foto/logo/recorte.
 
 No hay GUI ni LaTeX: prefs se aisla con el fixture prefs_tmp (mismo patron que
 test_bloques.py) y se comprueba que todo fichero escrito cae dentro de tmp_path.
@@ -46,7 +46,7 @@ def prefs_tmp(tmp_path, monkeypatch):
 
 
 def data_url(mime, b64):
-    """Construye la data URL que espera Api.guardar_imagen."""
+    """Construye la data URL que espera Api.save_image."""
     return "data:%s;base64,%s" % (mime, b64)
 
 
@@ -65,10 +65,10 @@ def ficheros_bajo(base):
     [("image/png", PNG_B64, ".png"), ("image/jpeg", JPG_B64, ".jpg")],
     ids=["png", "jpeg"],
 )
-def test_guardar_imagen_valida_escribe_en_cache(mime, b64, ext, tipo, prefs_tmp):
+def test_save_image_valida_escribe_en_cache(mime, b64, ext, tipo, prefs_tmp):
     antes = ficheros_bajo(prefs_tmp)
 
-    resultado = main.Api(None).guardar_imagen(data_url(mime, b64), tipo)
+    resultado = main.Api(None).save_image(data_url(mime, b64), tipo)
 
     assert resultado["ok"] is True, resultado.get("errores")
     ruta = resultado["path"]
@@ -93,7 +93,7 @@ def test_guardar_imagen_valida_escribe_en_cache(mime, b64, ext, tipo, prefs_tmp)
 
 @pytest.mark.parametrize("tipo", ["otro", "FOTO", "fotos", "", 123, 0])
 def test_tipo_desconocido_cae_a_foto(tipo, prefs_tmp):
-    resultado = main.Api(None).guardar_imagen(data_url("image/png", PNG_B64), tipo)
+    resultado = main.Api(None).save_image(data_url("image/png", PNG_B64), tipo)
     assert resultado["ok"] is True, resultado.get("errores")
     nombre = os.path.basename(resultado["path"])
     assert PATRON_NOMBRE.fullmatch(nombre)
@@ -126,7 +126,7 @@ CASOS_INVALIDOS = [
 def test_data_url_invalida_devuelve_error_sin_escribir(valor, prefs_tmp):
     antes = ficheros_bajo(prefs_tmp)
 
-    resultado = main.Api(None).guardar_imagen(valor)
+    resultado = main.Api(None).save_image(valor)
 
     assert resultado["ok"] is False
     errores = resultado["errores"]
@@ -144,7 +144,7 @@ def test_data_url_invalida_devuelve_error_sin_escribir(valor, prefs_tmp):
 def test_entrada_no_str_nunca_lanza(valor, prefs_tmp):
     antes = ficheros_bajo(prefs_tmp)
 
-    resultado = main.Api(None).guardar_imagen(valor)
+    resultado = main.Api(None).save_image(valor)
 
     assert resultado["ok"] is False
     assert resultado["errores"] and all(resultado["errores"])
@@ -162,7 +162,7 @@ def test_entrada_no_str_nunca_lanza(valor, prefs_tmp):
     ],
 )
 def test_sin_mime_nunca_lanza(valor, prefs_tmp):
-    resultado = main.Api(None).guardar_imagen(valor)
+    resultado = main.Api(None).save_image(valor)
     assert isinstance(resultado, dict)
     assert resultado["ok"] is False
     assert resultado["errores"]

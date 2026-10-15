@@ -1,9 +1,9 @@
 % Plantilla Creativo - CVLaTeX
 % Estilo colorido: banda de acento en la cabecera y paleta propia en las secciones.
-\documentclass[{{fuente}}pt]{article}
+\documentclass[{{font_size}}pt]{article}
 
-\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
-{{motor_tipografia}}
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
 \usepackage{graphicx}
 \usepackage{xcolor}
 
@@ -27,17 +27,17 @@
 }
 
 % Separadores de bloques libres: linea fina, banda de acento y espacio.
-\newcommand{\cvbloquelinea}{%
+\newcommand{\cvblockline}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.6pt}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloquebanda}{%
+\newcommand{\cvblockband}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.35em}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloqueespacio}{%
+\newcommand{\cvblockspace}{%
   \par\vspace{2em}%
 }
 
@@ -45,8 +45,8 @@
 
 \sloppy
 
-{{cabecera}}
+{{header}}
 
-{{cuerpo}}
+{{body}}
 
 \end{document}

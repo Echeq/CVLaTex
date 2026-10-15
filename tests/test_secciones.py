@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """Orden, titulos y secciones ocultas: build_tex, saneado y compilacion.
 
-Cubre para las 5 plantillas de ``latex_gen.PLANTILLAS`` x (es, zh) con CV
+Cubre para las plantillas de ``latex_gen.TEMPLATES`` x (es, zh) con CV
 completo: orden por defecto de titulos, orden personalizado (claves invalidas
 y duplicadas ignoradas, faltantes anadidas), secciones ocultas (sin titulo ni
 entradas, pero con su bloque anclado en posicion) y titulos personalizados con
 escapado, fallback a LANG y descarte de valores no texto. Ademas el saneado
-tolerante via ``main._migrar_datos``, el round-trip .cvjson con ``Api`` y
+tolerante via ``main.migrate_data``, el round-trip .cvjson con ``Api`` y
 compilaciones reales con el mismo patron skipif de test_bloques.py.
 
 Todo corre sin GUI; las compilaciones se saltan cuando no hay motor LaTeX
@@ -27,9 +27,9 @@ import main  # noqa: E402
 import prefs  # noqa: E402
 import tex_datos  # noqa: E402
 
-PLANTILLAS = latex_gen.PLANTILLAS
+TEMPLATES = latex_gen.TEMPLATES
 IDIOMAS = ("es", "zh")
-ORDEN = list(latex_gen.ORDEN_SECCIONES_DEFECTO)
+ORDEN = list(latex_gen.DEFAULT_SECTION_ORDER)
 
 MOTOR_PDF = latex_engine.find_pdflatex()
 MOTOR_CJK = latex_engine.find_xelatex()
@@ -43,13 +43,13 @@ TITULO_CUSTOM_ZH = "工作经历 100% & ~"
 # Texto unico de la seccion que se oculta: no debe sobrevivir en el cuerpo.
 MARCADOR_OCULTO = {"es": "ProyectoSecreto", "zh": "秘密项目"}
 
-# Bloque anclado a "proyectos" para comprobar que una seccion oculta conserva
+# Bloque anclado a "projects" para comprobar que una seccion oculta conserva
 # la posicion de sus bloques.
 BLOQUE_ANCLA = {
     "id": "bloque-ancla",
-    "tipo": "separador",
-    "estilo": "banda",
-    "posicion": "proyectos",
+    "type": "separator",
+    "style": "band",
+    "position": "projects",
 }
 
 
@@ -67,66 +67,67 @@ def prefs_tmp(tmp_path, monkeypatch):
 
 def datos_completos(idioma):
     """CV completo: las 9 secciones estandar con contenido en el idioma dado."""
-    d = latex_gen.datos_vacios()
-    d["idioma_cv"] = idioma
+    d = latex_gen.empty_data()
+    d["cv_language"] = idioma
     if idioma == "zh":
-        d["nombre"] = "张伟"
-        d["profesion"] = "后端开发工程师"
+        d["name"] = "张伟"
+        d["profession"] = "后端开发工程师"
         d["email"] = "zhangwei@example.com"
-        d["perfil"] = "五年后端开发经验，熟悉 Python 与分布式系统。"
-        d["educacion"] = [{
-            "tipo": "本科", "titulo": "计算机科学与技术", "institucion": "清华大学",
-            "desde": "2012", "hasta": "2016", "nota": "3.8/4.0",
+        d["summary"] = "五年后端开发经验，熟悉 Python 与分布式系统。"
+        d["education"] = [{
+            "degree_type": "bachelor", "degree": "计算机科学与技术",
+            "institution": "清华大学",
+            "start": "2012", "end": "2016", "grade": "3.8/4.0",
         }]
-        d["trabajo"] = [{
-            "puesto": "高级后端工程师", "empresa": "字节跳动", "desde": "2020",
-            "hasta": "至今", "logros": "主导支付网关重构。",
+        d["work"] = [{
+            "position": "高级后端工程师", "company": "字节跳动", "start": "2020",
+            "end": "至今", "achievements": "主导支付网关重构。",
         }]
-        d["pasantia"] = [{
-            "puesto": "后端实习生", "empresa": "腾讯", "desde": "2015", "hasta": "2016",
-            "logros": "参与内部工具开发。",
+        d["internships"] = [{
+            "position": "后端实习生", "company": "腾讯", "start": "2015", "end": "2016",
+            "achievements": "参与内部工具开发。",
         }]
-        d["proyectos"] = [{
-            "nombre": "秘密项目", "organizacion": "个人项目", "desde": "2023",
-            "hasta": "2024", "descripcion": "基于 Python 的简历生成器。",
+        d["projects"] = [{
+            "name": "秘密项目", "organization": "个人项目", "start": "2023",
+            "end": "2024", "description": "基于 Python 的简历生成器。",
         }]
-        d["proyectosu"] = [{
-            "nombre": "校园导航", "asignatura": "软件工程", "organizacion": "清华大学",
-            "desde": "2015", "hasta": "2015", "descripcion": "课程项目。",
+        d["university_projects"] = [{
+            "name": "校园导航", "course": "软件工程", "organization": "清华大学",
+            "start": "2015", "end": "2015", "description": "课程项目。",
         }]
-        d["habilidades"] = [{"categoria": "编程语言", "valores": "Python, Go"}]
-        d["idiomas"] = [{"idioma": "中文", "nivel": "母语"}]
-        d["referencias"] = [{"nombre": "李雷", "contacto": "lilei@example.com"}]
+        d["skills"] = [{"category": "编程语言", "values": "Python, Go"}]
+        d["languages"] = [{"language": "中文", "level": "母语"}]
+        d["references"] = [{"name": "李雷", "contact": "lilei@example.com"}]
     else:
-        d["nombre"] = "Ana García López"
-        d["profesion"] = "Ingeniera de software"
+        d["name"] = "Ana García López"
+        d["profession"] = "Ingeniera de software"
         d["email"] = "ana.garcia@example.com"
-        d["perfil"] = "Cinco años de experiencia en Python y sistemas distribuidos."
-        d["educacion"] = [{
-            "tipo": "Grado", "titulo": "Ingeniería Informática",
-            "institucion": "Universidad de Madrid", "desde": "2012", "hasta": "2016",
-            "nota": "8.5/10",
+        d["summary"] = "Cinco años de experiencia en Python y sistemas distribuidos."
+        d["education"] = [{
+            "degree_type": "bachelor", "degree": "Ingeniería Informática",
+            "institution": "Universidad de Madrid", "start": "2012", "end": "2016",
+            "grade": "8.5/10",
         }]
-        d["trabajo"] = [{
-            "puesto": "Ingeniera backend", "empresa": "Fintech Nova", "desde": "2020",
-            "hasta": "Actualidad", "logros": "Lideré la migración a microservicios.",
+        d["work"] = [{
+            "position": "Ingeniera backend", "company": "Fintech Nova", "start": "2020",
+            "end": "Actualidad", "achievements": "Lideré la migración a microservicios.",
         }]
-        d["pasantia"] = [{
-            "puesto": "Becaria de desarrollo", "empresa": "Telecom Ibérica",
-            "desde": "2015", "hasta": "2016", "logros": "Automaticé informes semanales.",
+        d["internships"] = [{
+            "position": "Becaria de desarrollo", "company": "Telecom Ibérica",
+            "start": "2015", "end": "2016", "achievements": "Automaticé informes semanales.",
         }]
-        d["proyectos"] = [{
-            "nombre": "ProyectoSecreto", "organizacion": "Hackathon Climate",
-            "desde": "2023", "hasta": "2023", "descripcion": "App de rutas sostenibles.",
+        d["projects"] = [{
+            "name": "ProyectoSecreto", "organization": "Hackathon Climate",
+            "start": "2023", "end": "2023", "description": "App de rutas sostenibles.",
         }]
-        d["proyectosu"] = [{
-            "nombre": "Gestor de biblioteca", "asignatura": "Ingeniería del Software",
-            "organizacion": "Universidad de Madrid", "desde": "2015", "hasta": "2015",
-            "descripcion": "Proyecto de asignatura.",
+        d["university_projects"] = [{
+            "name": "Gestor de biblioteca", "course": "Ingeniería del Software",
+            "organization": "Universidad de Madrid", "start": "2015", "end": "2015",
+            "description": "Proyecto de asignatura.",
         }]
-        d["habilidades"] = [{"categoria": "Lenguajes", "valores": "Python, Java"}]
-        d["idiomas"] = [{"idioma": "Español", "nivel": "Nativo"}]
-        d["referencias"] = [{"nombre": "Luis Pérez", "contacto": "luis@example.com"}]
+        d["skills"] = [{"category": "Lenguajes", "values": "Python, Java"}]
+        d["languages"] = [{"language": "Español", "level": "Nativo"}]
+        d["references"] = [{"name": "Luis Pérez", "contact": "luis@example.com"}]
     return d
 
 
@@ -146,10 +147,10 @@ def _titulo(idioma, clave):
 
 
 # ---------------------------------------------------------------------------
-# build_tex: las 5 plantillas x (es, zh)
+# build_tex: las plantillas de TEMPLATES x (es, zh)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 @pytest.mark.parametrize("idioma", IDIOMAS)
 def test_orden_por_defecto_de_titulos(plantilla, idioma, prefs_tmp):
     datos = datos_completos(idioma)
@@ -157,7 +158,7 @@ def test_orden_por_defecto_de_titulos(plantilla, idioma, prefs_tmp):
     tex = latex_gen.build_tex(datos, prefs.load())
 
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
+    assert tex_datos.extract(tex) == datos
 
     cuerpo = _cuerpo(tex)
     assert cuerpo.count("\\cvsection{") == len(ORDEN)
@@ -168,26 +169,26 @@ def test_orden_por_defecto_de_titulos(plantilla, idioma, prefs_tmp):
 
 # Orden bruto con una clave invalida y una duplicada, y el resultado esperado
 # tras normalizar (las faltantes se anaden al final en orden por defecto).
-ORDEN_BRUTO = ["trabajo", "marte", "trabajo", "proyectosu"]
+ORDEN_BRUTO = ["work", "marte", "work", "university_projects"]
 ORDEN_NORMALIZADO = [
-    "trabajo", "proyectosu", "perfil", "educacion", "proyectos", "pasantia",
-    "habilidades", "idiomas", "referencias",
+    "work", "university_projects", "summary", "education", "projects",
+    "internships", "skills", "languages", "references",
 ]
 
 
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 @pytest.mark.parametrize("idioma", IDIOMAS)
 def test_orden_personalizado_ignora_invalidas_duplicadas_y_anade_faltantes(
     plantilla, idioma, prefs_tmp
 ):
     datos = datos_completos(idioma)
-    datos["plantilla"] = plantilla
-    datos["orden_secciones"] = list(ORDEN_BRUTO)
+    datos["template"] = plantilla
+    datos["section_order"] = list(ORDEN_BRUTO)
     tex = latex_gen.build_tex(datos, prefs.load())
 
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
-    assert latex_gen.normalizar_orden_secciones(datos) == ORDEN_NORMALIZADO
+    assert tex_datos.extract(tex) == datos
+    assert latex_gen.normalize_section_order(datos) == ORDEN_NORMALIZADO
 
     cuerpo = _cuerpo(tex)
     assert "marte" not in cuerpo
@@ -196,63 +197,63 @@ def test_orden_personalizado_ignora_invalidas_duplicadas_y_anade_faltantes(
     assert indices == sorted(indices)
 
 
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 @pytest.mark.parametrize("idioma", IDIOMAS)
 def test_seccion_oculta_suprime_titulo_y_entradas_pero_conserva_su_bloque(
     plantilla, idioma, prefs_tmp
 ):
     datos = datos_completos(idioma)
-    datos["plantilla"] = plantilla
-    datos["secciones_ocultas"] = ["proyectos"]
-    datos["titulos_seccion"] = {"proyectos": "Titulo que no debe salir"}
-    datos["bloques"] = [dict(BLOQUE_ANCLA)]
+    datos["template"] = plantilla
+    datos["hidden_sections"] = ["projects"]
+    datos["section_titles"] = {"projects": "Titulo que no debe salir"}
+    datos["blocks"] = [dict(BLOQUE_ANCLA)]
     tex = latex_gen.build_tex(datos, prefs.load())
 
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
+    assert tex_datos.extract(tex) == datos
 
     cuerpo = _cuerpo(tex)
     # Ni el titulo (ni siquiera uno personalizado) ni las entradas salen...
-    assert _titulo(idioma, "proyectos") not in cuerpo
+    assert _titulo(idioma, "projects") not in cuerpo
     assert "Titulo que no debe salir" not in cuerpo
     assert MARCADOR_OCULTO[idioma] not in cuerpo
     assert cuerpo.count("\\cvsection{") == len(ORDEN) - 1
     # ...pero el bloque anclado a la seccion oculta mantiene su posicion:
-    # despues de educacion y antes de proyectosu (orden por defecto).
-    i_educacion = _indice(tex, _titulo(idioma, "educacion"))
-    i_bloque = _indice(tex, "\\cvbloquebanda")
-    i_proyectosu = _indice(tex, _titulo(idioma, "proyectosu"))
+    # despues de education y antes de university_projects (orden por defecto).
+    i_educacion = _indice(tex, _titulo(idioma, "education"))
+    i_bloque = _indice(tex, "\\cvblockband")
+    i_proyectosu = _indice(tex, _titulo(idioma, "university_projects"))
     assert i_educacion < i_bloque < i_proyectosu
 
 
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 @pytest.mark.parametrize("idioma", IDIOMAS)
 def test_titulos_personalizados_se_escapan_y_hay_fallback_a_lang(
     plantilla, idioma, prefs_tmp
 ):
     datos = datos_completos(idioma)
-    datos["plantilla"] = plantilla
-    datos["titulos_seccion"] = {
-        "trabajo": TITULO_CUSTOM,
-        "perfil": "  Perfil personalizado  ",
+    datos["template"] = plantilla
+    datos["section_titles"] = {
+        "work": TITULO_CUSTOM,
+        "summary": "  Perfil personalizado  ",
     }
     tex = latex_gen.build_tex(datos, prefs.load())
 
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
+    assert tex_datos.extract(tex) == datos
 
     cuerpo = _cuerpo(tex)
     assert TITULO_CUSTOM_ESC in cuerpo
     assert "\\cvsection{Perfil personalizado}" in cuerpo
     # Las secciones sin titulo personalizado usan LANG.
-    assert _titulo(idioma, "educacion") in cuerpo
-    assert _titulo(idioma, "trabajo") not in cuerpo
-    assert _titulo(idioma, "perfil") not in cuerpo
+    assert _titulo(idioma, "education") in cuerpo
+    assert _titulo(idioma, "work") not in cuerpo
+    assert _titulo(idioma, "summary") not in cuerpo
     assert cuerpo.count("\\cvsection{") == len(ORDEN)
 
 
 # ---------------------------------------------------------------------------
-# Saneado tolerante via main._migrar_datos (como al abrir un .cvjson)
+# Saneado tolerante via main.migrate_data (como al abrir un .cvjson)
 # ---------------------------------------------------------------------------
 
 class _Explosivo:
@@ -277,18 +278,18 @@ class _StrStripExplosivo(str):
 
 
 def _secciones_saneadas(datos):
-    """Pasa por _migrar_datos y devuelve las 3 claves de secciones."""
-    salida = main._migrar_datos(datos)
+    """Pasa por migrate_data y devuelve las 3 claves de secciones."""
+    salida = main.migrate_data(datos)
     return (
-        salida["titulos_seccion"],
-        salida["secciones_ocultas"],
-        salida["orden_secciones"],
+        salida["section_titles"],
+        salida["hidden_sections"],
+        salida["section_order"],
     )
 
 
 def test_migrar_secciones_validas_se_normalizan():
     titulos, ocultas, orden = _secciones_saneadas({
-        # La clave invalida se descarta; el valor se recorta.
+        # Claves y valores antiguos: se traducen al esquema canonico.
         "titulos_seccion": {"perfil": "  Sobre mí  ", "trabajo": "Experiencia",
                             "marte": "x"},
         # Dedup conservando la primera aparicion y descarte de invalidas.
@@ -296,11 +297,11 @@ def test_migrar_secciones_validas_se_normalizan():
         # Dedup + faltantes anadidas al final en orden por defecto.
         "orden_secciones": ["idiomas", "marte", "idiomas", "trabajo"],
     })
-    assert titulos == {"perfil": "Sobre mí", "trabajo": "Experiencia"}
-    assert ocultas == ["trabajo", "idiomas"]
+    assert titulos == {"summary": "Sobre mí", "work": "Experiencia"}
+    assert ocultas == ["work", "languages"]
     assert orden == [
-        "idiomas", "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
-        "pasantia", "habilidades", "referencias",
+        "languages", "work", "summary", "education", "projects",
+        "university_projects", "internships", "skills", "references",
     ]
 
 
@@ -310,44 +311,44 @@ def test_migrar_secciones_ausentes_quedan_canonicas():
 
 @pytest.mark.parametrize("entrada", [[], ()])
 def test_migrar_orden_vacio_conserva_el_centinela(entrada):
-    # La lista vacia es el centinela de datos_vacios(): no se expande al
+    # La lista vacia es el centinela de empty_data(): no se expande al
     # guardar/migrar; normalizar_orden_secciones la expande al renderizar.
-    _, _, orden = _secciones_saneadas({"orden_secciones": entrada})
+    _, _, orden = _secciones_saneadas({"section_order": entrada})
     assert orden == []
 
 
 @pytest.mark.parametrize(
-    "entrada", [None, "trabajo", {"trabajo": 1}, 7, _Explosivo()]
+    "entrada", [None, "work", {"work": 1}, 7, _Explosivo()]
 )
 def test_migrar_orden_malformado_cae_al_orden_por_defecto(entrada):
-    _, _, orden = _secciones_saneadas({"orden_secciones": entrada})
+    _, _, orden = _secciones_saneadas({"section_order": entrada})
     assert orden == list(ORDEN)
 
 
 def test_migrar_titulos_descarta_no_str_vacios_y_claves_invalidas():
-    titulos, _, _ = _secciones_saneadas({"titulos_seccion": {
-        "perfil": "  Perfil OK  ",
-        "trabajo": 5,
-        "educacion": None,
-        "proyectos": "   ",
-        "idiomas": b"bytes",
+    titulos, _, _ = _secciones_saneadas({"section_titles": {
+        "summary": "  Perfil OK  ",
+        "work": 5,
+        "education": None,
+        "projects": "   ",
+        "languages": b"bytes",
         "marte": "x",
     }})
-    assert titulos == {"perfil": "Perfil OK"}
+    assert titulos == {"summary": "Perfil OK"}
 
 
 @pytest.mark.parametrize(
     "datos",
     [
-        {"orden_secciones": [_Explosivo()]},
-        {"orden_secciones": [[], {"x": 1}, (), _Explosivo()]},
-        {"secciones_ocultas": [_Explosivo(), set(), {}]},
-        {"secciones_ocultas": _Explosivo()},
-        {"secciones_ocultas": [["trabajo"], "marte", 7]},
-        {"titulos_seccion": {"perfil": _Explosivo()}},
-        {"titulos_seccion": {"perfil": _StrStripExplosivo("Perfil")}},
-        {"titulos_seccion": _Explosivo()},
-        {"orden_secciones": _Explosivo()},
+        {"section_order": [_Explosivo()]},
+        {"section_order": [[], {"x": 1}, (), _Explosivo()]},
+        {"hidden_sections": [_Explosivo(), set(), {}]},
+        {"hidden_sections": _Explosivo()},
+        {"hidden_sections": [["work"], "marte", 7]},
+        {"section_titles": {"summary": _Explosivo()}},
+        {"section_titles": {"summary": _StrStripExplosivo("Perfil")}},
+        {"section_titles": _Explosivo()},
+        {"section_order": _Explosivo()},
     ],
 )
 def test_migrar_secciones_hostiles_no_lanzan(datos):
@@ -362,41 +363,41 @@ def test_migrar_secciones_hostiles_no_lanzan(datos):
 # ---------------------------------------------------------------------------
 
 ORDEN_CANONICO = [
-    "idiomas", "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
-    "trabajo", "habilidades", "referencias",
+    "languages", "summary", "education", "projects", "university_projects",
+    "internships", "work", "skills", "references",
 ]
 
 
 def test_cvjson_roundtrip_conserva_las_tres_claves(prefs_tmp, monkeypatch):
     datos = datos_completos("es")
-    datos["plantilla"] = "moderno"
-    datos["orden_secciones"] = list(ORDEN_CANONICO)
-    datos["secciones_ocultas"] = ["proyectos", "idiomas"]
-    datos["titulos_seccion"] = {"trabajo": TITULO_CUSTOM, "perfil": "Perfil propio"}
+    datos["template"] = "modern"
+    datos["section_order"] = list(ORDEN_CANONICO)
+    datos["hidden_sections"] = ["projects", "languages"]
+    datos["section_titles"] = {"work": TITULO_CUSTOM, "summary": "Perfil propio"}
     ruta = prefs_tmp / "secciones.cvjson"
 
     api = main.Api(None)
-    monkeypatch.setattr(api, "elegir_archivo", lambda *a, **k: str(ruta))
+    monkeypatch.setattr(api, "choose_file", lambda *a, **k: str(ruta))
 
-    salida = api.exportar_cv(datos)
+    salida = api.export_cv(datos)
     assert salida == {"ok": True, "ruta": str(ruta)}
     contenido = json.loads(ruta.read_text(encoding="utf-8"))
-    assert contenido["version"] == 2
-    for clave in ("titulos_seccion", "secciones_ocultas", "orden_secciones"):
-        assert contenido["datos"][clave] == datos[clave]
+    assert contenido["version"] == 3
+    for clave in ("section_titles", "hidden_sections", "section_order"):
+        assert contenido["data"][clave] == datos[clave]
 
-    abierto = api.abrir_cv()
+    abierto = api.open_cv()
     assert abierto["ok"] is True
-    for clave in ("titulos_seccion", "secciones_ocultas", "orden_secciones"):
+    for clave in ("section_titles", "hidden_sections", "section_order"):
         assert abierto["datos"][clave] == datos[clave]
 
 
 def test_cvjson_abrir_sanea_las_tres_claves_escritas_a_mano(prefs_tmp, monkeypatch):
     datos = datos_completos("es")
-    datos["orden_secciones"] = ["idiomas", "marte", "idiomas", "trabajo"]
-    datos["secciones_ocultas"] = ["trabajo", "trabajo", "marte", 7, None]
-    datos["titulos_seccion"] = {
-        "trabajo": 5, "perfil": "  Perfil X  ", "marte": "x", "idiomas": "   ",
+    datos["section_order"] = ["languages", "marte", "languages", "work"]
+    datos["hidden_sections"] = ["work", "work", "marte", 7, None]
+    datos["section_titles"] = {
+        "work": 5, "summary": "  Perfil X  ", "marte": "x", "languages": "   ",
     }
     ruta = prefs_tmp / "sucio.cvjson"
     ruta.write_text(
@@ -405,15 +406,15 @@ def test_cvjson_abrir_sanea_las_tres_claves_escritas_a_mano(prefs_tmp, monkeypat
     )
 
     api = main.Api(None)
-    monkeypatch.setattr(api, "elegir_archivo", lambda *a, **k: str(ruta))
+    monkeypatch.setattr(api, "choose_file", lambda *a, **k: str(ruta))
 
-    abierto = api.abrir_cv()
+    abierto = api.open_cv()
     assert abierto["ok"] is True
-    assert abierto["datos"]["titulos_seccion"] == {"perfil": "Perfil X"}
-    assert abierto["datos"]["secciones_ocultas"] == ["trabajo"]
-    assert abierto["datos"]["orden_secciones"] == [
-        "idiomas", "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
-        "pasantia", "habilidades", "referencias",
+    assert abierto["datos"]["section_titles"] == {"summary": "Perfil X"}
+    assert abierto["datos"]["hidden_sections"] == ["work"]
+    assert abierto["datos"]["section_order"] == [
+        "languages", "work", "summary", "education", "projects",
+        "university_projects", "internships", "skills", "references",
     ]
 
 
@@ -424,23 +425,23 @@ def test_cvjson_abrir_sanea_las_tres_claves_escritas_a_mano(prefs_tmp, monkeypat
 def datos_compilacion(idioma):
     """CV completo con orden parcial, una seccion oculta y un titulo custom."""
     datos = datos_completos(idioma)
-    datos["orden_secciones"] = ["trabajo", "perfil", "idiomas"]
-    datos["secciones_ocultas"] = ["proyectos"]
-    datos["titulos_seccion"] = {
-        "trabajo": TITULO_CUSTOM if idioma == "es" else TITULO_CUSTOM_ZH,
+    datos["section_order"] = ["work", "summary", "languages"]
+    datos["hidden_sections"] = ["projects"]
+    datos["section_titles"] = {
+        "work": TITULO_CUSTOM if idioma == "es" else TITULO_CUSTOM_ZH,
     }
-    datos["bloques"] = [dict(BLOQUE_ANCLA)]
+    datos["blocks"] = [dict(BLOQUE_ANCLA)]
     return datos
 
 
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 def test_compila_pdf_secciones_es(plantilla, prefs_tmp):
     datos = datos_compilacion("es")
-    datos["plantilla"] = plantilla
+    datos["template"] = plantilla
     tex = latex_gen.build_tex(datos, prefs.load())
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
+    assert tex_datos.extract(tex) == datos
     resultado = latex_engine.compile(tex, None, None)
     assert resultado["ok"], resultado["errores"]
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])
@@ -450,13 +451,13 @@ def test_compila_pdf_secciones_es(plantilla, prefs_tmp):
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para compilar texto CJK",
 )
-@pytest.mark.parametrize("plantilla", PLANTILLAS)
+@pytest.mark.parametrize("plantilla", TEMPLATES)
 def test_compila_pdf_secciones_zh(plantilla, prefs_tmp):
     datos = datos_compilacion("zh")
-    datos["plantilla"] = plantilla
+    datos["template"] = plantilla
     tex = latex_gen.build_tex(datos, prefs.load())
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == datos
+    assert tex_datos.extract(tex) == datos
     resultado = latex_engine.compile(tex, None, None)
     assert resultado["ok"], resultado["errores"]
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])

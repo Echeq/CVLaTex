@@ -1,0 +1,61 @@
+% Sidebar template - CVLaTeX
+% Left full-height accent bar with the photo, the school logo and the
+% contacts; the main column holds the name/profession header and the body.
+\documentclass[{{font_size}}pt]{article}
+
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left=7cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+
+\definecolor{accent}{RGB}{35,58,94}
+\definecolor{gris}{RGB}{110,118,132}
+
+\newcommand{\cvsection}[1]{%
+  \vspace{1.3em}%
+  {\Large\bfseries\color{accent}#1}\par
+  \vspace{0.15em}%
+  {\color{accent}\hrule height 0.7pt}\par
+  \vspace{0.5em}%
+}
+
+% Free block separators: thin line, accent band and space.
+\newcommand{\cvblockline}{%
+  \par\vspace{0.45em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \par\vspace{0.45em}%
+}
+\newcommand{\cvblockband}{%
+  \par\vspace{0.45em}%
+  {\color{accent}\hrule height 0.35em}%
+  \par\vspace{0.45em}%
+}
+\newcommand{\cvblockspace}{%
+  \par\vspace{2em}%
+}
+
+% Left bar on every page: 6.2cm wide and as tall as the paper. The kernel
+% shipout/background hook places its overlay at the top left corner of the
+% paper with unitlength 1pt, so the rule starts at (0,0) with no shifting.
+\AddToHook{shipout/background}{%
+  \vbox to 0pt{%
+    \hbox to 0pt{%
+      {\color{accent}\rule[-\paperheight]{6.2cm}{\paperheight}}%
+      \hss}%
+    \vss}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{sidebar}}
+{{header}}
+
+{{body}}
+
+\end{document}

@@ -1,5 +1,12 @@
+"""pywebview shell for CVLaTeX plus the local HTTP server that feeds the UI.
+
+`Api` methods are the JavaScript bridge (`window.pywebview.api.*`); the frozen
+bridge surface lives in docs/refactor-map.md. The local server (random
+127.0.0.1 port) serves `web/` at `/`, compiled PDFs at `/preview/` and uploaded
+media at `/media/`.
+"""
+
 import base64
-import functools
 import http.server
 import json
 import mimetypes
@@ -8,6 +15,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 import uuid
 
 import webview
@@ -15,79 +23,94 @@ import webview
 import docx_gen
 import latex_engine
 import latex_gen
+import messages
 import prefs
 import tex_datos
 
 BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASE_DIR, "web")
-RUTAS = {
+ROUTES = {
     "/app.js": os.path.join(WEB_DIR, "app.js"),
     "/style.css": os.path.join(WEB_DIR, "style.css"),
+    "/i18n.js": os.path.join(WEB_DIR, "i18n.js"),
 }
+
+
+def window_title(ui_language):
+    """Native window title for the given UI language (English by default)."""
+    language = str(ui_language or "").strip().lower()
+    if language == "es":
+        return "CVLaTeX — Editor de CV"
+    if language == "zh":
+        return "CVLaTeX — 简历编辑器"
+    if language == "ru":
+        return "CVLaTeX — Редактор резюме"
+    return "CVLaTeX — CV Editor"
+
+AUTOSAVE_FILE = "autosave.cvjson"
+CACHE_MAX_AGE_DAYS = 30
+MEDIA_EXTS = (".jpg", ".jpeg", ".png")
+MEDIA_FIELDS = ("photo", "photo_original", "photo_crop", "school_logo")
+LOGO_FIELDS = ("work", "internships", "projects", "university_projects", "education")
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
 
-    def _servir(self, ruta, descargar=False):
+    def _serve(self, path):
         try:
-            if not os.path.isfile(ruta):
+            if not os.path.isfile(path):
                 self.send_error(404)
                 return
-            tipo, _ = mimetypes.guess_type(ruta)
-            if tipo is None:
-                tipo = "application/octet-stream"
-            with open(ruta, "rb") as f:
-                datos = f.read()
+            content_type, _ = mimetypes.guess_type(path)
+            if content_type is None:
+                content_type = "application/octet-stream"
+            with open(path, "rb") as f:
+                content = f.read()
             self.send_response(200)
-            self.send_header("Content-Type", tipo)
-            if descargar:
-                self.send_header(
-                    "Content-Disposition",
-                    'attachment; filename="%s"' % os.path.basename(ruta),
-                )
-            self.send_header("Content-Length", str(len(datos)))
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(datos)
+            self.wfile.write(content)
         except (OSError, ConnectionError):
             pass
 
-    def _ruta_sin_query(self):
+    def _request_path(self):
         from urllib.parse import urlsplit
 
         return urlsplit(self.path).path
 
-    def _sin_contenido(self):
+    def _no_content(self):
         self.send_response(204)
         self.end_headers()
 
-    def _servir_seguro(self, base, relativo):
-        """Sirve un fichero contenido en base; si la ruta escapa, devuelve 404."""
+    def _serve_within(self, base, relative):
+        """Serve a file contained in `base`; a path escaping it returns 404."""
         try:
-            base_real = os.path.realpath(base)
-            objetivo = os.path.realpath(os.path.join(base_real, relativo))
-            if os.path.commonpath([os.path.normcase(base_real), os.path.normcase(objetivo)]) != os.path.normcase(base_real):
+            real_base = os.path.realpath(base)
+            target = os.path.realpath(os.path.join(real_base, relative))
+            if os.path.commonpath([os.path.normcase(real_base), os.path.normcase(target)]) != os.path.normcase(real_base):
                 self.send_error(404)
                 return
         except ValueError:
             self.send_error(404)
             return
-        self._servir(objetivo)
+        self._serve(target)
 
     def do_GET(self):
-        ruta = self._ruta_sin_query()
-        if ruta in ("/", "/index.html"):
-            self._servir(os.path.join(WEB_DIR, "index.html"))
-        elif ruta in RUTAS:
-            self._servir(RUTAS[ruta])
-        elif ruta.startswith("/preview/"):
-            self._servir_seguro(prefs.BUILD_DIR, ruta[len("/preview/"):])
-        elif ruta.startswith("/media/"):
-            self._servir_seguro(prefs.CACHE_DIR, ruta[len("/media/"):])
-        elif ruta == "/favicon.ico":
-            self._sin_contenido()
+        path = self._request_path()
+        if path in ("/", "/index.html"):
+            self._serve(os.path.join(WEB_DIR, "index.html"))
+        elif path in ROUTES:
+            self._serve(ROUTES[path])
+        elif path.startswith("/preview/"):
+            self._serve_within(prefs.BUILD_DIR, path[len("/preview/"):])
+        elif path.startswith("/media/"):
+            self._serve_within(prefs.CACHE_DIR, path[len("/media/"):])
+        elif path == "/favicon.ico":
+            self._no_content()
         else:
             self.send_error(404)
 
@@ -95,681 +118,1188 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Api:
     def __init__(self, win):
         self._w = win
+        self._dirty = False
+        self._force_close = False
+        self._cancel_event = None
+        self._media_cache = {}
+        self._last_tex = None
+        self._last_result = None
 
-    def init(self):
-        prefs.load()
-        ruta_latex = latex_engine.find_pdflatex()
-        return {
-            "prefs": prefs.load(),
-            "latex_ok": ruta_latex is not None,
-            "needs_setup": ruta_latex is None and not prefs.get("setup_dismissed"),
-        }
-
-    def _empujar(self, nombre, datos):
+    def _push(self, name, data):
         try:
             self._w.evaluate_js(
-                "window.%s(%s);" % (nombre, json.dumps(datos, ensure_ascii=False))
+                "window.%s(%s);" % (name, json.dumps(data, ensure_ascii=False))
             )
         except Exception:
             pass
 
-    def compile(self, datos, id_compilacion):
-        threading.Thread(target=self._compilar_en_hilo, args=(datos, id_compilacion), daemon=True).start()
+    # ------------------------------------------------------------- window
+
+    def set_dirty(self, flag):
+        """Track whether the form has unsaved changes (close guard)."""
+        self._dirty = bool(flag)
+        return {"ok": True}
+
+    def quit_app(self):
+        """Force-close the window, bypassing the dirty close guard."""
+        self._force_close = True
+        try:
+            self._w.destroy()
+        except Exception:
+            pass
+        return {"ok": True}
+
+    def _on_closing(self):
+        """Window `closing` handler: hold the window open while dirty.
+
+        Returning False cancels the close and asks the UI through
+        `window.__onCloseRequest`; the UI then saves, exits without saving or
+        cancels. Never call `evaluate_js` synchronously here: this handler runs
+        inside WinForms `FormClosing` on the UI thread, and `evaluate_js` would
+        block waiting for a JS result that needs that same UI thread
+        (deadlock). The request is pushed from a daemon thread while the close
+        is cancelled immediately.
+        """
+        if self._force_close or not self._dirty:
+            return True
+        threading.Thread(
+            target=self._push, args=("__onCloseRequest", {}), daemon=True
+        ).start()
+        return False
+
+    # ------------------------------------------------------------ compile
+
+    def compile(self, data, compile_id):
+        threading.Thread(target=self._compile_thread, args=(data, compile_id), daemon=True).start()
         return "ok"
 
-    def _compilar_en_hilo(self, datos, id_compilacion):
+    def _compile_thread(self, data, compile_id):
         try:
-            tex = latex_gen.build_tex(datos, prefs.load())
-            resultado = latex_engine.compile(tex, datos.get("foto"), latex_gen.logos_extra(datos))
-            resultado["tex"] = tex
+            tex = latex_gen.build_tex(data, prefs.load())
+            result = self._cached_result(tex)
+            if result is None:
+                result = latex_engine.compile(tex, data.get("photo"), latex_gen.extra_logos(data))
+                self._remember_success(tex, result)
+            result["tex"] = tex
         except Exception as e:
-            resultado = {"ok": False, "pdf": None, "errores": [f"Error interno: {e}"]}
-        resultado["id"] = id_compilacion
-        self._empujar("__onCompile", resultado)
+            result = {"ok": False, "pdf": None, "errores": [messages.t("internal_error").format(error=e)]}
+        result["id"] = compile_id
+        self._push("__onCompile", result)
 
-    def compilar_tex(self, tex, id_compilacion, datos=None):
-        threading.Thread(target=self._compilar_tex_hilo, args=(tex, id_compilacion, datos), daemon=True).start()
+    def compile_tex(self, tex, compile_id, data=None):
+        threading.Thread(target=self._compile_tex_thread, args=(tex, compile_id, data), daemon=True).start()
         return "ok"
 
-    def _compilar_tex_hilo(self, tex, id_compilacion, datos=None):
+    def _compile_tex_thread(self, tex, compile_id, data=None):
         try:
-            resultado = latex_engine.compile(
-                tex,
-                datos.get("foto") if datos else None,
-                latex_gen.logos_extra(datos) if datos else None,
-            )
+            result = self._cached_result(tex)
+            if result is None:
+                result = latex_engine.compile(
+                    tex,
+                    data.get("photo") if data else None,
+                    latex_gen.extra_logos(data) if data else None,
+                )
+                self._remember_success(tex, result)
         except Exception as e:
-            resultado = {"ok": False, "pdf": None, "errores": [f"Error interno: {e}"]}
-        resultado["id"] = id_compilacion
-        resultado["tex"] = tex
-        self._empujar("__onCompile", resultado)
+            result = {"ok": False, "pdf": None, "errores": [messages.t("internal_error").format(error=e)]}
+        result["id"] = compile_id
+        result["tex"] = tex
+        self._push("__onCompile", result)
 
-    def datos_vacios(self):
-        return latex_gen.datos_vacios()
+    def _cached_result(self, tex):
+        """Return the successful result for an identical tex whose pdf exists."""
+        result = self._last_result
+        if (
+            self._last_tex == tex
+            and isinstance(result, dict)
+            and result.get("ok")
+            and result.get("pdf")
+            and os.path.isfile(result["pdf"])
+        ):
+            return dict(result)
+        return None
 
-    def cargar_ejemplo(self, plantilla=None):
+    def _remember_success(self, tex, result):
+        """Keep the last successful tex/result pair for the skip-recompile."""
+        if isinstance(result, dict) and result.get("ok"):
+            self._last_tex = tex
+            self._last_result = {
+                "ok": True,
+                "pdf": result.get("pdf"),
+                "errores": list(result.get("errores") or []),
+            }
+
+    # --------------------------------------------------------------- data
+
+    def init(self):
+        prefs.load()
+        latex_path = latex_engine.find_pdflatex()
+        return {
+            "prefs": prefs.load(),
+            "latex_ok": latex_path is not None,
+            "needs_setup": latex_path is None and not prefs.get("setup_dismissed"),
+        }
+
+    def empty_data(self):
+        return latex_gen.empty_data()
+
+    def load_sample(self, template=None):
         try:
             import ejemplo
 
-            p = str(plantilla or "clasico").strip().lower()
-            if p not in latex_gen.PLANTILLAS:
-                p = "clasico"
-            d = ejemplo.datos_ejemplo_cn() if p == "chino" else ejemplo.datos_ejemplo()
-            d["plantilla"] = p
-            return {"ok": True, "datos": d}
+            name = str(template or "classic").strip().lower()
+            if name not in latex_gen.TEMPLATES:
+                name = "classic"
+            data = ejemplo.sample_data_zh() if name == "chinese" else ejemplo.sample_data()
+            data["template"] = name
+            return {"ok": True, "datos": data}
         except Exception as e:
-            return {"ok": False, "errores": [str(e)]}
+            return {"ok": False, "errores": [messages.t("internal_error").format(error=e)]}
 
-    def colores_plantilla(self, plantilla=None):
-        """Colores acento definidos por la plantilla indicada (o clasico)."""
+    def template_colors(self, template=None):
+        """Accent colors defined by the given template (classic by default)."""
         try:
-            p = str(plantilla or "clasico").strip().lower()
-            if p not in latex_gen.PLANTILLAS:
-                p = "clasico"
-            ruta = os.path.join(latex_gen.BASE_DIR, "templates", latex_gen.ARCHIVOS[p])
-            with open(ruta, "r", encoding="utf-8") as f:
+            name = str(template or "classic").strip().lower()
+            if name not in latex_gen.TEMPLATES:
+                name = "classic"
+            path = os.path.join(latex_gen.BASE_DIR, "templates", latex_gen.TEMPLATE_FILES[name])
+            with open(path, "r", encoding="utf-8") as f:
                 tex = f.read()
-            return {"ok": True, "colores": latex_gen.colores_de_plantilla(tex)}
+            return {"ok": True, "colores": latex_gen.template_colors(tex)}
         except Exception as e:
-            return {"ok": False, "errores": [str(e)]}
+            return {"ok": False, "errores": [messages.t("internal_error").format(error=e)]}
 
-    def elegir_archivo(self, tipos, guardar, nombre_sugerido):
-        if guardar:
-            ruta = self._w.create_file_dialog(
-                webview.FileDialog.SAVE, save_filename=nombre_sugerido, file_types=tipos
+    # -------------------------------------------------------------- files
+
+    def choose_file(self, file_types, save, suggested_name):
+        if save:
+            path = self._w.create_file_dialog(
+                webview.FileDialog.SAVE, save_filename=suggested_name, file_types=file_types
             )
         else:
-            ruta = self._w.create_file_dialog(
-                webview.FileDialog.OPEN, file_types=tipos
+            path = self._w.create_file_dialog(
+                webview.FileDialog.OPEN, file_types=file_types
             )
-        if isinstance(ruta, (list, tuple)):
-            ruta = ruta[0] if ruta else None
-        return ruta
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        return path
 
-    def elegir_foto(self, tipo=None):
-        tipo = "logo" if str(tipo or "").strip().lower() == "logo" else "foto"
-        ruta = self.elegir_archivo(("Imágenes (*.jpg;*.jpeg;*.png)",), False, None)
-        if not ruta:
+    def choose_photo(self, kind=None):
+        prefix = "logo" if str(kind or "").strip().lower() == "logo" else "foto"
+        path = self.choose_file(("Imágenes (*.jpg;*.jpeg;*.png)",), False, None)
+        if not path:
             return {"ok": False}
         try:
-            ext = os.path.splitext(ruta)[1].lower()
-            if ext not in latex_engine.FOTOS_PERMITIDAS:
-                return {"ok": False, "error": "Formato no admitido (usa JPG o PNG)."}
+            ext = os.path.splitext(path)[1].lower()
+            if ext not in latex_engine.ALLOWED_PHOTOS:
+                return {"ok": False, "error": messages.t("export_bad_format")}
             os.makedirs(prefs.CACHE_DIR, exist_ok=True)
-            nombre = "%s_%s%s" % (tipo, uuid.uuid4().hex, ext)
-            destino = os.path.join(prefs.CACHE_DIR, nombre)
-            shutil.copy2(ruta, destino)
-            return {"ok": True, "path": destino, "url": "/media/" + nombre}
+            name = "%s_%s%s" % (prefix, uuid.uuid4().hex, ext)
+            destination = os.path.join(prefs.CACHE_DIR, name)
+            shutil.copy2(path, destination)
+            return {"ok": True, "path": destination, "url": "/media/" + name}
         except OSError as e:
             return {"ok": False, "error": str(e)}
 
-    def guardar_foto_recorte(self, data_url):
-        try:
-            datos_img = base64.b64decode(data_url.split(",", 1)[1])
-            os.makedirs(prefs.CACHE_DIR, exist_ok=True)
-            nombre = "recorte_%s.png" % uuid.uuid4().hex
-            destino = os.path.join(prefs.CACHE_DIR, nombre)
-            with open(destino, "wb") as f:
-                f.write(datos_img)
-            return {"ok": True, "path": destino, "url": "/media/" + nombre}
-        except Exception as e:
-            return {"ok": False, "error": f"No se pudo guardar el recorte: {e}"}
+    def save_image(self, data_url, kind=None):
+        """Save an image sent as a base64 PNG/JPEG data URL.
 
-    def guardar_imagen(self, data_url, tipo=None):
-        """Guarda una imagen enviada como data URL base64 PNG/JPEG.
-
-        Acepta solo cabeceras ``data:image/png;base64,`` y
-        ``data:image/jpeg;base64,`` con base64 estricto. El prefijo del
-        fichero es ``foto`` salvo que ``tipo`` sea logo o recorte.
+        Accepts only ``data:image/png;base64,`` and ``data:image/jpeg;base64,``
+        headers with strict base64. The file prefix is ``foto`` unless ``kind``
+        is logo or recorte.
         """
         try:
             if not isinstance(data_url, str):
-                raise ValueError("data URL no válida.")
-            coincidencia = re.fullmatch(
+                raise ValueError(messages.t("image_invalid_data_url"))
+            match = re.fullmatch(
                 r"data:(image/(?:png|jpeg));base64,([A-Za-z0-9+/]*={0,2})",
                 data_url,
             )
-            if coincidencia is None:
-                raise ValueError("data URL no válida o MIME no admitido (usa PNG o JPEG).")
-            mime, b64 = coincidencia.group(1), coincidencia.group(2)
-            datos_img = base64.b64decode(b64, validate=True)
-            if not datos_img:
-                raise ValueError("la imagen está vacía.")
-            prefijo = tipo if tipo in ("foto", "logo", "recorte") else "foto"
+            if match is None:
+                raise ValueError(messages.t("image_invalid_mime"))
+            mime, b64 = match.group(1), match.group(2)
+            image_bytes = base64.b64decode(b64, validate=True)
+            if not image_bytes:
+                raise ValueError(messages.t("image_empty"))
+            prefix = kind if kind in ("foto", "logo", "recorte") else "foto"
             ext = ".png" if mime == "image/png" else ".jpg"
             os.makedirs(prefs.CACHE_DIR, exist_ok=True)
-            nombre = "%s_%s%s" % (prefijo, uuid.uuid4().hex, ext)
-            destino = os.path.join(prefs.CACHE_DIR, nombre)
-            with open(destino, "wb") as f:
-                f.write(datos_img)
-            return {"ok": True, "path": destino, "url": "/media/" + nombre}
+            name = "%s_%s%s" % (prefix, uuid.uuid4().hex, ext)
+            destination = os.path.join(prefs.CACHE_DIR, name)
+            with open(destination, "wb") as f:
+                f.write(image_bytes)
+            return {"ok": True, "path": destination, "url": "/media/" + name}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def exportar_pdf(self, datos, tex_manual=None):
+    def export_pdf(self, data, manual_tex=None):
         try:
-            if tex_manual:
-                # El bloque incrustado se refresca siempre desde los datos,
-                # aunque el usuario compile su propio .tex.
-                tex = tex_datos.incrustar(tex_manual, datos)
-                foto = None
+            if manual_tex:
+                # The embedded data block is always refreshed from the data,
+                # even when the user compiles their own .tex.
+                tex = tex_datos.embed(manual_tex, data)
+                photo = None
                 extras = None
             else:
-                tex = latex_gen.build_tex(datos, prefs.load())
-                foto = datos.get("foto")
-                extras = latex_gen.logos_extra(datos)
-            resultado = latex_engine.compile(tex, foto, extras)
-            if not resultado["ok"]:
-                return {"ok": False, "errores": resultado["errores"]}
-            sugerido = "CV.pdf"
-            if datos.get("nombre"):
-                sugerido = "CV-%s.pdf" % datos["nombre"].strip().replace(" ", "_")
-            ruta = self.elegir_archivo(("PDF (*.pdf)",), True, sugerido)
-            if not ruta:
+                tex = latex_gen.build_tex(data, prefs.load())
+                photo = data.get("photo")
+                extras = latex_gen.extra_logos(data)
+            result = latex_engine.compile(tex, photo, extras)
+            if not result["ok"]:
+                return {"ok": False, "errores": result["errores"]}
+            suggested = "CV.pdf"
+            if data.get("name"):
+                suggested = "CV-%s.pdf" % data["name"].strip().replace(" ", "_")
+            path = self.choose_file(("PDF (*.pdf)",), True, suggested)
+            if not path:
                 return {"ok": False, "cancelado": True}
-            shutil.copy2(resultado["pdf"], ruta)
-            return {"ok": True, "ruta": ruta}
+            shutil.copy2(result["pdf"], path)
+            return {"ok": True, "ruta": path}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def exportar_tex(self, datos, tex_manual=None):
+    def export_tex(self, data, manual_tex=None):
         try:
-            tex = tex_manual if tex_manual else latex_gen.build_tex(datos, prefs.load())
-            # Refresca el bloque de datos aunque exista un tex_manual.
-            tex = tex_datos.incrustar(tex, datos)
-            sugerido = "CV.tex"
-            if datos.get("nombre"):
-                sugerido = "CV-%s.tex" % datos["nombre"].strip().replace(" ", "_")
-            ruta = self.elegir_archivo(("LaTeX (*.tex)",), True, sugerido)
-            if not ruta:
+            tex = manual_tex if manual_tex else latex_gen.build_tex(data, prefs.load())
+            # Refresh the data block even when there is a manual tex.
+            tex = tex_datos.embed(tex, data)
+            suggested = "CV.tex"
+            if data.get("name"):
+                suggested = "CV-%s.tex" % data["name"].strip().replace(" ", "_")
+            path = self.choose_file(("LaTeX (*.tex)",), True, suggested)
+            if not path:
                 return {"ok": False, "cancelado": True}
-            with open(ruta, "w", encoding="utf-8") as f:
+            with open(path, "w", encoding="utf-8") as f:
                 f.write(tex)
-            return {"ok": True, "ruta": ruta}
+            return {"ok": True, "ruta": path}
         except OSError as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def exportar_docx(self, datos):
+    def export_docx(self, data):
         try:
-            sugerido = "CV.docx"
-            if datos.get("nombre"):
-                sugerido = "CV-%s.docx" % datos["nombre"].strip().replace(" ", "_")
-            ruta = self.elegir_archivo(("Word (*.docx)",), True, sugerido)
-            if not ruta:
+            suggested = "CV.docx"
+            if data.get("name"):
+                suggested = "CV-%s.docx" % data["name"].strip().replace(" ", "_")
+            path = self.choose_file(("Word (*.docx)",), True, suggested)
+            if not path:
                 return {"ok": False, "cancelado": True}
-            # docx_gen no depende de LaTeX ni de pywebview.
-            docx_gen.exportar(datos, prefs.load(), ruta)
-            return {"ok": True, "ruta": ruta}
+            # docx_gen does not depend on LaTeX nor pywebview.
+            docx_gen.export(data, prefs.load(), path)
+            return {"ok": True, "ruta": path}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def exportar_cv(self, datos):
+    def export_cv(self, data, path=None):
         try:
-            sugerido = "mi_cv.cvjson"
-            if datos.get("nombre"):
-                sugerido = "%s.cvjson" % datos["nombre"].strip().replace(" ", "_")
-            ruta = self.elegir_archivo(("CVLaTeX (*.cvjson)",), True, sugerido)
-            if not ruta:
-                return {"ok": False, "cancelado": True}
-            contenido = {"version": 2, "datos": datos, "medios": _recolectar_medios(datos)}
-            with open(ruta, "w", encoding="utf-8") as f:
-                json.dump(contenido, f, ensure_ascii=False, indent=2)
-            return {"ok": True, "ruta": ruta}
+            if isinstance(path, str) and path:
+                # Direct save (used by the close guard): no file dialog.
+                target = path
+            else:
+                suggested = "mi_cv.cvjson"
+                if data.get("name"):
+                    suggested = "%s.cvjson" % data["name"].strip().replace(" ", "_")
+                target = self.choose_file(("CVLaTeX (*.cvjson)",), True, suggested)
+                if not target:
+                    return {"ok": False, "cancelado": True}
+            content = {
+                "version": 3,
+                "data": data,
+                "media": collect_media(data, self._media_cache),
+            }
+            with open(target, "w", encoding="utf-8") as f:
+                json.dump(content, f, ensure_ascii=False, indent=2)
+            return {"ok": True, "ruta": target}
         except OSError as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def abrir_cv(self):
-        ruta = self.elegir_archivo(("CVLaTeX (*.cvjson)",), False, None)
-        if not ruta:
+    def open_cv(self):
+        path = self.choose_file(("CVLaTeX (*.cvjson)",), False, None)
+        if not path:
             return {"ok": False, "cancelado": True}
         try:
-            with open(ruta, "r", encoding="utf-8") as f:
-                contenido = json.load(f)
-            datos = contenido.get("datos") if isinstance(contenido, dict) else None
-            if not isinstance(datos, dict):
-                return {"ok": False, "errores": ["Archivo no válido."]}
+            with open(path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+            data, media = read_cvjson(content, path)
+            if data is None:
+                return {"ok": False, "errores": [messages.t("open_invalid_file")]}
             try:
-                datos = _migrar_datos(datos)
+                data = migrate_data(data)
             except Exception as e:
-                return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
-            if isinstance(contenido, dict) and contenido.get("version") == 2:
-                datos = _materializar_medios(datos, contenido.get("medios"))
-            # Rellene solo las claves ausentes. Si el valor por defecto es None
-            # (p. ej. foto_recorte), no se comprueba el tipo: un rectángulo dict
-            # válido debe sobrevivir; el None solo se aplica si falta la clave.
-            vacios = latex_gen.datos_vacios()
-            for k, por_defecto in vacios.items():
-                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
-                    datos[k] = por_defecto
-            return {"ok": True, "datos": datos, "ruta": ruta}
+                return {"ok": False, "errores": [messages.t("open_failed").format(error=e)]}
+            data = materialize_media(data, media)
+            fill_defaults(data)
+            return {"ok": True, "datos": data, "ruta": path}
         except (OSError, UnicodeDecodeError, ValueError) as e:
-            return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
+            return {"ok": False, "errores": [messages.t("open_failed").format(error=e)]}
 
-    def autosave(self, datos):
+    # ----------------------------------------------------------- autosave
+
+    def autosave(self, data):
         try:
             os.makedirs(prefs.APP_DIR, exist_ok=True)
-            contenido = {"version": 2, "datos": datos, "medios": _recolectar_medios(datos)}
-            with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "w", encoding="utf-8") as f:
-                json.dump(contenido, f, ensure_ascii=False)
+            content = {
+                "version": 3,
+                "data": data,
+                "media": collect_media(data, self._media_cache),
+            }
+            with open(os.path.join(prefs.APP_DIR, AUTOSAVE_FILE), "w", encoding="utf-8") as f:
+                json.dump(content, f, ensure_ascii=False)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def autosave_leer(self):
-        """Devuelve los datos del autosave listos para el formulario, o None.
+    def autosave_read(self):
+        """Return the autosave data ready for the form, or None.
 
-        Espeja la semantica de `abrir_cv`: migra los datos, materializa los
-        medios incrustados de un autosave v2 en CACHE_DIR y rellena las claves
-        ausentes del esquema. El frontend recibe datos planos, nunca el sobre
-        {version, datos, medios}. Nunca lanza: si el fichero no existe, esta
-        corrupto o no contiene datos, devuelve None.
+        Mirrors `open_cv`: migrates the data, materializes the embedded media
+        of a v2/v3 envelope into CACHE_DIR and fills the missing schema keys.
+        The frontend receives plain data, never the {version, data, media}
+        envelope. Never raises: a missing, corrupt or unusable file returns
+        None.
         """
         try:
-            with open(os.path.join(prefs.APP_DIR, "autosave.cvjson"), "r", encoding="utf-8") as f:
-                contenido = json.load(f)
-            if not isinstance(contenido, dict):
+            with open(os.path.join(prefs.APP_DIR, AUTOSAVE_FILE), "r", encoding="utf-8") as f:
+                content = json.load(f)
+            if not isinstance(content, dict):
                 return None
-            if contenido.get("version") == 2:
-                datos = contenido.get("datos")
+            version = content.get("version")
+            if version == 3:
+                data, media = content.get("data"), content.get("media")
+            elif version == 2:
+                data, media = content.get("datos"), content.get("medios")
+            elif "datos" in content:
+                # v1 envelope without embedded media.
+                data, media = content.get("datos"), None
             else:
-                # Autosave antiguo: el JSON era directamente el dict de datos.
-                datos = contenido
-            if not isinstance(datos, dict):
+                # Old autosave: the JSON was the data dict itself.
+                data, media = content, None
+            if not isinstance(data, dict):
                 return None
-            datos = _migrar_datos(datos)
-            if contenido.get("version") == 2:
-                datos = _materializar_medios(datos, contenido.get("medios"))
-            # Rellene solo las claves ausentes, igual que abrir_cv. Si el valor
-            # por defecto es None (p. ej. foto_recorte), no se comprueba el
-            # tipo: un rectangulo dict valido debe sobrevivir.
-            vacios = latex_gen.datos_vacios()
-            for k, por_defecto in vacios.items():
-                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
-                    datos[k] = por_defecto
-            return datos
+            data = migrate_data(data)
+            data = materialize_media(data, media)
+            return fill_defaults(data)
         except Exception:
             return None
 
-    def autosave_borrar(self):
+    def autosave_clear(self):
         try:
-            ruta = os.path.join(prefs.APP_DIR, "autosave.cvjson")
-            if os.path.isfile(ruta):
-                os.remove(ruta)
+            path = os.path.join(prefs.APP_DIR, AUTOSAVE_FILE)
+            if os.path.isfile(path):
+                os.remove(path)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
 
-    def importar_tex(self):
-        ruta = self.elegir_archivo(("LaTeX (*.tex)",), False, None)
-        if not ruta:
+    # ------------------------------------------------------------ LaTeX
+
+    def import_tex(self):
+        path = self.choose_file(("LaTeX (*.tex)",), False, None)
+        if not path:
             return {"ok": False, "cancelado": True}
         try:
-            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 tex = f.read()
             try:
-                datos = tex_datos.extraer(tex)
-            except tex_datos.SinBloqueDatos:
+                data = tex_datos.extract(tex)
+            except tex_datos.MissingDataBlock:
                 if "CVLaTeX" in tex:
-                    msg = (
-                        "Este .tex fue generado por una versión anterior de CVLaTeX sin datos incrustados: "
-                        "no se puede reimportar. Vuelve a generarlo con la versión actual."
-                    )
+                    msg = messages.t("import_no_data")
                 else:
-                    msg = (
-                        "Esta plantilla no tiene buena compatibilidad con la aplicación. "
-                        "Se recomienda buscar otra plantilla."
-                    )
+                    msg = messages.t("import_incompatible")
                 return {"ok": False, "errores": [msg]}
-            except tex_datos.BloqueDatosInvalido:
-                return {"ok": False, "errores": ["El bloque de datos de CVLaTeX está dañado y no se puede reimportar."]}
+            except tex_datos.InvalidDataBlock:
+                return {"ok": False, "errores": [messages.t("import_damaged")]}
             try:
-                datos = _migrar_datos(datos)
+                data = migrate_data(data)
             except Exception as e:
-                return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
-            # Rellene solo las claves ausentes. Si el valor por defecto es None
-            # (p. ej. foto_recorte), no se comprueba el tipo: un rectángulo dict
-            # válido debe sobrevivir; el None solo se aplica si falta la clave.
-            vacios = latex_gen.datos_vacios()
-            for k, por_defecto in vacios.items():
-                if k not in datos or (por_defecto is not None and not isinstance(datos[k], type(por_defecto))):
-                    datos[k] = por_defecto
-            if datos.get("plantilla") not in latex_gen.PLANTILLAS:
-                datos["plantilla"] = "clasico"
-            return {"ok": True, "datos": datos, "ruta": ruta}
+                return {"ok": False, "errores": [messages.t("open_failed").format(error=e)]}
+            fill_defaults(data)
+            if data.get("template") not in latex_gen.TEMPLATES:
+                data["template"] = "classic"
+            return {"ok": True, "datos": data, "ruta": path}
         except (OSError, UnicodeDecodeError, ValueError) as e:
-            return {"ok": False, "errores": [f"No se pudo abrir: {e}"]}
+            return {"ok": False, "errores": [messages.t("open_failed").format(error=e)]}
 
     def install_latex(self):
-        threading.Thread(target=self._instalar_hilo, daemon=True).start()
+        self._cancel_event = threading.Event()
+        cancel_event = self._cancel_event
+        threading.Thread(target=self._install_thread, args=(cancel_event,), daemon=True).start()
         return "ok"
 
-    def _instalar_hilo(self):
-        def progreso(hecho, total):
-            self._empujar("__onInstallProgress", {"hecho": hecho, "total": total})
+    def cancel_install(self):
+        """Abort the in-flight TinyTeX install, if any."""
+        cancel_event = self._cancel_event
+        if cancel_event is None:
+            return {"ok": False, "cancelado": True}
+        cancel_event.set()
+        return {"ok": True}
+
+    def _install_thread(self, cancel_event):
+        def progress(done, total):
+            self._push("__onInstallProgress", {"hecho": done, "total": total})
 
         try:
-            padre = latex_engine.install_tinytex(progreso)
-            self._empujar("__onInstallDone", {"ok": True, "msg": "TinyTeX instalado correctamente.", "path": padre})
-        except latex_engine.ErrorLatex as e:
-            self._empujar("__onInstallDone", {"ok": False, "msg": str(e)})
+            path = latex_engine.install_tinytex(progress, cancel_event)
+            self._push("__onInstallDone", {"ok": True, "msg": messages.t("install_done"), "path": path})
+        except latex_engine.LatexError as e:
+            self._push("__onInstallDone", {"ok": False, "msg": str(e)})
         except Exception as e:
-            self._empujar("__onInstallDone", {"ok": False, "msg": f"Error inesperado: {e}"})
+            self._push("__onInstallDone", {"ok": False, "msg": messages.t("install_unexpected_error").format(error=e)})
+        finally:
+            if self._cancel_event is cancel_event:
+                self._cancel_event = None
 
-    def elegir_ruta_latex(self):
-        ruta = self.elegir_archivo(("pdflatex.exe",), False, None)
-        if not ruta:
+    def choose_latex_path(self):
+        path = self.choose_file(("pdflatex.exe",), False, None)
+        if not path:
             return {"ok": False, "cancelado": True}
-        prefs.set("latex_path", ruta)
-        return {"ok": True, "path": ruta}
+        prefs.set("latex_path", path)
+        return {"ok": True, "path": path}
 
-    def comprobar_latex(self):
-        p = latex_engine.find_pdflatex()
-        return {"ok": p is not None, "path": p}
+    def check_latex(self):
+        path = latex_engine.find_pdflatex()
+        return {"ok": path is not None, "path": path}
 
-    def set_prefs(self, clave, valor):
-        prefs.set(clave, valor)
+    # ------------------------------------------------------------ prefs
+
+    def set_prefs(self, key, value):
+        prefs.set(key, value)
+        if key == "ui_language":
+            # Keep the native window title in sync; never fail the bridge call
+            # when the window is not available (e.g. tests).
+            try:
+                self._w.set_title(window_title(value))
+            except Exception:
+                pass
         return prefs.load()
 
     def get_prefs(self):
         return prefs.load()
 
-    def marcar_setup_ignorado(self):
+    def dismiss_setup(self):
         prefs.set("setup_dismissed", True)
 
 
-MEDIA_EXTS = (".jpg", ".jpeg", ".png")
-CAMPOS_MEDIA = ("foto", "foto_original", "foto_recorte", "logo_egresado")
-CAMPOS_LOGO = ("trabajo", "pasantia", "proyectos", "proyectosu", "educacion")
-
-
-def _texto_bloque(valor):
-    """Convierte a texto sin lanzar (los valores hostiles caen a "")."""
+def _block_text(value):
+    """Convert to text without raising (hostile values fall back to "")."""
     try:
-        return "" if valor is None else str(valor)
+        return "" if value is None else str(value)
     except Exception:
         return ""
 
 
-def _sanear_bloques(bloques):
-    """Normaliza la lista de bloques libres; nunca lanza.
+# Data key renames (legacy Spanish keys -> canonical English keys).
+_DATA_RENAMES = {
+    "idioma_cv": "cv_language",
+    "plantilla": "template",
+    "nombre": "name",
+    "profesion": "profession",
+    "telefono": "phone",
+    "direccion": "address",
+    "web": "website",
+    "nacimiento": "birth_date",
+    "nacionalidad": "nationality",
+    "datos_extra": "extra_fields",
+    "foto": "photo",
+    "foto_original": "photo_original",
+    "foto_recorte": "photo_crop",
+    "foto_ancho_cm": "photo_width_cm",
+    "foto_alto_cm": "photo_height_cm",
+    "institucion_egresado": "school_name",
+    "logo_egresado": "school_logo",
+    "logo_egresado_ancho_cm": "school_logo_width_cm",
+    "logo_egresado_alto_cm": "school_logo_height_cm",
+    "perfil": "summary",
+    "trabajo": "work",
+    "pasantia": "internships",
+    "proyectos": "projects",
+    "proyectosu": "university_projects",
+    "educacion": "education",
+    "habilidades": "skills",
+    "idiomas": "languages",
+    "referencias": "references",
+    "bloques": "blocks",
+    "titulos_seccion": "section_titles",
+    "secciones_ocultas": "hidden_sections",
+    "orden_secciones": "section_order",
+    "columnas": "columns",
+}
 
-    Descarta entradas que no sean dict o con un ``tipo`` desconocido,
-    completa ``estilo``/``posicion``/``id``, garantiza ids únicos y
-    reconstruye cada bloque solo con las claves canónicas de su tipo.
+# Renames inside each entry list (the remaining keys are preserved).
+_ENTRY_RENAMES = {
+    "work": {
+        "modalidad": "work_mode", "puesto": "position", "empresa": "company",
+        "desde": "start", "hasta": "end", "logros": "achievements",
+    },
+    "internships": {
+        "modalidad": "work_mode", "puesto": "position", "empresa": "company",
+        "desde": "start", "hasta": "end", "logros": "achievements",
+    },
+    "education": {
+        "tipo": "degree_type", "titulo": "degree", "institucion": "institution",
+        "desde": "start", "hasta": "end", "nota": "grade",
+    },
+    "projects": {
+        "nombre": "name", "organizacion": "organization", "asignatura": "course",
+        "desde": "start", "hasta": "end", "descripcion": "description",
+        "resultado": "result", "enlace": "link",
+    },
+    "university_projects": {
+        "nombre": "name", "organizacion": "organization", "asignatura": "course",
+        "desde": "start", "hasta": "end", "descripcion": "description",
+        "resultado": "result", "enlace": "link",
+    },
+    "skills": {"categoria": "category", "valores": "values"},
+    "languages": {"idioma": "language", "nivel": "level"},
+    "references": {"nombre": "name", "contacto": "contact"},
+    "extra_fields": {"etiqueta": "label", "valor": "value"},
+}
+
+# Canonical select values; unknown values pass through (free text).
+_TEMPLATE_VALUES = {
+    "clasico": "classic", "moderno": "modern",
+    "creativo": "creative", "chino": "chinese",
+}
+_WORK_MODES = {"Presencial": "onsite", "Híbrido": "hybrid", "Remoto": "remote"}
+_DEGREE_TYPES = {
+    "Primaria": "primary",
+    "Secundaria (ESO)": "secondary",
+    "Bachillerato": "high_school",
+    "FP Grado Medio": "vocational_mid",
+    "FP Grado Superior": "vocational_high",
+    "Grado Universitario": "bachelor",
+    "Ingeniería": "engineering",
+    "Licenciatura": "licentiate",
+    "Diplomatura": "diploma",
+    "Arquitectura": "architecture",
+    "Máster": "master",
+    "Doctorado (PhD)": "phd",
+    "Posgrado / Especialización": "postgraduate",
+    "Curso / Certificación": "course",
+    "Otro": "other",
+}
+
+# Legacy section keys -> canonical keys (LANG, anchors and columns).
+_SECTION_RENAMES = {
+    "perfil": "summary",
+    "educacion": "education",
+    "proyectos": "projects",
+    "proyectosu": "university_projects",
+    "pasantia": "internships",
+    "trabajo": "work",
+    "habilidades": "skills",
+    "idiomas": "languages",
+    "referencias": "references",
+}
+
+# Blocks: legacy keys and values -> canonical.
+_BLOCK_RENAMES = {
+    "tipo": "type", "estilo": "style", "posicion": "position", "titulo": "title",
+    "contenido": "content", "modo": "mode", "columnas": "columns",
+    "entradas": "entries",
+}
+_BLOCK_TYPE_ALIASES = {"separador": "separator", "seccion": "section", "listado": "list"}
+_BLOCK_STYLES = {"linea": "line", "banda": "band", "espacio": "space"}
+_BLOCK_MODES = {"columnas": "columns", "periodo": "period"}
+_BLOCK_ANCHOR_ALIASES = dict(_SECTION_RENAMES)
+_BLOCK_ANCHOR_ALIASES.update({"inicio": "start", "final": "end"})
+
+
+def _rename_keys(d, mapping):
+    """New dict with `mapping` keys translated; the rest are preserved.
+
+    When the new and the old key coexist, the new one wins.
+    """
+    new = {}
+    for key, value in d.items():
+        target = mapping.get(key, key)
+        if target not in new or key not in mapping:
+            new[target] = value
+    return new
+
+
+def _migrate_option(value, mapping):
+    """Canonical value of a select; unknown values pass through as free text."""
+    if not isinstance(value, str):
+        return value
+    return mapping.get(value.strip(), value)
+
+
+def _migrate_entries(key, entries):
+    """Translate keys and values of an entry list to the new schema."""
+    if not isinstance(entries, list):
+        return entries
+    mapping = _ENTRY_RENAMES.get(key) or {}
+    new_entries = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            if key != "skills":
+                new_entries.append(entry)
+            continue
+        entry = _rename_keys(entry, mapping)
+        if key == "skills":
+            if entry.get("category") or entry.get("values"):
+                pass
+            elif entry.get("nombre"):
+                entry = {"category": entry.get("nombre"), "values": entry.get("nivel", "")}
+            else:
+                continue
+        elif key in ("work", "internships") and "work_mode" in entry:
+            entry["work_mode"] = _migrate_option(entry["work_mode"], _WORK_MODES)
+        elif key == "education" and "degree_type" in entry:
+            entry["degree_type"] = _migrate_option(entry["degree_type"], _DEGREE_TYPES)
+        new_entries.append(entry)
+    return new_entries
+
+
+def _migrate_columns(value):
+    if not isinstance(value, dict):
+        return value
+    try:
+        return {_SECTION_RENAMES.get(k, k): v for k, v in value.items()}
+    except Exception:
+        return value
+
+
+def sanitize_socials(socials):
+    """Normalize the ``socials`` list; never raises.
+
+    Every kept entry is a dict with the canonical keys ``network``/``label``/
+    ``value``: the network falls back to ``other`` and entries whose value is
+    empty (after stripping) are dropped.
     """
     try:
-        if not isinstance(bloques, list):
+        if not isinstance(socials, (list, tuple)):
             return []
-        limpios = []
-        ids = set()
-        for bruto in bloques:
+        clean = []
+        for raw in socials:
             try:
-                if not isinstance(bruto, dict):
+                if not isinstance(raw, dict):
                     continue
-                tipo = str(bruto.get("tipo") or "").strip()
-                if tipo not in latex_gen.TIPOS_BLOQUE:
+                network = _block_text(raw.get("network")).strip()
+                if network not in latex_gen.SOCIAL_NETWORKS:
+                    network = "other"
+                value = _block_text(raw.get("value"))
+                if not value.strip():
                     continue
-                posicion = str(bruto.get("posicion") or "").strip()
-                if posicion not in latex_gen.ANCLAS_BLOQUE:
-                    posicion = "final"
-                ident = bruto.get("id")
+                clean.append({
+                    "network": network,
+                    "label": _block_text(raw.get("label")),
+                    "value": value,
+                })
+            except Exception:
+                continue
+        return clean
+    except Exception:
+        return []
+
+
+def _legacy_contact_label(cv_language, key):
+    """LANG label of a legacy birth date/nationality, without its colon.
+
+    Uses the CV language (Chinese by default) and falls back to the Spanish
+    wording when that table or key is missing. Never raises.
+    """
+    try:
+        language = cv_language or "zh"
+    except Exception:
+        language = "zh"
+    try:
+        table = latex_gen.LANG.get(language)
+    except Exception:
+        table = None
+    if not isinstance(table, dict):
+        table = latex_gen.LANG["es"]
+    try:
+        value = table.get(key)
+    except Exception:
+        value = None
+    if not isinstance(value, str) or not value.strip():
+        try:
+            value = latex_gen.LANG["es"].get(key)
+        except Exception:
+            value = None
+    if not isinstance(value, str):
+        return ""
+    return value.strip().rstrip(":").rstrip("：").strip()
+
+
+def _migrate_legacy_contacts(data):
+    """Move the legacy personal fields into socials/extra_fields (in place).
+
+    Non-empty ``github``/``linkedin``/``website`` become socials entries and
+    non-empty ``birth_date``/``nationality`` become extra fields (with the
+    label translated to the CV language). The legacy keys are always removed,
+    so a second pass changes nothing.
+    """
+    socials = data.get("socials")
+    if isinstance(socials, (list, tuple)):
+        socials = list(socials)
+    else:
+        socials = []
+    for key in ("github", "linkedin", "website"):
+        value = _block_text(data.get(key)).strip()
+        if value:
+            socials.append({"network": key, "label": "", "value": value})
+        data.pop(key, None)
+    data["socials"] = socials
+
+    cv_language = data.get("cv_language")
+    for key in ("birth_date", "nationality"):
+        value = _block_text(data.get(key)).strip()
+        if value:
+            extra = data.get("extra_fields")
+            if not isinstance(extra, list):
+                extra = []
+            extra.append({"label": _legacy_contact_label(cv_language, key), "value": value})
+            data["extra_fields"] = extra
+        data.pop(key, None)
+    return data
+
+
+def sanitize_blocks(blocks):
+    """Normalize the free blocks list; never raises.
+
+    Accepts blocks with legacy keys and values (tipo/estilo/posicion,
+    seccion/listado, linea/banda/espacio...) and translates them to the
+    canonical schema before sanitizing. Entries that are not a dict or have an
+    unknown ``type`` are dropped; ``style``/``position``/``id`` are completed,
+    ids are guaranteed unique and each block is rebuilt with only the
+    canonical keys of its type.
+    """
+    try:
+        if not isinstance(blocks, list):
+            return []
+        clean = []
+        ids = set()
+        for raw in blocks:
+            try:
+                if not isinstance(raw, dict):
+                    continue
+                raw = _rename_keys(raw, _BLOCK_RENAMES)
+                block_type = str(raw.get("type") or "").strip()
+                block_type = _BLOCK_TYPE_ALIASES.get(block_type, block_type)
+                if block_type not in latex_gen.BLOCK_TYPES:
+                    continue
+                position = str(raw.get("position") or "").strip()
+                position = _BLOCK_ANCHOR_ALIASES.get(position, position)
+                if position not in latex_gen.BLOCK_ANCHORS:
+                    position = "end"
+                ident = raw.get("id")
                 if not isinstance(ident, str) or not ident or ident in ids:
                     ident = uuid.uuid4().hex
                     while ident in ids:
                         ident = uuid.uuid4().hex
                 ids.add(ident)
-                if tipo == "separador":
-                    estilo = str(bruto.get("estilo") or "").strip()
-                    if estilo not in latex_gen.ESTILOS_SEPARADOR:
-                        estilo = "linea"
-                    limpios.append({
+                if block_type == "separator":
+                    style = str(raw.get("style") or "").strip()
+                    style = _BLOCK_STYLES.get(style, style)
+                    if style not in latex_gen.SEPARATOR_STYLES:
+                        style = "line"
+                    clean.append({
                         "id": ident,
-                        "tipo": tipo,
-                        "estilo": estilo,
-                        "posicion": posicion,
+                        "type": block_type,
+                        "style": style,
+                        "position": position,
                     })
-                elif tipo == "listado":
-                    modo = _texto_bloque(bruto.get("modo")).strip()
-                    if modo not in latex_gen.MODOS_LISTADO:
-                        modo = "columnas"
+                elif block_type == "list":
+                    mode = _block_text(raw.get("mode")).strip()
+                    mode = _BLOCK_MODES.get(mode, mode)
+                    if mode not in latex_gen.LIST_MODES:
+                        mode = "columns"
                     try:
-                        columnas = int(bruto.get("columnas") or 1)
+                        columns = int(raw.get("columns") or 1)
                     except Exception:
-                        columnas = 1
-                    columnas = min(max(columnas, 1), 3)
-                    entradas = []
-                    crudas = bruto.get("entradas")
-                    if isinstance(crudas, (list, tuple)):
-                        for ent in crudas:
-                            if not isinstance(ent, dict):
+                        columns = 1
+                    columns = min(max(columns, 1), 3)
+                    entries = []
+                    raw_entries = raw.get("entries")
+                    if isinstance(raw_entries, (list, tuple)):
+                        for entry in raw_entries:
+                            if not isinstance(entry, dict):
                                 continue
-                            if modo == "periodo":
-                                entradas.append({
-                                    "periodo": _texto_bloque(ent.get("periodo")),
-                                    "descripcion": _texto_bloque(ent.get("descripcion")),
+                            entry = _rename_keys(
+                                entry, {"titulo": "title", "detalle": "detail",
+                                        "periodo": "period", "descripcion": "description"}
+                            )
+                            if mode == "period":
+                                entries.append({
+                                    "period": _block_text(entry.get("period")),
+                                    "description": _block_text(entry.get("description")),
                                 })
                             else:
-                                entradas.append({
-                                    "titulo": _texto_bloque(ent.get("titulo")),
-                                    "detalle": _texto_bloque(ent.get("detalle")),
+                                entries.append({
+                                    "title": _block_text(entry.get("title")),
+                                    "detail": _block_text(entry.get("detail")),
                                 })
-                    limpios.append({
+                    clean.append({
                         "id": ident,
-                        "tipo": tipo,
-                        "modo": modo,
-                        "titulo": _texto_bloque(bruto.get("titulo")),
-                        "columnas": columnas,
-                        "entradas": entradas,
-                        "posicion": posicion,
+                        "type": block_type,
+                        "mode": mode,
+                        "title": _block_text(raw.get("title")),
+                        "columns": columns,
+                        "entries": entries,
+                        "position": position,
                     })
                 else:
-                    titulo = bruto.get("titulo")
-                    contenido = bruto.get("contenido")
-                    limpios.append({
+                    title = raw.get("title")
+                    content = raw.get("content")
+                    clean.append({
                         "id": ident,
-                        "tipo": tipo,
-                        "titulo": "" if titulo is None else str(titulo),
-                        "contenido": "" if contenido is None else str(contenido),
-                        "posicion": posicion,
+                        "type": block_type,
+                        "title": "" if title is None else str(title),
+                        "content": "" if content is None else str(content),
+                        "position": position,
                     })
             except Exception:
                 continue
-        return limpios
+        return clean
     except Exception:
         return []
 
 
-def _sanear_secciones_nuevas(datos):
-    """Normaliza titulos_seccion / secciones_ocultas / orden_secciones.
-
-    Nunca lanza: entradas ausentes o mal formadas caen a los valores
-    canónicos (dict vacío, lista vacía, orden por defecto completo).
-    """
-    if not isinstance(datos, dict):
-        return datos
-    claves = latex_gen.ORDEN_SECCIONES_DEFECTO
-
-    # orden_secciones: mismo contrato que latex_gen.normalizar_orden_secciones
-    # (claves válidas, dedup conservando la primera, faltantes al final en
-    # orden por defecto; cualquier valor que no sea lista/tupla -> lista
-    # completa por defecto). Única excepción: la lista vacía es el centinela
-    # canónico de "orden por defecto" (lo devuelve datos_vacios y lo expande
-    # normalizar_orden_secciones al renderizar), así que se conserva para que
-    # abrir/importar un CV ya canónico no invente un orden no elegido.
+def _canonical_section(value):
+    """Canonical section name; unknown values pass through."""
     try:
-        bruto_orden = datos.get("orden_secciones")
-        lista_vacia = isinstance(bruto_orden, (list, tuple)) and len(bruto_orden) == 0
+        return _SECTION_RENAMES.get(value, value)
+    except TypeError:
+        return value
+
+
+def sanitize_sections(data):
+    """Normalize section_titles / hidden_sections / section_order.
+
+    Accepts the legacy keys (titulos_seccion, secciones_ocultas,
+    orden_secciones) and legacy section names inside their values, and
+    migrates them to the canonical schema before sanitizing. Never raises:
+    missing or malformed entries fall back to the canonical values (empty
+    dict, empty list, full default order).
+    """
+    if not isinstance(data, dict):
+        return data
+    keys = latex_gen.DEFAULT_SECTION_ORDER
+
+    def _raw(new_key, old_key):
+        if new_key in data:
+            return data.get(new_key)
+        return data.get(old_key)
+
+    # section_order: same contract as latex_gen.normalize_section_order
+    # (valid keys, dedup keeping the first, missing ones appended at the end
+    # in default order; any non-list value -> full default list). One
+    # exception: the empty list is the canonical "default order" sentinel
+    # (returned by empty_data and expanded by normalize_section_order when
+    # rendering), so it is preserved to avoid inventing an order when
+    # opening/importing an already canonical CV.
+    try:
+        raw_order = _raw("section_order", "orden_secciones")
+        empty_list = isinstance(raw_order, (list, tuple)) and len(raw_order) == 0
     except Exception:
-        lista_vacia = False
-    if lista_vacia:
-        orden = []
+        empty_list = False
+    if empty_list:
+        order = []
     else:
         try:
-            orden = latex_gen.normalizar_orden_secciones(datos)
-            if not isinstance(orden, list):
-                orden = list(claves)
+            translated = []
+            if isinstance(raw_order, (list, tuple)):
+                for value in raw_order:
+                    translated.append(_canonical_section(value))
+            order = latex_gen.normalize_section_order({"section_order": translated})
+            if not isinstance(order, list):
+                order = list(keys)
         except Exception:
-            orden = list(claves)
+            order = list(keys)
 
-    # titulos_seccion: solo claves válidas con valor str recortado y no vacío.
-    titulos = {}
+    # section_titles: only valid keys with a non-empty stripped str value.
+    titles = {}
     try:
-        bruto_titulos = datos.get("titulos_seccion")
+        raw_titles = _raw("section_titles", "titulos_seccion")
     except Exception:
-        bruto_titulos = None
-    if isinstance(bruto_titulos, dict):
-        for clave in claves:
+        raw_titles = None
+    if isinstance(raw_titles, dict):
+        try:
+            items = list(raw_titles.items())
+        except Exception:
+            items = []
+        for key, value in items:
             try:
-                valor = bruto_titulos.get(clave)
-                if not isinstance(valor, str):
+                key = _canonical_section(key)
+                if key not in keys or not isinstance(value, str):
                     continue
-                valor = valor.strip()
+                value = value.strip()
             except Exception:
                 continue
-            if valor:
-                titulos[clave] = valor
+            if value:
+                titles[key] = value
 
-    # secciones_ocultas: claves válidas sin duplicados (gana la primera).
-    ocultas = []
+    # hidden_sections: valid keys without duplicates (the first one wins).
+    hidden = []
     try:
-        bruto_ocultas = datos.get("secciones_ocultas")
+        raw_hidden = _raw("hidden_sections", "secciones_ocultas")
     except Exception:
-        bruto_ocultas = None
-    if isinstance(bruto_ocultas, (list, tuple)):
-        for valor in bruto_ocultas:
+        raw_hidden = None
+    if isinstance(raw_hidden, (list, tuple)):
+        for value in raw_hidden:
             try:
-                if isinstance(valor, str) and valor in claves and valor not in ocultas:
-                    ocultas.append(valor)
+                value = _canonical_section(value)
+                if isinstance(value, str) and value in keys and value not in hidden:
+                    hidden.append(value)
             except Exception:
                 continue
 
-    datos["titulos_seccion"] = titulos
-    datos["secciones_ocultas"] = ocultas
-    datos["orden_secciones"] = orden
-    return datos
+    data["section_titles"] = titles
+    data["hidden_sections"] = hidden
+    data["section_order"] = order
+    for old_key in ("titulos_seccion", "secciones_ocultas", "orden_secciones"):
+        data.pop(old_key, None)
+    return data
 
 
-def _migrar_datos(datos):
-    """Convierte archivos .cvjson antiguos al modelo actual."""
-    if not isinstance(datos, dict):
-        return datos
-    if "experiencia" in datos and isinstance(datos.get("experiencia"), list) and not (datos.get("trabajo") or datos.get("pasantia")):
-        trabajo, pasantia = [], []
-        for e in datos["experiencia"]:
-            if isinstance(e, dict) and str(e.get("tipo", "")).strip().lower().startswith("pasant"):
-                pasantia.append(e)
+def migrate_data(data):
+    """Convert legacy .cvjson payloads to the canonical English model.
+
+    Translates every key (top level and per entry), the select values
+    (work_mode, degree_type) and the blocks/sections to the new schema.
+    Unknown values pass through as free text and hostile shapes are tolerated
+    without raising.
+    """
+    if not isinstance(data, dict):
+        return data
+    if "experiencia" in data and isinstance(data.get("experiencia"), list) and not (
+        data.get("trabajo") or data.get("pasantia")
+        or data.get("work") or data.get("internships")
+    ):
+        work, internships = [], []
+        for entry in data["experiencia"]:
+            if isinstance(entry, dict) and str(entry.get("tipo", "")).strip().lower().startswith("pasant"):
+                internships.append(entry)
             else:
-                trabajo.append(e)
-        datos["trabajo"] = trabajo
-        datos["pasantia"] = pasantia
-        datos.pop("experiencia", None)
-    if "habilidades" in datos and isinstance(datos.get("habilidades"), list):
-        nuevas = []
-        for h in datos["habilidades"]:
-            if not isinstance(h, dict):
-                continue
-            if h.get("categoria") or h.get("valores"):
-                nuevas.append(h)
-            elif h.get("nombre"):
-                nuevas.append({"categoria": h["nombre"], "valores": h.get("nivel", "")})
-        datos["habilidades"] = nuevas
-    datos["bloques"] = _sanear_bloques(datos.get("bloques"))
-    return _sanear_secciones_nuevas(datos)
+                work.append(entry)
+        data["trabajo"] = work
+        data["pasantia"] = internships
+        data.pop("experiencia", None)
+    data = _rename_keys(data, _DATA_RENAMES)
+    if isinstance(data.get("template"), str):
+        data["template"] = _migrate_option(data["template"], _TEMPLATE_VALUES)
+    for key in (
+        "work", "internships", "projects", "university_projects", "education",
+        "skills", "languages", "references", "extra_fields",
+    ):
+        data[key] = _migrate_entries(key, data.get(key))
+    _migrate_legacy_contacts(data)
+    data["socials"] = sanitize_socials(data.get("socials"))
+    if "columns" in data:
+        data["columns"] = _migrate_columns(data.get("columns"))
+    data["blocks"] = sanitize_blocks(data.get("blocks"))
+    return sanitize_sections(data)
 
 
-def _recolectar_medios(datos):
-    """Devuelve {ruta_original: {'nombre': basename, 'b64': ...}} de los medios existentes."""
-    medios = {}
-    if not isinstance(datos, dict):
-        return medios
-    candidatos = []
-    for clave in CAMPOS_MEDIA:
-        valor = datos.get(clave)
-        if isinstance(valor, str) and valor:
-            candidatos.append(valor)
-    for clave in CAMPOS_LOGO:
-        lista = datos.get(clave)
-        if not isinstance(lista, list):
+def fill_defaults(data):
+    """Fill only the missing schema keys of `data` (in place).
+
+    If the default is None (e.g. photo_crop) the type is not checked: a valid
+    dict rectangle must survive and None only applies when the key is absent.
+    """
+    empty = latex_gen.empty_data()
+    for key, default in empty.items():
+        if key not in data or (default is not None and not isinstance(data[key], type(default))):
+            data[key] = default
+    return data
+
+
+def _backup_legacy_file(path):
+    """Copy a pre-v3 .cvjson to `<path>.v2.bak` (never clobbers an existing one)."""
+    backup = path + ".v2.bak"
+    if os.path.exists(backup):
+        return
+    try:
+        shutil.copy2(path, backup)
+    except OSError:
+        pass
+
+
+def read_cvjson(content, path=None):
+    """Return ``(data, media)`` from a .cvjson payload.
+
+    v3 uses the ``{version, data, media}`` envelope; v1/v2 use the legacy
+    Spanish ``{version, datos, medios}`` keys, and only v2 carries embedded
+    media. Before migrating a file older than v3 it is copied to
+    ``<path>.v2.bak``. Returns ``(None, None)`` when there is no usable data.
+    """
+    if not isinstance(content, dict):
+        return None, None
+    version = content.get("version")
+    if version == 3:
+        data, media = content.get("data"), content.get("media")
+    else:
+        data, media = content.get("datos"), content.get("medios")
+        if version != 2:
+            media = None
+        if isinstance(data, dict) and path:
+            _backup_legacy_file(path)
+    if not isinstance(data, dict):
+        return None, None
+    return data, media
+
+
+def collect_media(data, cache=None):
+    """Return {original_path: {"name": basename, "b64": ...}} of existing media.
+
+    `cache` is an optional per-Api dict keyed by ``(path, mtime, size)`` so
+    unchanged files are not re-encoded on every autosave tick.
+    """
+    media = {}
+    if not isinstance(data, dict):
+        return media
+    candidates = []
+    for key in MEDIA_FIELDS:
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            candidates.append(value)
+    for key in LOGO_FIELDS:
+        entries = data.get(key)
+        if not isinstance(entries, list):
             continue
-        for ent in lista:
-            if isinstance(ent, dict):
-                valor = ent.get("logo")
-                if isinstance(valor, str) and valor:
-                    candidatos.append(valor)
-    for ruta in candidatos:
-        if ruta in medios:
+        for entry in entries:
+            if isinstance(entry, dict):
+                value = entry.get("logo")
+                if isinstance(value, str) and value:
+                    candidates.append(value)
+    for path in candidates:
+        if path in media:
             continue
-        ext = os.path.splitext(ruta)[1].lower()
-        if ext not in MEDIA_EXTS or not os.path.isfile(ruta):
+        ext = os.path.splitext(path)[1].lower()
+        if ext not in MEDIA_EXTS or not os.path.isfile(path):
             continue
         try:
-            with open(ruta, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("ascii")
+            cache_key = (path, os.path.getmtime(path), os.path.getsize(path))
         except OSError:
             continue
-        medios[ruta] = {"nombre": os.path.basename(ruta), "b64": b64}
-    return medios
+        entry = cache.get(cache_key) if cache is not None else None
+        if entry is None:
+            try:
+                with open(path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("ascii")
+            except OSError:
+                continue
+            entry = {"name": os.path.basename(path), "b64": b64}
+            if cache is not None:
+                cache[cache_key] = entry
+        media[path] = entry
+    return media
 
 
-def _reescribir_medios(datos, reemplazos):
-    for clave in CAMPOS_MEDIA:
-        if isinstance(datos.get(clave), str):
-            datos[clave] = reemplazos.get(datos[clave], datos[clave])
-    for clave in CAMPOS_LOGO:
-        lista = datos.get(clave)
-        if not isinstance(lista, list):
+def rewrite_media(data, replacements):
+    for key in MEDIA_FIELDS:
+        if isinstance(data.get(key), str):
+            data[key] = replacements.get(data[key], data[key])
+    for key in LOGO_FIELDS:
+        entries = data.get(key)
+        if not isinstance(entries, list):
             continue
-        for ent in lista:
-            if isinstance(ent, dict) and isinstance(ent.get("logo"), str):
-                ent["logo"] = reemplazos.get(ent["logo"], ent["logo"])
-    return datos
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("logo"), str):
+                entry["logo"] = replacements.get(entry["logo"], entry["logo"])
+    return data
 
 
-def _materializar_medios(datos, medios):
-    """Escribe los medios de un .cvjson v2 en CACHE_DIR y reescribe las rutas."""
-    if not isinstance(datos, dict) or not isinstance(medios, dict) or not medios:
-        return datos
+def materialize_media(data, media):
+    """Write the media of a v2/v3 envelope into CACHE_DIR and rewrite paths.
+
+    v3 media entries use ``{"name", "b64"}``; v2 entries used the equivalent
+    Spanish ``nombre`` key, which is still accepted.
+    """
+    if not isinstance(data, dict) or not isinstance(media, dict) or not media:
+        return data
     try:
         os.makedirs(prefs.CACHE_DIR, exist_ok=True)
     except OSError:
-        return datos
-    reemplazos = {}
-    for ruta_original, info in medios.items():
+        return data
+    replacements = {}
+    for original_path, info in media.items():
         if not isinstance(info, dict):
             continue
         b64 = info.get("b64")
         if not isinstance(b64, str):
             continue
         try:
-            crudo = base64.b64decode(b64)
+            raw = base64.b64decode(b64)
         except Exception:
             continue
-        if not crudo:
+        if not raw:
             continue
-        ext = os.path.splitext(str(ruta_original))[1].lower()
+        ext = os.path.splitext(str(original_path))[1].lower()
         if ext not in MEDIA_EXTS:
-            ext = os.path.splitext(str(info.get("nombre") or ""))[1].lower()
+            ext = os.path.splitext(str(info.get("name") or info.get("nombre") or ""))[1].lower()
         if ext not in MEDIA_EXTS:
             ext = ".jpg"
-        nombre = "cv_%s%s" % (uuid.uuid4().hex, ext)
-        destino = os.path.join(prefs.CACHE_DIR, nombre)
+        name = "cv_%s%s" % (uuid.uuid4().hex, ext)
+        destination = os.path.join(prefs.CACHE_DIR, name)
         try:
-            with open(destino, "wb") as f:
-                f.write(crudo)
+            with open(destination, "wb") as f:
+                f.write(raw)
         except OSError:
             continue
-        reemplazos[str(ruta_original)] = destino
-    if not reemplazos:
-        return datos
-    return _reescribir_medios(datos, reemplazos)
+        replacements[str(original_path)] = destination
+    if not replacements:
+        return data
+    return rewrite_media(data, replacements)
 
 
-def _iniciar_servidor():
+def _empty_dir(path):
+    """Remove every entry under `path`, keeping the directory itself."""
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        return
+    try:
+        names = os.listdir(path)
+    except OSError:
+        return
+    for name in names:
+        target = os.path.join(path, name)
+        try:
+            if os.path.isdir(target) and not os.path.islink(target):
+                shutil.rmtree(target, ignore_errors=True)
+            else:
+                os.remove(target)
+        except OSError:
+            pass
+
+
+def purge_cache():
+    """Startup cleanup: empty the build/out caches and drop old media files.
+
+    Called only once from the application startup (never on window
+    operations): clears cache/build and cache/out and deletes cache media
+    files older than CACHE_MAX_AGE_DAYS.
+    """
+    _empty_dir(prefs.BUILD_DIR)
+    _empty_dir(os.path.join(prefs.CACHE_DIR, "out"))
+    cutoff = time.time() - CACHE_MAX_AGE_DAYS * 24 * 60 * 60
+    try:
+        names = os.listdir(prefs.CACHE_DIR)
+    except OSError:
+        return
+    for name in names:
+        path = os.path.join(prefs.CACHE_DIR, name)
+        if not os.path.isfile(path):
+            continue
+        if os.path.splitext(name)[1].lower() not in MEDIA_EXTS:
+            continue
+        try:
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+def _start_server():
     os.makedirs(prefs.BUILD_DIR, exist_ok=True)
-    servidor = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    puerto = servidor.server_address[1]
-    threading.Thread(target=servidor.serve_forever, daemon=True).start()
-    return servidor, puerto
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, port
 
 
 def main():
@@ -777,16 +1307,17 @@ def main():
         import multiprocessing
 
         multiprocessing.freeze_support()
-    # El visor PDF integrado de WebView2 guarda con una descarga: pywebview la
-    # cancela por defecto (ALLOW_DOWNLOADS=False), así que el botón de disquete
-    # de la previsualización no haría nada. Al activarlo, WebView2 abre su
-    # diálogo nativo de guardado.
+    # The embedded WebView2 PDF viewer saves through a download: pywebview
+    # cancels downloads by default (ALLOW_DOWNLOADS=False), so the floppy
+    # button in the preview would do nothing. Enabling it makes WebView2 open
+    # its native save dialog.
     webview.settings["ALLOW_DOWNLOADS"] = True
-    servidor, puerto = _iniciar_servidor()
+    purge_cache()
+    server, port = _start_server()
     api = Api(None)
     win = webview.create_window(
-        "CVLaTeX — Editor de CV",
-        url=f"http://127.0.0.1:{puerto}",
+        window_title(prefs.get("ui_language")),
+        url=f"http://127.0.0.1:{port}",
         js_api=api,
         width=1240,
         height=800,
@@ -794,8 +1325,9 @@ def main():
         background_color="#1f2430",
     )
     api._w = win
+    win.events.closing += api._on_closing
     webview.start()
-    servidor.shutdown()
+    server.shutdown()
 
 
 if __name__ == "__main__":

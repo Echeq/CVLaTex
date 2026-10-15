@@ -1,10 +1,10 @@
 % Plantilla Chino - CVLaTeX
 % Estilo de curriculum chino: banda azul de titulo, barras de seccion azul/gris
 % y lineas de entrada en tres bloques (fecha / puesto / organizacion).
-\documentclass[{{fuente}}pt]{article}
+\documentclass[{{font_size}}pt]{article}
 
-\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
-{{motor_tipografia}}
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
 \usepackage{graphicx}
 \usepackage{xcolor}
 
@@ -35,21 +35,21 @@
 }
 
 % Separadores de bloques libres, coherentes con la placa y barra de seccion.
-\newcommand{\cvbloquelinea}{%
+\newcommand{\cvblockline}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.6pt}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloquebanda}{%
+\newcommand{\cvblockband}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.35em}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloqueespacio}{%
+\newcommand{\cvblockspace}{%
   \par\vspace{2em}%
 }
 
-\newcommand{\cvcnlinea}[3]{%
+\newcommand{\cvcnline}[3]{%
   \par\noindent
   {\bfseries #1}\hfill{\bfseries #2}\hfill{\bfseries #3}%
   \par\vspace{0.1em}%
@@ -59,8 +59,8 @@
 
 \sloppy
 
-{{cabecera}}
+{{header}}
 
-{{cuerpo}}
+{{body}}
 
 \end{document}

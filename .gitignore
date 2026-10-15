@@ -1,24 +1,27 @@
-# Entorno virtual de Python (no debe versionarse)
+# Python virtual environment
 .venv/
 
-# Bytecode de Python
+# Python bytecode and test caches
 __pycache__/
 *.pyc
-
-# Caché de pytest
 .pytest_cache/
 
-# Artefactos de build (PyInstaller)
+# PyInstaller artifacts (the exe is published as a release asset, not committed)
 build/
 dist/
+CVLaTeX.spec
 
-# Tooling del pipeline de agentes (dependencias npm, no de la app)
-.opencode/node_modules/
+# Log files
+*.log
 
-# Documento personal del usuario: aprobado excluirlo de git; el archivo permanece en disco
-templates/chino/Elvis Chen CV.docx
-
-# Pipeline opencode (tooling local, no versionado)
+# Local opencode tooling (agent pipeline, not part of the app)
 .opencode/
 opencode.json
 AGENTS.md
+
+# Internal refactoring notes
+docs/audit.md
+docs/refactor-map.md
+
+# Personal reference file (kept on disk, never versioned)
+templates/chinese/Elvis Chen CV.docx

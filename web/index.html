@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CVLaTeX — Editor de CV</title>
+<title>CVLaTeX — CV Editor</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -12,378 +12,403 @@
   <span class="logo">CV<span>LaTeX</span></span>
   <nav id="menus">
     <div class="menu">
-      <button class="menu-btn">Archivos</button>
+      <button class="menu-btn" data-i18n="menu_file">File</button>
       <div class="menu-drop">
-        <a data-accion="nuevo">Nuevo</a>
-        <a data-accion="abrir">Abrir…</a>
-        <a data-accion="guardar">Guardar…</a>
+        <a data-accion="new" data-i18n="action_new">New</a>
+        <a data-accion="open" data-i18n="action_open">Open…</a>
+        <a data-accion="save" data-i18n="action_save">Save…</a>
         <hr>
-        <div class="sub">Exportar
+        <div class="sub"><span data-i18n="submenu_export">Export</span>
           <div class="menu-drop subdrop">
-            <a data-accion="exportar-pdf">Exportar PDF…</a>
-            <a data-accion="exportar-tex">Exportar LaTeX…</a>
-            <a data-accion="exportar-docx">Exportar Word (.docx)…</a>
+            <a data-accion="export-pdf" data-i18n="action_export_pdf">Export PDF…</a>
+            <a data-accion="export-tex" data-i18n="action_export_tex">Export LaTeX…</a>
+            <a data-accion="export-docx" data-i18n="action_export_docx">Export Word (.docx)…</a>
           </div>
         </div>
-        <a data-accion="importar-tex">Importar LaTeX (.tex)…</a>
+        <a data-accion="import-tex" data-i18n="action_import_tex">Import LaTeX (.tex)…</a>
         <hr>
-        <a data-accion="preferencias">Preferencias</a>
+        <a data-accion="settings" data-i18n="action_settings">Settings</a>
       </div>
     </div>
 
     <div class="menu">
-      <button class="menu-btn">Editar</button>
+      <button class="menu-btn" data-i18n="menu_edit">Edit</button>
       <div class="menu-drop">
-        <a data-accion="deshacer">Deshacer</a>
-        <a data-accion="rehacer">Rehacer</a>
+        <a data-accion="undo" data-i18n="action_undo">Undo</a>
+        <a data-accion="redo" data-i18n="action_redo">Redo</a>
         <hr>
-        <div class="sub">Tamaño de hoja
+        <div class="sub"><span data-i18n="submenu_paper">Paper size</span>
           <div class="menu-drop subdrop">
-            <a data-accion="papel:a4">A4 (210×297 mm)</a>
-            <a data-accion="papel:letter">Carta (216×279 mm)</a>
-            <a data-accion="papel:legal">Legal (216×356 mm)</a>
+            <a data-accion="paper:a4" data-i18n="paper_a4">A4 (210×297 mm)</a>
+            <a data-accion="paper:letter" data-i18n="paper_letter">Letter (216×279 mm)</a>
+            <a data-accion="paper:legal" data-i18n="paper_legal">Legal (216×356 mm)</a>
           </div>
         </div>
-        <div class="sub">Márgenes
+        <div class="sub"><span data-i18n="submenu_margins">Margins</span>
           <div class="menu-drop subdrop">
-            <a data-accion="margenes:normal">Normal (2 cm)</a>
-            <a data-accion="margenes:estrecho">Estrechos (1 cm)</a>
-            <a data-accion="margenes:personalizado">Personalizado…</a>
+            <a data-accion="margins:normal" data-i18n="margins_normal">Normal (2 cm)</a>
+            <a data-accion="margins:narrow" data-i18n="margins_narrow">Narrow (1 cm)</a>
+            <a data-accion="margins:custom" data-i18n="margins_custom">Custom…</a>
           </div>
         </div>
-        <div class="sub">Tamaño de fuente
+        <div class="sub"><span data-i18n="submenu_font_size">Font size</span>
           <div class="menu-drop subdrop">
-            <a data-accion="fuente:10">10 pt</a>
-            <a data-accion="fuente:11">11 pt</a>
-            <a data-accion="fuente:12">12 pt</a>
+            <a data-accion="font:10">10 pt</a>
+            <a data-accion="font:11">11 pt</a>
+            <a data-accion="font:12">12 pt</a>
           </div>
         </div>
-        <div class="sub">Plantilla del CV
+        <div class="sub"><span data-i18n="submenu_template">CV template</span>
           <div class="menu-drop subdrop">
-            <a data-accion="plantilla:clasico"><span class="marca" data-marca="plantilla-clasico"></span>Clásico</a>
-            <a data-accion="plantilla:harvard"><span class="marca" data-marca="plantilla-harvard"></span>Harvard (académica)</a>
-            <a data-accion="plantilla:moderno"><span class="marca" data-marca="plantilla-moderno"></span>Moderno</a>
-            <a data-accion="plantilla:creativo"><span class="marca" data-marca="plantilla-creativo"></span>Creativo</a>
-            <a data-accion="plantilla:chino"><span class="marca" data-marca="plantilla-chino"></span>Chino (estándar)</a>
+            <div class="menu-heading" data-i18n="template_group_ats">ATS Friendly</div>
+            <a data-accion="template:classic"><span class="mark" data-marca="template-classic"></span><span data-i18n="template_classic">Classic</span></a>
+            <a data-accion="template:harvard"><span class="mark" data-marca="template-harvard"></span><span data-i18n="template_harvard">Harvard (academic)</span></a>
+            <hr>
+            <div class="menu-heading" data-i18n="template_group_chinese">Chinese Standard</div>
+            <a data-accion="template:chinese"><span class="mark" data-marca="template-chinese"></span><span data-i18n="template_chinese">Chinese (standard)</span></a>
+            <hr>
+            <div class="menu-heading" data-i18n="template_group_normal">Normal CV</div>
+            <a data-accion="template:modern"><span class="mark" data-marca="template-modern"></span><span data-i18n="template_modern">Modern</span></a>
+            <a data-accion="template:creative"><span class="mark" data-marca="template-creative"></span><span data-i18n="template_creative">Creative</span></a>
+            <a data-accion="template:sidebar"><span class="mark" data-marca="template-sidebar"></span><span data-i18n="template_sidebar">Sidebar</span></a>
+            <a data-accion="template:sidebar-right"><span class="mark" data-marca="template-sidebar-right"></span><span data-i18n="template_sidebar_right">Sidebar (right)</span></a>
           </div>
         </div>
         <hr>
-        <a data-accion="cargar-ejemplo">Cargar CV de ejemplo</a>
+        <a data-accion="toggle:latex"><span data-i18n="action_view_latex">View LaTeX code</span></a>
+        <hr>
+        <a data-accion="load-sample" data-i18n="action_load_sample">Load sample CV</a>
+        <hr>
+        <a data-accion="reset-all" data-i18n="action_reset_all">Reset everything</a>
       </div>
     </div>
 
     <div class="menu">
-      <button class="menu-btn">Añadir</button>
+      <button class="menu-btn" data-i18n="menu_add">Add</button>
       <div class="menu-drop">
-        <div class="sub">En columnas
+        <div class="sub"><span data-i18n="submenu_columns">Columns</span>
           <div class="menu-drop subdrop">
-            <a data-accion="bloque:columnas:1">1 columna</a>
-            <a data-accion="bloque:columnas:2">2 columnas</a>
-            <a data-accion="bloque:columnas:3">3 columnas</a>
+            <a data-accion="add:columns:1" data-i18n="columns_1">1 column</a>
+            <a data-accion="add:columns:2" data-i18n="columns_2">2 columns</a>
+            <a data-accion="add:columns:3" data-i18n="columns_3">3 columns</a>
           </div>
         </div>
-        <a data-accion="bloque:periodo">Periodo + descripción…</a>
+        <a data-accion="add:period" data-i18n="action_add_period">Period + description…</a>
         <hr>
-        <a data-accion="bloque:linea">Línea separadora</a>
-        <a data-accion="bloque:banda">Banda de color</a>
-        <a data-accion="bloque:espacio">Espacio en blanco</a>
+        <a data-accion="add:block-line" data-i18n="action_add_line">Separator line</a>
+        <a data-accion="add:block-band" data-i18n="action_add_band">Color band</a>
+        <a data-accion="add:block-space" data-i18n="action_add_space">Blank space</a>
         <hr>
-        <a data-accion="bloque:seccion">Sección personalizada…</a>
-        <a data-accion="bloques:gestion">Gestionar bloques…</a>
+        <a data-accion="add:section" data-i18n="action_add_section">Custom section…</a>
+        <a data-accion="manage-blocks" data-i18n="action_manage_blocks">Manage blocks…</a>
       </div>
     </div>
 
     <div class="menu">
-      <button class="menu-btn">Previsualización</button>
+      <button class="menu-btn" data-i18n="menu_theme">Theme</button>
       <div class="menu-drop">
-        <a data-accion="recompilar">Recompilar ahora</a>
-        <a data-accion="toggle:autocompilar"><span class="marca" data-marca="autocompilar"></span>Auto-recompilar</a>
-        <a data-accion="toggle:latex"><span class="marca" data-marca="latex"></span>Ver código LaTeX</a>
+        <a data-accion="theme:light"><span class="mark" data-marca="theme-light"></span><span data-i18n="theme_light">Light</span></a>
+        <a data-accion="theme:dark"><span class="mark" data-marca="theme-dark"></span><span data-i18n="theme_dark">Dark</span></a>
+        <a data-accion="theme:system"><span class="mark" data-marca="theme-system"></span><span data-i18n="theme_system">System</span></a>
       </div>
     </div>
 
     <div class="menu">
-      <button class="menu-btn">Tema</button>
+      <button class="menu-btn" data-i18n="menu_help">Help</button>
       <div class="menu-drop">
-        <a data-accion="tema:claro"><span class="marca" data-marca="tema-claro"></span>Claro</a>
-        <a data-accion="tema:oscuro"><span class="marca" data-marca="tema-oscuro"></span>Oscuro</a>
-        <a data-accion="tema:sistema"><span class="marca" data-marca="tema-sistema"></span>Sistema</a>
+        <a data-accion="help" data-i18n="action_help">Quick guide</a>
       </div>
     </div>
 
     <div class="menu">
-      <button class="menu-btn">Ayuda</button>
+      <button class="menu-btn" data-i18n="menu_credits">Credits</button>
       <div class="menu-drop">
-        <a data-accion="ayuda">Guía rápida</a>
-      </div>
-    </div>
-
-    <div class="menu">
-      <button class="menu-btn">Créditos</button>
-      <div class="menu-drop">
-        <a data-accion="creditos">Créditos</a>
+        <a data-accion="credits" data-i18n="action_credits">Credits</a>
       </div>
     </div>
   </nav>
 </header>
 
-<main id="contenido">
-  <section id="panel-formulario">
+<main id="content">
+  <section id="form-area">
     <div id="form-panel"></div>
+    <div id="latex-panel" hidden>
+      <div id="latex-bar">
+        <span data-i18n="latex_bar">Generated LaTeX code — you can edit it by hand</span>
+        <button class="small" id="back-to-form" data-accion="toggle:latex" data-i18n="back_to_form">Back to the form</button>
+      </div>
+      <textarea id="latex-text" spellcheck="false"></textarea>
+    </div>
   </section>
 
-  <div id="separador" role="separator" aria-orientation="vertical"
-       title="Arrastra para cambiar el ancho del formulario; doble clic para restablecer"></div>
+  <div id="splitter" role="separator" aria-orientation="vertical"
+       data-i18n-title="splitter_title"
+       title="Drag to resize the form panel; double-click to reset"></div>
 
-  <section id="panel-preview">
-    <div id="barra-preview">
-      <button id="btn-recompilar" class="pequeño" data-accion="recompilar">Recompilar</button>
-      <button id="btn-auto" class="pequeño" data-accion="toggle:autocompilar" title="Actualizar automáticamente al escribir">
-        <span id="auto-ind" class="auto-punto"></span>Auto
+  <section id="preview-area">
+    <div id="preview-bar">
+      <button id="recompile-button" class="small" data-accion="recompile" data-i18n="recompile">Recompile</button>
+      <button id="auto-button" class="small" data-accion="toggle:auto-compile"
+              data-i18n-title="auto_compile_tip" title="Update automatically while typing">
+        <span id="auto-dot" class="auto-dot"></span><span data-i18n="auto_label">Auto</span>
       </button>
-      <span id="estado-preview">Esperando…</span>
-      <button id="zoom-75" class="pequeño" data-accion="zoom:75" title="Zoom 75%">75%</button>
-      <button id="zoom-100" class="pequeño activo" data-accion="zoom:100" title="Zoom 100%">100%</button>
-      <button id="zoom-125" class="pequeño" data-accion="zoom:125" title="Zoom 125%">125%</button>
+      <span id="preview-status" data-i18n="waiting">Waiting…</span>
+      <button id="zoom-75" class="small" data-accion="zoom:75" data-i18n-title="zoom_tip_75" title="Zoom 75%">75%</button>
+      <button id="zoom-100" class="small active" data-accion="zoom:100" data-i18n-title="zoom_tip_100" title="Zoom 100%">100%</button>
+      <button id="zoom-125" class="small" data-accion="zoom:125" data-i18n-title="zoom_tip_125" title="Zoom 125%">125%</button>
     </div>
-    <div id="aviso-motor" hidden>
-      No hay un motor LaTeX configurado. La previsualización y la exportación a PDF requieren uno.
-      <button class="pequeño primary" data-accion="preferencias-motor">Configurar motor</button>
+    <div id="engine-warning" hidden>
+      <span data-i18n="engine_warning">No LaTeX engine is configured. Preview and PDF export require one.</span>
+      <button class="small primary" data-accion="setup-engine" data-i18n="setup_engine">Set up engine</button>
     </div>
-    <div id="errores" hidden></div>
-    <iframe id="pdf" src="about:blank" title="Previsualización"></iframe>
+    <div id="errors" hidden></div>
+    <iframe id="pdf" src="about:blank" data-i18n-title="preview_title" title="Preview"></iframe>
   </section>
 </main>
 
-<footer id="barra-estado"><span id="estado" aria-live="polite"></span></footer>
+<footer id="status-bar"><span id="status" aria-live="polite"></span></footer>
 
 <div class="modal" id="modal-wizard" hidden>
   <div class="modal-box">
-    <h2>Motor LaTeX</h2>
-    <p>Para generar la previsualización y exportar a PDF, CVLaTeX necesita un motor LaTeX en tu equipo.</p>
-    <p>Si no tienes uno, CVLaTeX puede <b>descargar e instalar TinyTeX automáticamente</b> (una sola vez, requiere conexión a internet).</p>
-    <div class="wizard-opciones">
-      <button id="wz-instalar" class="primary">Descargar e instalar TinyTeX (recomendado)</button>
-      <button id="wz-tengo">Ya tengo LaTeX instalado</button>
-      <button id="wz-manual">Configurar la ruta manualmente…</button>
-      <a id="wz-ahora" href="#">Ahora no</a>
+    <h2 data-i18n="wizard_title">LaTeX engine</h2>
+    <p data-i18n="wizard_p1">To generate the preview and export to PDF, CVLaTeX needs a LaTeX engine on your computer.</p>
+    <p><span data-i18n="wizard_p2a">If you don't have one, CVLaTeX can </span><b data-i18n="wizard_p2b">download and install TinyTeX automatically</b><span data-i18n="wizard_p2c"> (one time only, requires an internet connection).</span></p>
+    <div class="wizard-options">
+      <button id="wz-install" class="primary" data-i18n="wizard_install">Download and install TinyTeX (recommended)</button>
+      <button id="wz-have" data-i18n="wizard_have">I already have LaTeX installed</button>
+      <button id="wz-manual" data-i18n="wizard_manual">Set the path manually…</button>
+      <a id="wz-later" href="#" data-i18n="wizard_later">Not now</a>
     </div>
-    <div id="wz-progreso" hidden>
-      <div class="barra"><div id="wz-barra"></div></div>
-      <span id="wz-progreso-texto"></span>
+    <div id="wz-progress" hidden>
+      <div class="progress-bar"><div id="wz-bar"></div></div>
+      <span id="wz-progress-text"></span>
+      <button class="small" id="install-cancel" data-i18n="install_cancel" hidden>Cancel installation</button>
     </div>
-    <p id="wz-estado"></p>
+    <p id="wz-status"></p>
   </div>
 </div>
 
-<div class="modal" id="modal-prefs" hidden>
+<div class="modal" id="modal-settings" hidden>
   <div class="modal-box">
-    <h2>Preferencias</h2>
-    <div class="fila-campo">
-      <label for="pf-papel">Tamaño de hoja</label>
-      <select id="pf-papel">
-        <option value="a4">A4 (210×297 mm)</option>
-        <option value="letter">Carta (216×279 mm)</option>
-        <option value="legal">Legal (216×356 mm)</option>
+    <h2 data-i18n="settings_title">Settings</h2>
+    <div class="field-row">
+      <label for="ui-language" data-i18n="ui_language_label">Interface language</label>
+      <select id="ui-language">
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="zh">中文</option>
+        <option value="ru">Русский</option>
       </select>
     </div>
-    <div class="fila-campo">
-      <label>Tamaño de fuente</label>
-      <select id="pf-fuente">
+    <div class="field-row">
+      <label for="pf-paper" data-i18n="paper_size">Paper size</label>
+      <select id="pf-paper">
+        <option value="a4" data-i18n="paper_a4">A4 (210×297 mm)</option>
+        <option value="letter" data-i18n="paper_letter">Letter (216×279 mm)</option>
+        <option value="legal" data-i18n="paper_legal">Legal (216×356 mm)</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <label for="pf-font-size" data-i18n="font_size">Font size</label>
+      <select id="pf-font-size">
         <option value="10">10 pt</option>
         <option value="11">11 pt</option>
         <option value="12">12 pt</option>
       </select>
     </div>
     <fieldset>
-      <legend>Márgenes (cm)</legend>
-      <div class="margenes">
-        <div class="fila-campo"><label>Superior</label><input type="number" id="pf-m-sup" min="0" step="0.5"></div>
-        <div class="fila-campo"><label>Inferior</label><input type="number" id="pf-m-inf" min="0" step="0.5"></div>
-        <div class="fila-campo"><label>Izquierdo</label><input type="number" id="pf-m-izq" min="0" step="0.5"></div>
-        <div class="fila-campo"><label>Derecho</label><input type="number" id="pf-m-der" min="0" step="0.5"></div>
+      <legend data-i18n="margins_cm">Margins (cm)</legend>
+      <div class="margins">
+        <div class="field-row"><label for="pf-margin-top" data-i18n="margin_top">Top</label><input type="number" id="pf-margin-top" min="0" step="0.5"></div>
+        <div class="field-row"><label for="pf-margin-bottom" data-i18n="margin_bottom">Bottom</label><input type="number" id="pf-margin-bottom" min="0" step="0.5"></div>
+        <div class="field-row"><label for="pf-margin-left" data-i18n="margin_left">Left</label><input type="number" id="pf-margin-left" min="0" step="0.5"></div>
+        <div class="field-row"><label for="pf-margin-right" data-i18n="margin_right">Right</label><input type="number" id="pf-margin-right" min="0" step="0.5"></div>
       </div>
     </fieldset>
-    <div class="fila-campo">
-      <label><input type="checkbox" id="pf-autocompilar"> Auto-recompilar al escribir</label>
+    <div class="field-row">
+      <label><input type="checkbox" id="pf-auto-compile"> <span data-i18n="auto_compile_checkbox">Auto-recompile while typing</span></label>
     </div>
-    <div class="fila-campo">
-      <label for="pf-breakpoint">Apilar paneles si el ancho es menor a (px)</label>
+    <div class="field-row">
+      <label for="pf-breakpoint" data-i18n="breakpoint_label">Stack panels when width is below (px)</label>
       <input type="number" id="pf-breakpoint" min="500" max="2000" step="10">
     </div>
-    <fieldset id="pf-colores">
-      <legend>Colores del documento</legend>
-      <div class="fila-color">
-        <label for="pf-color-primario">Primario</label>
-        <input type="text" id="pf-color-primario" maxlength="7" spellcheck="false">
-        <input type="color" id="pf-color-primario-rueda" aria-label="Elegir color primario" title="Elegir color primario">
-        <button class="pequeño" id="pf-color-primario-reset" title="Usar el color de la plantilla">Auto</button>
+    <fieldset id="settings-colors">
+      <legend data-i18n="document_colors">Document colors</legend>
+      <div class="color-row">
+        <label for="pf-color-primary" data-i18n="color_primary">Primary</label>
+        <input type="text" id="pf-color-primary" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-primary-wheel" data-i18n-title="color_pick_primary" data-i18n-aria-label="color_pick_primary" aria-label="Pick primary color" title="Pick primary color">
+        <button class="small" id="pf-color-primary-reset" data-i18n-title="color_auto_tip" data-i18n="color_auto" title="Use the template color">Auto</button>
       </div>
-      <div class="fila-color">
-        <label for="pf-color-secundario">Secundario</label>
-        <input type="text" id="pf-color-secundario" maxlength="7" spellcheck="false">
-        <input type="color" id="pf-color-secundario-rueda" aria-label="Elegir color secundario" title="Elegir color secundario">
-        <button class="pequeño" id="pf-color-secundario-reset" title="Usar el color de la plantilla">Auto</button>
+      <div class="color-row">
+        <label for="pf-color-secondary" data-i18n="color_secondary">Secondary</label>
+        <input type="text" id="pf-color-secondary" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-secondary-wheel" data-i18n-title="color_pick_secondary" data-i18n-aria-label="color_pick_secondary" aria-label="Pick secondary color" title="Pick secondary color">
+        <button class="small" id="pf-color-secondary-reset" data-i18n-title="color_auto_tip" data-i18n="color_auto" title="Use the template color">Auto</button>
       </div>
-      <div class="fila-color">
-        <label for="pf-color-texto">Letras</label>
-        <input type="text" id="pf-color-texto" maxlength="7" spellcheck="false">
-        <input type="color" id="pf-color-texto-rueda" aria-label="Elegir color de las letras" title="Elegir color de las letras">
-        <button class="pequeño" id="pf-color-texto-reset" title="Usar el color de la plantilla">Auto</button>
+      <div class="color-row">
+        <label for="pf-color-text" data-i18n="color_text">Text</label>
+        <input type="text" id="pf-color-text" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-text-wheel" data-i18n-title="color_pick_text" data-i18n-aria-label="color_pick_text" aria-label="Pick text color" title="Pick text color">
+        <button class="small" id="pf-color-text-reset" data-i18n-title="color_auto_tip" data-i18n="color_auto" title="Use the template color">Auto</button>
       </div>
-      <div class="fila-color">
-        <label for="pf-color-gris">Gris</label>
-        <input type="text" id="pf-color-gris" maxlength="7" spellcheck="false">
-        <input type="color" id="pf-color-gris-rueda" aria-label="Elegir color gris" title="Elegir color gris">
-        <button class="pequeño" id="pf-color-gris-reset" title="Usar el color de la plantilla">Auto</button>
+      <div class="color-row">
+        <label for="pf-color-gray" data-i18n="color_gray">Gray</label>
+        <input type="text" id="pf-color-gray" maxlength="7" spellcheck="false">
+        <input type="color" id="pf-color-gray-wheel" data-i18n-title="color_pick_gray" data-i18n-aria-label="color_pick_gray" aria-label="Pick gray color" title="Pick gray color">
+        <button class="small" id="pf-color-gray-reset" data-i18n-title="color_auto_tip" data-i18n="color_auto" title="Use the template color">Auto</button>
       </div>
-      <p class="nota-colores">Estos colores afectan al documento exportado (PDF/Word/.tex), no al tema de la interfaz. Un campo vacío usa el color propio de la plantilla.</p>
+      <p class="colors-note" data-i18n="colors_note">These colors affect the exported document (PDF/Word/.tex), not the UI theme. An empty field uses the template's own color.</p>
     </fieldset>
     <fieldset>
-      <legend>Motor LaTeX</legend>
-      <p id="pf-motor-estado">Comprobando…</p>
+      <legend data-i18n="engine_fieldset">LaTeX engine</legend>
+      <p id="pf-engine-status" data-i18n="engine_checking">Checking…</p>
       <div>
-        <button class="pequeño" id="pf-motor-comprobar">Comprobar</button>
-        <button class="pequeño" id="pf-motor-ruta">Cambiar ruta…</button>
-        <button class="pequeño" id="pf-motor-instalar">Instalar TinyTeX</button>
+        <button class="small" id="pf-engine-check" data-i18n="engine_check">Check</button>
+        <button class="small" id="pf-engine-path" data-i18n="engine_change_path">Change path…</button>
+        <button class="small" id="pf-engine-install" data-i18n="engine_install">Install TinyTeX</button>
       </div>
     </fieldset>
-    <p id="pf-msj" class="msj"></p>
-    <div class="modal-pie">
-      <button class="primary" id="pf-cerrar">Cerrar</button>
+    <p id="pf-message" class="settings-message"></p>
+    <div class="modal-footer">
+      <button class="primary" id="pf-close" data-i18n="close">Close</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-margenes" hidden>
-  <div class="modal-box pequeño">
-    <h2>Márgenes personalizados</h2>
-    <div class="margenes">
-      <div class="fila-campo"><label>Superior (cm)</label><input type="number" id="mg-sup" min="0" step="0.5"></div>
-      <div class="fila-campo"><label>Inferior (cm)</label><input type="number" id="mg-inf" min="0" step="0.5"></div>
-      <div class="fila-campo"><label>Izquierdo (cm)</label><input type="number" id="mg-izq" min="0" step="0.5"></div>
-      <div class="fila-campo"><label>Derecho (cm)</label><input type="number" id="mg-der" min="0" step="0.5"></div>
+<div class="modal" id="modal-margins" hidden>
+  <div class="modal-box small">
+    <h2 data-i18n="margins_modal_title">Custom margins</h2>
+    <div class="margins">
+      <div class="field-row"><label for="mg-top" data-i18n="margin_top_cm">Top (cm)</label><input type="number" id="mg-top" min="0" step="0.5"></div>
+      <div class="field-row"><label for="mg-bottom" data-i18n="margin_bottom_cm">Bottom (cm)</label><input type="number" id="mg-bottom" min="0" step="0.5"></div>
+      <div class="field-row"><label for="mg-left" data-i18n="margin_left_cm">Left (cm)</label><input type="number" id="mg-left" min="0" step="0.5"></div>
+      <div class="field-row"><label for="mg-right" data-i18n="margin_right_cm">Right (cm)</label><input type="number" id="mg-right" min="0" step="0.5"></div>
     </div>
-    <div class="modal-pie">
-      <button class="pequeño" id="mg-cancelar">Cancelar</button>
-      <button class="primary pequeño" id="mg-aplicar">Aplicar</button>
+    <div class="modal-footer">
+      <button class="small" id="mg-cancel" data-i18n="cancel">Cancel</button>
+      <button class="primary small" id="mg-apply" data-i18n="apply">Apply</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-bloque-seccion" hidden>
-  <div class="modal-box pequeño">
-    <h2>Sección personalizada</h2>
-    <div class="campos">
-      <div class="campo ancho">
-        <label for="bs-titulo">Título de la sección</label>
-        <input type="text" id="bs-titulo">
+<div class="modal" id="modal-custom-section" hidden>
+  <div class="modal-box small">
+    <h2 data-i18n="custom_section_title">Custom section</h2>
+    <div class="fields">
+      <div class="field wide">
+        <label for="custom-section-title" data-i18n="section_title_label">Section title</label>
+        <input type="text" id="custom-section-title" data-i18n-placeholder="section_title_placeholder" placeholder="Section title">
       </div>
-      <div class="campo ancho">
-        <label for="bs-contenido">Contenido (una línea por viñeta)</label>
-        <textarea id="bs-contenido" rows="5"></textarea>
+      <div class="field wide">
+        <label for="custom-section-content" data-i18n="section_content_label">Content (one line per bullet)</label>
+        <textarea id="custom-section-content" rows="5"></textarea>
       </div>
     </div>
-    <div class="modal-pie">
-      <button class="pequeño" id="bs-cancelar">Cancelar</button>
-      <button class="primary pequeño" id="bs-aceptar">Aceptar</button>
+    <div class="modal-footer">
+      <button class="small" id="custom-section-cancel" data-i18n="cancel">Cancel</button>
+      <button class="primary small" id="custom-section-accept" data-i18n="accept">Accept</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-bloque-lista" hidden>
+<div class="modal" id="modal-list-block" hidden>
   <div class="modal-box">
-    <h2 id="bl-titulo-modal">Lista en columnas</h2>
-    <div class="campos">
-      <div class="campo ancho">
-        <label for="bl-titulo">Título de la sección (opcional)</label>
-        <input type="text" id="bl-titulo">
+    <h2 id="list-block-heading" data-i18n="list_block_columns_title">Column list</h2>
+    <div class="fields">
+      <div class="field wide">
+        <label for="list-block-title" data-i18n="section_title_optional">Section title (optional)</label>
+        <input type="text" id="list-block-title">
       </div>
-      <div class="campo" id="bl-columnas-campo">
-        <label for="bl-columnas">Columnas en el CV</label>
-        <select id="bl-columnas">
-          <option value="1">1 columna</option>
-          <option value="2">2 columnas</option>
-          <option value="3">3 columnas</option>
+      <div class="field" id="list-block-columns-field">
+        <label for="list-block-columns" data-i18n="columns_in_cv">Columns in the CV</label>
+        <select id="list-block-columns">
+          <option value="1" data-i18n="columns_1">1 column</option>
+          <option value="2" data-i18n="columns_2">2 columns</option>
+          <option value="3" data-i18n="columns_3">3 columns</option>
         </select>
       </div>
     </div>
-    <p id="bl-ayuda" class="sin-entradas"></p>
-    <div id="bl-entradas"></div>
-    <button class="btn-anadir" id="bl-anadir">+ Añadir entrada</button>
-    <div class="modal-pie">
-      <button class="pequeño" id="bl-cancelar">Cancelar</button>
-      <button class="primary pequeño" id="bl-aceptar">Aceptar</button>
+    <p id="list-block-help" class="no-entries"></p>
+    <div id="list-block-entries"></div>
+    <button class="add-entry-button" id="list-block-add" data-i18n="add_entry">+ Add entry</button>
+    <div class="modal-footer">
+      <button class="small" id="list-block-cancel" data-i18n="cancel">Cancel</button>
+      <button class="primary small" id="list-block-accept" data-i18n="accept">Accept</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-bloques" hidden>
+<div class="modal" id="modal-blocks" hidden>
   <div class="modal-box">
-    <h2>Gestionar bloques</h2>
-    <div id="bloques-lista"></div>
-    <div class="modal-pie">
-      <button class="primary pequeño" id="bloques-cerrar">Cerrar</button>
+    <h2 data-i18n="blocks_modal_title">Manage blocks</h2>
+    <div id="blocks-list"></div>
+    <div class="modal-footer">
+      <button class="primary small" id="blocks-close" data-i18n="close">Close</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-ayuda" hidden>
-  <div class="modal-box pequeño">
-    <h2>Guía rápida</h2>
-    <div class="texto-ayuda">
-      <p><b>Formulario:</b> completa los campos de la izquierda. La previsualización se actualiza automáticamente mientras escribes.</p>
-      <p><b>Experiencia, educación, etc.:</b> usa «Añadir» para crear más entradas y el botón ✕ para eliminarlas.</p>
-      <p><b>Editar:</b> cambia el tamaño de la hoja, los márgenes o la fuente del documento.</p>
-      <p><b>CV de ejemplo:</b> «Editar → Cargar CV de ejemplo» rellena el formulario con un ejemplo para ver cómo completar los campos.</p>
-      <p><b>Archivos:</b> guarda tu CV como archivo CVLaTeX (.cvjson), expórtalo a PDF o a código LaTeX, o impórtalo.</p>
-      <p><b>Código LaTeX:</b> desde «Previsualización → Ver código LaTeX» puedes ver y editar el código LaTeX generado. Al volver al formulario, el código se regenera desde los datos.</p>
-      <p><b>Exportar PDF:</b> requiere un motor LaTeX (TinyTeX instalado automáticamente o MiKTeX/TeX Live).</p>
+<div class="modal" id="modal-help" hidden>
+  <div class="modal-box small">
+    <h2 data-i18n="help_title">Quick guide</h2>
+    <div class="help-text">
+      <p><b data-i18n="help_form_bold">Form:</b><span data-i18n="help_form_text"> complete the fields on the left. The preview updates automatically while you type.</span></p>
+      <p><b data-i18n="help_entries_bold">Experience, education, etc.:</b><span data-i18n="help_entries_text"> use “Add” to create more entries and the ✕ button to delete them.</span></p>
+      <p><b data-i18n="help_edit_bold">Edit:</b><span data-i18n="help_edit_text"> change the paper size, margins or document font.</span></p>
+      <p><b data-i18n="help_sample_bold">Sample CV:</b><span data-i18n="help_sample_text"> “Edit → Load sample CV” fills the form with an example so you can see how to complete the fields.</span></p>
+      <p><b data-i18n="help_files_bold">Files:</b><span data-i18n="help_files_text"> save your CV as a CVLaTeX file (.cvjson), export it to PDF or LaTeX code, or import it.</span></p>
+      <p><b data-i18n="help_latex_bold">LaTeX code:</b><span data-i18n="help_latex_text"> from “Edit → View LaTeX code” you can view and edit the generated LaTeX code. When you return to the form, the code is regenerated from the data.</span></p>
+      <p><b data-i18n="help_pdf_bold">Export PDF:</b><span data-i18n="help_pdf_text"> requires a LaTeX engine (TinyTeX installed automatically, or MiKTeX/TeX Live).</span></p>
     </div>
-    <div class="modal-pie">
-      <button class="primary pequeño" data-accion="cerrar-modal">Cerrar</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="modal-creditos" hidden>
-  <div class="modal-box pequeño">
-    <h2>Créditos</h2>
-    <div class="texto-ayuda">
-      <p><b>CVLaTeX</b> — Editor de currículums con control tipográfico LaTeX.</p>
-      <p>Desarrollado por: <span class="créditos-nombre">[por determinar]</span></p>
-      <p>Gracias a TinyTeX por la distribución LaTeX portable.</p>
-    </div>
-    <div class="modal-pie">
-      <button class="primary pequeño" data-accion="cerrar-modal">Cerrar</button>
+    <div class="modal-footer">
+      <button class="primary small" data-accion="close-modal" data-i18n="close">Close</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-confirmar" hidden>
-  <div class="modal-box pequeño">
-    <p id="confirmar-msj"></p>
-    <div class="modal-pie">
-      <button class="pequeño" id="confirmar-no">Cancelar</button>
-      <button class="primary pequeño" id="confirmar-si">Aceptar</button>
+<div class="modal" id="modal-credits" hidden>
+  <div class="modal-box small">
+    <h2 data-i18n="credits_title">Credits</h2>
+    <div class="help-text">
+      <p><b>CVLaTeX</b><span data-i18n="credits_slogan"> — Standardized, professional CVs without the hassle.</span></p>
+      <p><span data-i18n="credits_developed">Developed by:</span> <span class="credits-name">Elvis Enrique Chen Qiu</span></p>
+      <p><span data-i18n="credits_github">GitHub:</span> <a href="https://github.com/ECHEQ" rel="noopener" target="_blank">ECHEQ</a></p>
+      <p data-i18n="credits_story">CVLaTeX was born so that any university student can build their CV for free and portably, with no accounts, subscriptions or microtransactions: a comfortable editor that produces a standard-format CV and compiles it to a professional PDF, all on your own machine.</p>
+      <p data-i18n="credits_tinytex">Thanks to TinyTeX for the portable LaTeX distribution.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="primary small" data-accion="close-modal" data-i18n="close">Close</button>
     </div>
   </div>
 </div>
 
-<div class="modal" id="modal-recorte" hidden>
+<div class="modal" id="modal-confirm" hidden>
+  <div class="modal-box small">
+    <p id="confirm-message"></p>
+    <div class="modal-footer">
+      <button class="small" id="confirm-cancel" data-i18n="cancel">Cancel</button>
+      <button class="primary small" id="confirm-accept" data-i18n="confirm_ok">Accept</button>
+      <button class="primary small" id="confirm-exit" data-accion="exit-without-saving" data-i18n="exit_without_saving" hidden>Exit without saving</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-crop" hidden>
   <div class="modal-box">
-    <h2>Ajustar área de la foto</h2>
-    <p>Arrastra el recuadro para moverlo y las esquinas para ajustar el área que se mostrará en el CV.</p>
-    <div id="recorte-cont"></div>
-    <div class="modal-pie">
-      <button class="pequeño" id="recorte-cancelar">Cancelar</button>
-      <button class="primary pequeño" id="recorte-aplicar">Aplicar</button>
+    <h2 data-i18n="crop_title">Adjust photo area</h2>
+    <p data-i18n="crop_help">Drag the box to move it and the corners to adjust the area shown in the CV.</p>
+    <div id="crop-container"></div>
+    <div class="modal-footer">
+      <button class="small" id="crop-cancel" data-i18n="cancel">Cancel</button>
+      <button class="primary small" id="crop-apply" data-i18n="apply">Apply</button>
     </div>
   </div>
 </div>
 
-<div id="toast" aria-live="polite" hidden></div>
+<div id="toasts" aria-live="polite" hidden></div>
 
+<script src="/i18n.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

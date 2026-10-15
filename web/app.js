@@ -1,1224 +1,1327 @@
 "use strict";
 
+/* CVLaTeX frontend. All user-visible strings come from web/i18n.js through
+   `t()`; identifiers and comments are English. The bridge calls mirror the
+   frozen Api surface of main.py, including its Spanish envelope keys
+   (`errores`, `ruta`, `cancelado`, ...), which are part of the wire format. */
+
 let api = null;
 
-function apiLista() {
+function waitForApi() {
   return new Promise((resolve) => {
-    let hecho = false;
-    const comprobar = () => {
+    let done = false;
+    const check = () => {
       if (
-        !hecho &&
+        !done &&
         window.pywebview &&
         window.pywebview.api &&
-        typeof window.pywebview.api.elegir_foto === "function"
+        typeof window.pywebview.api.init === "function"
       ) {
-        hecho = true;
-        clearInterval(intervalo);
+        done = true;
+        clearInterval(timer);
         resolve(window.pywebview.api);
       }
     };
-    const intervalo = setInterval(comprobar, 30);
-    window.addEventListener("pywebviewready", comprobar);
+    const timer = setInterval(check, 30);
+    window.addEventListener("pywebviewready", check);
     setTimeout(() => {
-      if (!hecho) {
-        hecho = true;
-        clearInterval(intervalo);
+      if (!done) {
+        done = true;
+        clearInterval(timer);
         resolve((window.pywebview && window.pywebview.api) || null);
       }
     }, 5000);
   });
 }
-const $ = (sel, base) => (base || document).querySelector(sel);
-const $$ = (sel, base) => Array.from((base || document).querySelectorAll(sel));
+
+const $ = (selector, base) => (base || document).querySelector(selector);
+const $$ = (selector, base) => Array.from((base || document).querySelectorAll(selector));
 
 const state = {
-  datos: null,
+  data: null,
   prefs: null,
+  filePath: null,
   latexOk: false,
-  modo: "formulario",
+  mode: "form",
   tex: null,
   texManual: null,
-  texEditado: false,
-  sucio: false,
-  idCompilacion: 0,
+  texEdited: false,
+  dirty: false,
+  compileId: 0,
   timer: null,
   zoom: 100,
-  pilaDeshacer: [],
-  pilaRehacer: [],
+  undoStack: [],
+  redoStack: [],
+  statusKey: "",
+  statusSuffix: "",
+  statusClass: "",
+  preview: { state: "idle" },
 };
 
-let datosVacios = null;
+let emptyData = null;
 
-const TIPOS_EDUCACION = [
-  "Primaria",
-  "Secundaria (ESO)",
-  "Bachillerato",
-  "FP Grado Medio",
-  "FP Grado Superior",
-  "Grado Universitario",
-  "Ingeniería",
-  "Licenciatura",
-  "Diplomatura",
-  "Arquitectura",
-  "Máster",
-  "Doctorado (PhD)",
-  "Posgrado / Especialización",
-  "Curso / Certificación",
-  "Otro",
+const CV_LANGUAGES = [
+  { value: "zh", labelKey: "cv_language_zh" },
+  { value: "es", labelKey: "cv_language_es" },
+  { value: "en", labelKey: "cv_language_en" },
 ];
 
-const IDIOMAS_CV = [
-  { v: "zh", l: "中文 (chino)" },
-  { v: "es", l: "Español" },
-  { v: "en", l: "English" },
+const TEMPLATES_CV = [
+  { value: "classic", labelKey: "template_classic" },
+  { value: "harvard", labelKey: "template_harvard" },
+  { value: "modern", labelKey: "template_modern" },
+  { value: "creative", labelKey: "template_creative" },
+  { value: "sidebar", labelKey: "template_sidebar" },
+  { value: "sidebar-right", labelKey: "template_sidebar_right" },
+  { value: "chinese", labelKey: "template_chinese" },
 ];
 
-const PLANTILLAS_CV = [
-  { v: "clasico", l: "Clásico" },
-  { v: "harvard", l: "Harvard (académica)" },
-  { v: "moderno", l: "Moderno" },
-  { v: "creativo", l: "Creativo" },
-  { v: "chino", l: "Chino (estándar)" },
-];
+const THEMES = ["light", "dark", "system"];
 
-const TEMAS = ["claro", "oscuro", "sistema"];
+const COLOR_FIELDS = ["primary", "secondary", "text", "gray"];
 
-const CAMPOS_COLOR = ["primario", "secundario", "texto", "gris"];
-
-const SECCIONES_DINAMICAS = {
-  trabajo: {
-    titulo: "Trabajo",
-    columnas: true,
-    campos: [
-      { k: "modalidad", l: "Modalidad", tipo: "select", opciones: ["Presencial", "Híbrido", "Remoto"] },
-      { k: "puesto", l: "Puesto / Cargo" },
-      { k: "empresa", l: "Empresa / Compañía" },
-      { k: "desde", l: "Desde (año)" },
-      { k: "hasta", l: "Hasta (año)" },
-      { k: "logros", l: "Logros (uno por línea)", area: true },
-      { k: "logo", l: "Logo de la empresa", tipo: "logo" },
+/* Canonical entry schema (English keys, docs/refactor-map.md). Select values
+   are canonical keys; their labels come from the backend LANG tables through
+   `optionLabel()` in web/i18n.js. */
+const DYNAMIC_SECTIONS = {
+  work: {
+    titleKey: "dyn_work",
+    columns: true,
+    fields: [
+      { k: "work_mode", labelKey: "field_work_mode", type: "select", options: ["onsite", "hybrid", "remote"], optionKind: "work_mode" },
+      { k: "position", labelKey: "field_position" },
+      { k: "company", labelKey: "field_company" },
+      { k: "start", labelKey: "field_start" },
+      { k: "end", labelKey: "field_end" },
+      { k: "achievements", labelKey: "field_achievements", area: true },
+      { k: "logo", labelKey: "field_company_logo", type: "logo" },
     ],
   },
-  pasantia: {
-    titulo: "Pasantías",
-    columnas: true,
-    campos: [
-      { k: "modalidad", l: "Modalidad", tipo: "select", opciones: ["Presencial", "Híbrido", "Remoto"] },
-      { k: "puesto", l: "Puesto / Cargo" },
-      { k: "empresa", l: "Empresa / Compañía" },
-      { k: "desde", l: "Desde (año)" },
-      { k: "hasta", l: "Hasta (año)" },
-      { k: "logros", l: "Logros (uno por línea)", area: true },
-      { k: "logo", l: "Logo de la empresa", tipo: "logo" },
+  internships: {
+    titleKey: "dyn_internships",
+    columns: true,
+    fields: [
+      { k: "work_mode", labelKey: "field_work_mode", type: "select", options: ["onsite", "hybrid", "remote"], optionKind: "work_mode" },
+      { k: "position", labelKey: "field_position" },
+      { k: "company", labelKey: "field_company" },
+      { k: "start", labelKey: "field_start" },
+      { k: "end", labelKey: "field_end" },
+      { k: "achievements", labelKey: "field_achievements", area: true },
+      { k: "logo", labelKey: "field_company_logo", type: "logo" },
     ],
   },
-  proyectos: {
-    titulo: "Proyectos",
-    columnas: true,
-    campos: [
-      { k: "nombre", l: "Nombre del proyecto" },
-      { k: "organizacion", l: "Organización / Evento" },
-      { k: "desde", l: "Desde (año)" },
-      { k: "hasta", l: "Hasta (año)" },
-      { k: "descripcion", l: "Descripción (uno por línea)", area: true },
-      { k: "resultado", l: "Resultado (ej: 成果：获三等奖)" },
-      { k: "enlace", l: "Enlace (Github)" },
+  projects: {
+    titleKey: "dyn_projects",
+    columns: true,
+    fields: [
+      { k: "name", labelKey: "field_project_name" },
+      { k: "organization", labelKey: "field_organization" },
+      { k: "start", labelKey: "field_start" },
+      { k: "end", labelKey: "field_end" },
+      { k: "description", labelKey: "field_description", area: true },
+      { k: "result", labelKey: "field_result" },
+      { k: "link", labelKey: "field_link" },
     ],
   },
-  proyectosu: {
-    titulo: "Proyectos universitarios",
-    columnas: true,
-    campos: [
-      { k: "nombre", l: "Nombre del proyecto" },
-      { k: "asignatura", l: "Asignatura / Curso" },
-      { k: "organizacion", l: "Universidad / Empresa" },
-      { k: "desde", l: "Desde (año)" },
-      { k: "hasta", l: "Hasta (año)" },
-      { k: "descripcion", l: "Descripción (uno por línea)", area: true },
-      { k: "resultado", l: "Resultado (ej: 成果：获三等奖)" },
-      { k: "enlace", l: "Enlace (Github)" },
-      { k: "logo", l: "Logo de la universidad", tipo: "logo" },
+  university_projects: {
+    titleKey: "dyn_university_projects",
+    columns: true,
+    fields: [
+      { k: "name", labelKey: "field_project_name" },
+      { k: "course", labelKey: "field_course" },
+      { k: "organization", labelKey: "field_university_company" },
+      { k: "start", labelKey: "field_start" },
+      { k: "end", labelKey: "field_end" },
+      { k: "description", labelKey: "field_description", area: true },
+      { k: "result", labelKey: "field_result" },
+      { k: "link", labelKey: "field_link" },
+      { k: "logo", labelKey: "field_university_logo", type: "logo" },
     ],
   },
-  educacion: {
-    titulo: "Educación",
-    columnas: true,
-    campos: [
-      { k: "tipo", l: "Tipo de educación", tipo: "select", opciones: TIPOS_EDUCACION },
-      { k: "titulo", l: "Título / Grado" },
-      { k: "institucion", l: "Institución" },
-      { k: "desde", l: "Desde (año)" },
-      { k: "hasta", l: "Hasta (año)" },
-      { k: "nota", l: "Nota / Mención" },
-      { k: "logo", l: "Logo de la institución", tipo: "logo" },
+  education: {
+    titleKey: "dyn_education",
+    columns: true,
+    fields: [
+      { k: "degree_type", labelKey: "field_degree_type", type: "select", options: ["primary", "secondary", "high_school", "vocational_mid", "vocational_high", "bachelor", "engineering", "licentiate", "diploma", "architecture", "master", "phd", "postgraduate", "course", "other"], optionKind: "degree_type" },
+      { k: "degree", labelKey: "field_degree" },
+      { k: "institution", labelKey: "field_institution" },
+      { k: "start", labelKey: "field_start" },
+      { k: "end", labelKey: "field_end" },
+      { k: "grade", labelKey: "field_grade" },
+      { k: "logo", labelKey: "field_institution_logo", type: "logo" },
     ],
   },
-  habilidades: {
-    titulo: "Habilidades (por categorías)",
-    campos: [
-      { k: "categoria", l: "Categoría (ej: 编程语言 / Lenguajes)" },
-      { k: "valores", l: "Valores (separados por comas)" },
+  skills: {
+    titleKey: "dyn_skills",
+    fields: [
+      { k: "category", labelKey: "field_category" },
+      { k: "values", labelKey: "field_values" },
     ],
   },
-  idiomas: {
-    titulo: "Idiomas",
-    campos: [
-      { k: "idioma", l: "Idioma" },
-      { k: "nivel", l: "Nivel" },
+  languages: {
+    titleKey: "dyn_languages",
+    fields: [
+      { k: "language", labelKey: "field_language" },
+      { k: "level", labelKey: "field_level" },
     ],
   },
-  referencias: {
-    titulo: "Referencias",
-    campos: [
-      { k: "nombre", l: "Nombre" },
-      { k: "contacto", l: "Contacto" },
+  references: {
+    titleKey: "dyn_references",
+    fields: [
+      { k: "name", labelKey: "field_name" },
+      { k: "contact", labelKey: "field_contact" },
     ],
   },
-  datos_extra: {
-    titulo: "Datos adicionales",
-    campos: [
-      { k: "etiqueta", l: "Etiqueta (ej: Ciudad)" },
-      { k: "valor", l: "Valor" },
+  extra_fields: {
+    titleKey: "dyn_extra_fields",
+    fields: [
+      { k: "label", labelKey: "field_label" },
+      { k: "value", labelKey: "field_value" },
     ],
   },
 };
 
-// Orden por defecto de las secciones estándar del CV (sincronizado con
-// ORDEN_SECCIONES_DEFECTO de latex_gen.py). El usuario puede reordenarlas,
-// renombrarlas y ocultarlas desde el formulario.
-const ORDEN_SECCIONES_DEFECTO = [
-  "perfil", "educacion", "proyectos", "proyectosu", "pasantia", "trabajo",
-  "habilidades", "idiomas", "referencias",
+/* Social networks card: state.data.socials is a list of
+   {network, label, value}. The nine proper nouns keep their brand name in
+   every language; "website" and "other" are translated through their i18n
+   keys. Empty-value entries are dropped by the backend, so the UI keeps rows
+   while editing and always starts a new one with a valid network. */
+const SOCIAL_NETWORKS = [
+  { value: "github", label: "GitHub" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "x", label: "X" },
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook", label: "Facebook" },
+  { value: "youtube", label: "YouTube" },
+  { value: "tiktok", label: "TikTok" },
+  { value: "telegram", label: "Telegram" },
+  { value: "wechat", label: "WeChat" },
+  { value: "website", labelKey: "network_website" },
+  { value: "other", labelKey: "network_other" },
 ];
 
-// Nombre visible por defecto de cada sección y ancla de bloque.
-const NOMBRES_ANCLA = {
-  inicio: "Inicio",
-  perfil: "Perfil",
-  educacion: "Educación",
-  proyectos: "Proyectos",
-  proyectosu: "Proyectos universitarios",
-  pasantia: "Pasantías",
-  trabajo: "Trabajo",
-  habilidades: "Habilidades",
-  idiomas: "Idiomas",
-  referencias: "Referencias",
-  final: "Final",
+// Default order of the standard CV body sections (kept in sync with
+// latex_gen.DEFAULT_SECTION_ORDER). The user can reorder, rename and hide
+// them from the form.
+const DEFAULT_SECTION_ORDER = [
+  "summary", "education", "projects", "university_projects", "internships",
+  "work", "skills", "languages", "references",
+];
+
+// Visible default name of every section and block anchor.
+const ANCHOR_NAME_KEYS = {
+  start: "section_start",
+  summary: "section_summary",
+  education: "section_education",
+  projects: "section_projects",
+  university_projects: "section_university_projects",
+  internships: "section_internships",
+  work: "section_work",
+  skills: "section_skills",
+  languages: "section_languages",
+  references: "section_references",
+  end: "section_end",
 };
 
-/* ---------------- secciones estándar: nombre, orden y visibilidad ---------------- */
+/* ---------------- standard sections: name, order and visibility ---------------- */
 
-function tituloSeccionGuardado(clave) {
-  const titulos = state.datos ? state.datos.titulos_seccion : null;
-  if (!titulos || typeof titulos !== "object") return "";
-  const valor = titulos[clave];
-  return valor == null ? "" : String(valor);
+function savedSectionTitle(key) {
+  const titles = state.data ? state.data.section_titles : null;
+  if (!titles || typeof titles !== "object") return "";
+  const value = titles[key];
+  return value == null ? "" : String(value);
 }
 
-// Etiqueta visible de una sección: título personalizado si existe; si no, el
-// nombre por defecto ya presente en la UI (anclas) o en SECCIONES_DINAMICAS.
-function nombreSeccion(clave) {
-  const propio = tituloSeccionGuardado(clave).trim();
-  if (propio) return propio;
-  return NOMBRES_ANCLA[clave] ||
-    (SECCIONES_DINAMICAS[clave] ? SECCIONES_DINAMICAS[clave].titulo : "") ||
-    String(clave);
+// Visible label of a section: the custom title if present; otherwise the
+// localized default name.
+function sectionName(key) {
+  const custom = savedSectionTitle(key).trim();
+  if (custom) return custom;
+  if (ANCHOR_NAME_KEYS[key]) return t(ANCHOR_NAME_KEYS[key]);
+  if (DYNAMIC_SECTIONS[key]) return t(DYNAMIC_SECTIONS[key].titleKey);
+  return String(key);
 }
 
-// Orden efectivo de las secciones estándar: solo claves válidas, sin
-// duplicados (gana la primera) y las ausentes al final en orden por defecto.
-// No muta state.datos: la lista completa se materializa al reordenar.
-function ordenSecciones() {
-  const bruto = state.datos && Array.isArray(state.datos.orden_secciones) ? state.datos.orden_secciones : [];
-  const orden = [];
-  bruto.forEach((valor) => {
-    if (typeof valor !== "string") return;
-    if (ORDEN_SECCIONES_DEFECTO.indexOf(valor) >= 0 && orden.indexOf(valor) < 0) orden.push(valor);
+// Effective order of the standard sections: valid keys only, no duplicates
+// (the first one wins) and missing keys appended at the end in default order.
+// Never mutates state.data: the full list is materialized when reordering.
+function sectionOrder() {
+  const raw = state.data && Array.isArray(state.data.section_order) ? state.data.section_order : [];
+  const order = [];
+  raw.forEach((value) => {
+    if (typeof value !== "string") return;
+    if (DEFAULT_SECTION_ORDER.indexOf(value) >= 0 && order.indexOf(value) < 0) order.push(value);
   });
-  ORDEN_SECCIONES_DEFECTO.forEach((clave) => {
-    if (orden.indexOf(clave) < 0) orden.push(clave);
+  DEFAULT_SECTION_ORDER.forEach((key) => {
+    if (order.indexOf(key) < 0) order.push(key);
   });
-  return orden;
+  return order;
 }
 
-function seccionOculta(clave) {
-  const ocultas = state.datos ? state.datos.secciones_ocultas : null;
-  return Array.isArray(ocultas) && ocultas.indexOf(clave) >= 0;
+function isSectionHidden(key) {
+  const hidden = state.data ? state.data.hidden_sections : null;
+  return Array.isArray(hidden) && hidden.indexOf(key) >= 0;
 }
 
-// Anclas de los bloques libres: inicio + secciones estándar en su orden
-// actual + final. Derivadas del orden para que cada bloque siga a su sección.
-function anclasUI() {
-  return ["inicio"].concat(ordenSecciones(), ["final"]);
+// Free block anchors: start + standard sections in their current order + end.
+function blockAnchorsUI() {
+  return ["start"].concat(sectionOrder(), ["end"]);
 }
 
-/* ---------------- utilidades ---------------- */
+/* ---------------- utilities ---------------- */
 
-function escaparHtml(s) {
+function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 }
 
-function estado(msj, clase) {
-  const el = $("#estado");
-  el.textContent = msj;
-  el.dataset.estado = clase || "";
+function setStatus(key, cls, suffix) {
+  state.statusKey = key || "";
+  state.statusSuffix = suffix || "";
+  state.statusClass = cls || "";
+  renderStatus();
 }
 
-function toast(msj) {
-  const t = $("#toast");
-  t.textContent = msj;
-  t.hidden = false;
+function renderStatus() {
+  const el = $("#status");
+  if (!el) return;
+  el.textContent = state.statusKey
+    ? t(state.statusKey) + (state.statusSuffix ? " " + state.statusSuffix : "")
+    : "";
+  el.dataset.status = state.statusClass || "";
+}
+
+function toast(message) {
+  const el = $("#toasts");
+  el.textContent = message;
+  el.hidden = false;
   clearTimeout(state._toastTimer);
-  state._toastTimer = setTimeout(() => (t.hidden = true), 3500);
+  state._toastTimer = setTimeout(() => (el.hidden = true), 3500);
 }
 
-let _confirmarAceptar = null;
-let _confirmarCancelar = null;
+let _confirmAccept = null;
+let _confirmCancel = null;
 
-function restaurarEtiquetasConfirmar() {
-  $("#confirmar-si").textContent = "Aceptar";
-  $("#confirmar-no").textContent = "Cancelar";
+function resetConfirmLabels() {
+  $("#confirm-accept").textContent = t("confirm_ok");
+  $("#confirm-cancel").textContent = t("cancel");
+  $("#confirm-accept").hidden = false;
+  $("#confirm-exit").hidden = true;
+  $("#confirm-cancel").hidden = false;
 }
 
-function cerrarModal(modal) {
+function closeModal(modal) {
   if (!modal) return;
   modal.hidden = true;
-  if (modal.id === "modal-confirmar") {
-    _confirmarAceptar = null;
-    _confirmarCancelar = null;
-    restaurarEtiquetasConfirmar();
+  if (modal.id === "modal-confirm") {
+    _confirmAccept = null;
+    _confirmCancel = null;
+    resetConfirmLabels();
   }
 }
 
-function confirmar(msj, alAceptar, alCancelar, etiquetaAceptar, etiquetaCancelar) {
-  $("#confirmar-msj").textContent = msj;
-  _confirmarAceptar = alAceptar || null;
-  _confirmarCancelar = alCancelar || null;
-  $("#confirmar-si").textContent = etiquetaAceptar || "Aceptar";
-  $("#confirmar-no").textContent = etiquetaCancelar || "Cancelar";
-  $("#confirmar-no").hidden = false;
-  $("#modal-confirmar").hidden = false;
+function askConfirm(message, onAccept, onCancel, acceptLabel, cancelLabel) {
+  $("#confirm-message").textContent = message;
+  _confirmAccept = onAccept || null;
+  _confirmCancel = onCancel || null;
+  $("#confirm-accept").textContent = acceptLabel || t("confirm_ok");
+  $("#confirm-cancel").textContent = cancelLabel || t("cancel");
+  $("#confirm-accept").hidden = false;
+  $("#confirm-exit").hidden = true;
+  $("#confirm-cancel").hidden = false;
+  $("#modal-confirm").hidden = false;
 }
 
-function alerta(msj) {
-  $("#confirmar-msj").textContent = msj;
-  _confirmarAceptar = null;
-  _confirmarCancelar = null;
-  restaurarEtiquetasConfirmar();
-  $("#confirmar-no").hidden = true;
-  $("#modal-confirmar").hidden = false;
+function showAlert(message) {
+  $("#confirm-message").textContent = message;
+  _confirmAccept = null;
+  _confirmCancel = null;
+  resetConfirmLabels();
+  $("#confirm-cancel").hidden = true;
+  $("#modal-confirm").hidden = false;
 }
 
-function fmBytes(b) {
-  return (b / 1048576).toFixed(1) + " MB";
+function formatBytes(bytes) {
+  return (bytes / 1048576).toFixed(1) + " MB";
 }
 
-/* ---------------- menús ---------------- */
+/* ---------------- menus ---------------- */
 
-function cerrarMenus() {
-  $$(".menu.abierto").forEach((m) => m.classList.remove("abierto"));
+function closeMenus() {
+  $$(".menu.open").forEach((menu) => menu.classList.remove("open"));
 }
 
-function actualizarMarcas() {
-  const mm = (sel) => ($("#menus").querySelector(sel));
-  const ma = mm('[data-marca="autocompilar"]');
-  const ml = mm('[data-marca="latex"]');
-  if (ma) ma.textContent = state.prefs && state.prefs.autocompilar ? "✓" : "";
-  if (ml) ml.textContent = state.modo === "latex" ? "✓" : "";
-  const temaActivo = document.documentElement.getAttribute("data-tema") || "sistema";
-  TEMAS.forEach((t) => {
-    const m = mm('[data-marca="tema-' + t + '"]');
-    if (m) m.textContent = t === temaActivo ? "✓" : "";
+function updateMarks() {
+  const menus = $("#menus");
+  const mark = (selector) => menus.querySelector(selector);
+  // The auto-compile mark lived in the removed preview menu; #auto-button
+  // below still reflects the same pref.
+  const latexLink = menus.querySelector('[data-accion="toggle:latex"]');
+  if (latexLink) latexLink.classList.toggle("active", state.mode === "latex");
+  const activeTheme = document.documentElement.getAttribute("data-theme") || "system";
+  THEMES.forEach((theme) => {
+    const m = mark('[data-marca="theme-' + theme + '"]');
+    if (m) m.textContent = theme === activeTheme ? "✓" : "";
   });
-  const plantillaActiva = state.datos && state.datos.plantilla ? state.datos.plantilla : "clasico";
-  PLANTILLAS_CV.forEach((p) => {
-    const m = mm('[data-marca="plantilla-' + p.v + '"]');
-    if (m) m.textContent = p.v === plantillaActiva ? "✓" : "";
+  const activeTemplate = state.data && state.data.template ? state.data.template : "classic";
+  TEMPLATES_CV.forEach((tpl) => {
+    const m = mark('[data-marca="template-' + tpl.value + '"]');
+    if (m) m.textContent = tpl.value === activeTemplate ? "✓" : "";
   });
-  const btn = $("#btn-auto");
-  if (btn) btn.classList.toggle("activo", !!(state.prefs && state.prefs.autocompilar));
+  const button = $("#auto-button");
+  if (button) button.classList.toggle("active", !!(state.prefs && state.prefs.auto_compile));
 }
 
-$$(".menu-btn").forEach((btn) => {
-  btn.addEventListener("click", (e) => {
+$$(".menu-btn").forEach((button) => {
+  button.addEventListener("click", (e) => {
     e.stopPropagation();
-    const menu = btn.closest(".menu");
-    const abierto = menu.classList.contains("abierto");
-    cerrarMenus();
-    if (!abierto) menu.classList.add("abierto");
+    const menu = button.closest(".menu");
+    const wasOpen = menu.classList.contains("open");
+    closeMenus();
+    if (!wasOpen) menu.classList.add("open");
   });
 });
-document.addEventListener("click", cerrarMenus);
+document.addEventListener("click", closeMenus);
 
-/* ---------------- tema (claro / oscuro / sistema) ---------------- */
+/* ---------------- theme (light / dark / system) ---------------- */
 
-function aplicarTema(t) {
-  const tema = TEMAS.indexOf(t) >= 0 ? t : "sistema";
-  document.documentElement.dataset.tema = tema;
+function applyTheme(theme) {
+  const value = THEMES.indexOf(theme) >= 0 ? theme : "system";
+  document.documentElement.dataset.theme = value;
 }
 
-function cambiarTema(t) {
-  state.prefs.tema = t;
-  api.set_prefs("tema", t);
-  aplicarTema(t);
-  actualizarMarcas();
+function changeTheme(theme) {
+  state.prefs.theme = theme;
+  api.set_prefs("theme", theme);
+  applyTheme(theme);
+  updateMarks();
 }
 
-/* ---------------- acciones ---------------- */
+/* ---------------- actions ---------------- */
 
 document.addEventListener("click", (e) => {
   const el = e.target.closest("[data-accion]");
-  if (el) ejecutarAccion(el.dataset.accion, e);
+  if (el) runAction(el.dataset.accion, e);
 });
 
-function ejecutarAccion(accion, e) {
-  if (accion.startsWith("papel:")) aplicarPapel(accion.split(":")[1]);
-  else if (accion.startsWith("margenes:")) aplicarMargenes(accion.split(":")[1]);
-  else if (accion.startsWith("fuente:")) aplicarFuente(Number(accion.split(":")[1]));
-  else if (accion.startsWith("tema:")) cambiarTema(accion.split(":")[1]);
-  else if (accion.startsWith("plantilla:")) aplicarPlantilla(accion.split(":")[1]);
-  else if (accion.startsWith("zoom:")) aplicarZoom(Number(accion.split(":")[1]));
-  else if (accion.startsWith("toggle:")) alternarToggle(accion.split(":")[1]);
-  else if (accion.startsWith("bloque:columnas:")) {
-    abrirModalBloqueListado("columnas", null, Number(accion.split(":")[2]));
+function runAction(action, e) {
+  if (action.startsWith("paper:")) applyPaper(action.split(":")[1]);
+  else if (action.startsWith("margins:")) applyMargins(action.split(":")[1]);
+  else if (action.startsWith("font:")) applyFontSize(Number(action.split(":")[1]));
+  else if (action.startsWith("theme:")) changeTheme(action.split(":")[1]);
+  else if (action.startsWith("template:")) applyTemplate(action.split(":")[1]);
+  else if (action.startsWith("zoom:")) applyZoom(Number(action.split(":")[1]));
+  else if (action.startsWith("toggle:")) toggleOption(action.split(":")[1]);
+  else if (action.startsWith("add:columns:")) {
+    openListBlockModal("columns", null, Number(action.split(":")[2]));
   }
   else {
-    switch (accion) {
-      case "deshacer": deshacer(); break;
-      case "rehacer": rehacer(); break;
-      case "nuevo": accionNuevo(); break;
-      case "abrir": accionAbrir(); break;
-      case "guardar": accionGuardar(); break;
-      case "exportar-pdf": accionExportarPDF(); break;
-      case "exportar-tex": accionExportarTex(); break;
-      case "exportar-docx": accionExportarDocx(); break;
-      case "importar-tex": accionImportarTex(); break;
-      case "cargar-ejemplo": accionCargarEjemplo(); break;
-      case "preferencias": case "preferencias-motor": abrirPrefs(); break;
-      case "recompilar": clearTimeout(state.timer); compilar(); break;
-      case "bloque:linea": crearBloqueSeparador("linea"); break;
-      case "bloque:banda": crearBloqueSeparador("banda"); break;
-      case "bloque:espacio": crearBloqueSeparador("espacio"); break;
-      case "bloque:seccion": abrirModalBloqueSeccion(null); break;
-      case "bloque:periodo": abrirModalBloqueListado("periodo", null); break;
-      case "bloques:gestion": abrirModalBloques(); break;
-      case "ayuda": $("#modal-ayuda").hidden = false; break;
-      case "creditos": $("#modal-creditos").hidden = false; break;
-      case "cerrar-modal": {
+    switch (action) {
+      case "undo": undo(); break;
+      case "redo": redo(); break;
+      case "new": newCv(); break;
+      case "open": openCv(); break;
+      case "save": saveCurrentCv(); break;
+      case "export-pdf": exportPdf(); break;
+      case "export-tex": exportTex(); break;
+      case "export-docx": exportDocx(); break;
+      case "import-tex": importTex(); break;
+      case "load-sample": loadSample(); break;
+      case "reset-all": newCv(); break;
+      case "settings": case "setup-engine": openPrefs(); break;
+      case "recompile": clearTimeout(state.timer); compileNow(); break;
+      case "add:block-line": createSeparatorBlock("line"); break;
+      case "add:block-band": createSeparatorBlock("band"); break;
+      case "add:block-space": createSeparatorBlock("space"); break;
+      case "add:section": openCustomSectionModal(null); break;
+      case "add:period": openListBlockModal("period", null); break;
+      case "manage-blocks": openBlocksModal(); break;
+      case "help": $("#modal-help").hidden = false; break;
+      case "credits": $("#modal-credits").hidden = false; break;
+      case "exit-without-saving": if (api) api.quit_app(); break;
+      case "close-modal": {
         const modal = e && e.target && e.target.closest ? e.target.closest(".modal") : null;
-        if (modal) cerrarModal(modal);
+        if (modal) closeModal(modal);
         break;
       }
     }
   }
 }
 
-function datosConContenido(d) {
-  if (!datosVacios || !d) return false;
-  return Object.keys(datosVacios).some(
-    (k) => k !== "plantilla" && JSON.stringify(d[k]) !== JSON.stringify(datosVacios[k])
+function dataHasContent(data) {
+  if (!emptyData || !data) return false;
+  return Object.keys(emptyData).some(
+    (key) => key !== "template" && JSON.stringify(data[key]) !== JSON.stringify(emptyData[key])
   );
 }
 
-function hayContenido() {
-  return datosConContenido(state.datos);
+function hasContent() {
+  return dataHasContent(state.data);
 }
 
-async function accionNuevo() {
-  confirmar("¿Descartar el CV actual y comenzar uno nuevo?", () => {
-    if (state.modo === "latex") salirModoLatex(false);
-    state.datos = JSON.parse(JSON.stringify(datosVacios));
-    limpiarHistorial();
-    renderFormulario();
-    actualizarMarcas();
-    programarCompilacion();
-    state.sucio = false;
-    borrarAutosave();
-    toast("CV nuevo creado");
+async function newCv() {
+  askConfirm(t("confirm_new"), () => {
+    if (state.mode === "latex") exitLatexMode(false);
+    state.data = JSON.parse(JSON.stringify(emptyData));
+    state.filePath = null;
+    clearHistory();
+    renderForm();
+    updateMarks();
+    markDirty(false);
+    clearAutosave();
+    scheduleCompile();
+    toast(t("toast_new"));
   });
 }
 
-async function accionAbrir() {
-  const r = await api.abrir_cv();
+async function openCv() {
+  const r = await api.open_cv();
   if (r.ok && r.datos) {
-    const aplicar = () => {
-      if (state.modo === "latex") salirModoLatex(false);
-      state.datos = r.datos;
-      limpiarHistorial();
-      renderFormulario();
-      actualizarMarcas();
-      programarCompilacion();
-      state.sucio = false;
-      borrarAutosave();
-      toast("Abierto: " + r.ruta);
+    const apply = () => {
+      if (state.mode === "latex") exitLatexMode(false);
+      state.data = r.datos;
+      state.filePath = r.ruta || null;
+      clearHistory();
+      renderForm();
+      updateMarks();
+      markDirty(false);
+      clearAutosave();
+      scheduleCompile();
+      toast(t("toast_opened").replace("{path}", r.ruta));
     };
-    if (hayContenido()) {
-      confirmar("Se reemplazará el contenido actual por el del archivo que abras. ¿Continuar?", aplicar);
+    if (hasContent()) {
+      askConfirm(t("confirm_open_replace"), apply);
     } else {
-      aplicar();
+      apply();
     }
   } else if (r.errores) {
     toast(r.errores[0]);
   }
 }
 
-async function accionGuardar() {
-  const r = await api.exportar_cv(state.datos);
+async function saveCurrentCv() {
+  const r = await api.export_cv(state.data);
   if (r.ok) {
-    state.sucio = false;
-    await borrarAutosave();
-    toast("Guardado: " + r.ruta);
+    state.filePath = r.ruta;
+    markDirty(false);
+    await clearAutosave();
+    toast(t("toast_saved").replace("{path}", r.ruta));
   } else if (r.errores) {
     toast(r.errores[0]);
   }
 }
 
-async function accionExportarPDF() {
-  const texManual = state.modo === "latex" ? state.texManual : null;
-  const r = await api.exportar_pdf(state.datos, texManual);
-  if (r.ok) toast("PDF exportado: " + r.ruta);
-  else if (r.errores) toast(r.errores[0]);
-}
-
-async function accionExportarTex() {
-  const texManual = state.modo === "latex" ? state.texManual : null;
-  const r = await api.exportar_tex(state.datos, texManual);
-  if (r.ok) toast("LaTeX exportado: " + r.ruta);
-  else if (r.errores) toast(r.errores[0]);
-}
-
-async function accionExportarDocx() {
-  const r = await api.exportar_docx(state.datos);
-  if (r.ok) toast("Word exportado: " + r.ruta);
-  else if (r.errores) toast(r.errores[0]);
-}
-
-async function accionImportarTex() {
-  const r = await api.importar_tex();
-  if (r.ok && r.datos) {
-    const aplicar = () => {
-      if (state.modo === "latex") salirModoLatex(false);
-      state.datos = r.datos;
-      limpiarHistorial();
-      renderFormulario();
-      actualizarMarcas();
-      programarCompilacion();
-      state.sucio = false;
-      borrarAutosave();
-      toast("LaTeX importado: " + r.ruta);
-    };
-    if (hayContenido()) {
-      confirmar("Se reemplazará el contenido actual por el LaTeX importado. ¿Continuar?", aplicar);
+/* Close guard: Save / Exit without saving / Cancel. Saving writes to the
+   current .cvjson when known, otherwise it opens the save dialog. On any
+   failure (or a cancelled dialog) the guard is shown again so the window is
+   never closed with unsaved changes by accident. */
+async function saveAndExit() {
+  try {
+    if (state.filePath) {
+      const r = await api.export_cv(state.data, state.filePath);
+      if (r.ok) {
+        markDirty(false);
+        await clearAutosave();
+        api.quit_app();
+      } else {
+        toast((r.errores && r.errores[0]) || t("close_guard_save_failed"));
+        window.__onCloseRequest();
+      }
     } else {
-      aplicar();
+      const r = await api.export_cv(state.data);
+      if (r.ok) {
+        state.filePath = r.ruta;
+        markDirty(false);
+        await clearAutosave();
+        api.quit_app();
+      } else if (r.cancelado) {
+        // The user cancelled the save dialog: stay in the app, guard usable.
+        window.__onCloseRequest();
+      } else {
+        toast((r.errores && r.errores[0]) || t("close_guard_save_failed"));
+        window.__onCloseRequest();
+      }
     }
-  } else if (r.errores) {
-    alerta(r.errores[0]);
+  } catch (e) {
+    console.error(e);
+    window.__onCloseRequest();
   }
 }
 
-async function accionCargarEjemplo() {
-  const aplicar = async () => {
-    const r = await api.cargar_ejemplo(state.datos.plantilla);
+async function exportPdf() {
+  const manualTex = state.mode === "latex" ? state.texManual : null;
+  const r = await api.export_pdf(state.data, manualTex);
+  if (r.ok) toast(t("toast_pdf_exported").replace("{path}", r.ruta));
+  else if (r.errores) toast(r.errores[0]);
+}
+
+async function exportTex() {
+  const manualTex = state.mode === "latex" ? state.texManual : null;
+  const r = await api.export_tex(state.data, manualTex);
+  if (r.ok) toast(t("toast_tex_exported").replace("{path}", r.ruta));
+  else if (r.errores) toast(r.errores[0]);
+}
+
+async function exportDocx() {
+  const r = await api.export_docx(state.data);
+  if (r.ok) toast(t("toast_docx_exported").replace("{path}", r.ruta));
+  else if (r.errores) toast(r.errores[0]);
+}
+
+async function importTex() {
+  const r = await api.import_tex();
+  if (r.ok && r.datos) {
+    const apply = () => {
+      if (state.mode === "latex") exitLatexMode(false);
+      state.data = r.datos;
+      state.filePath = null;
+      clearHistory();
+      renderForm();
+      updateMarks();
+      markDirty(false);
+      clearAutosave();
+      scheduleCompile();
+      toast(t("toast_tex_imported").replace("{path}", r.ruta));
+    };
+    if (hasContent()) {
+      askConfirm(t("confirm_import_replace"), apply);
+    } else {
+      apply();
+    }
+  } else if (r.errores) {
+    showAlert(r.errores[0]);
+  }
+}
+
+async function loadSample() {
+  const apply = async () => {
+    const r = await api.load_sample(state.data.template);
     if (!r.ok) {
-      toast((r.errores && r.errores[0]) || "No se pudo cargar el ejemplo");
+      toast((r.errores && r.errores[0]) || t("toast_sample_error"));
       return;
     }
-    if (state.modo === "latex") salirModoLatex(false);
-    state.datos = r.datos;
-    limpiarHistorial();
-    renderFormulario();
-    actualizarMarcas();
-    programarCompilacion();
-    state.sucio = false;
-    borrarAutosave();
-    toast("Ejemplo cargado: sustituye estos datos por los tuyos");
+    if (state.mode === "latex") exitLatexMode(false);
+    state.data = r.datos;
+    state.filePath = null;
+    clearHistory();
+    renderForm();
+    updateMarks();
+    markDirty(false);
+    clearAutosave();
+    scheduleCompile();
+    toast(t("toast_sample_loaded"));
   };
-  if (hayContenido()) {
-    confirmar("Se reemplazará el contenido actual por el CV de ejemplo. ¿Continuar?", aplicar);
+  if (hasContent()) {
+    askConfirm(t("confirm_sample_replace"), apply);
   } else {
-    aplicar();
+    apply();
   }
 }
 
-function aplicarPapel(papel) {
-  state.prefs.papel = papel;
-  api.set_prefs("papel", papel);
-  programarCompilacion();
+function applyPaper(paper) {
+  state.prefs.paper = paper;
+  api.set_prefs("paper", paper);
+  markDirty(true);
 }
 
-function aplicarMargenes(m) {
-  if (m === "personalizado") {
-    abrirModalMargenes();
+function applyMargins(value) {
+  if (value === "custom") {
+    openMarginsModal();
     return;
   }
-  const valores = m === "normal" ? { top: 2, bottom: 2, left: 2, right: 2 } : { top: 1, bottom: 1, left: 1, right: 1 };
-  state.prefs.margenes = valores;
-  api.set_prefs("margenes", valores);
-  programarCompilacion();
+  const margins = value === "normal"
+    ? { top: 2, bottom: 2, left: 2, right: 2 }
+    : { top: 1, bottom: 1, left: 1, right: 1 };
+  state.prefs.margins = margins;
+  api.set_prefs("margins", margins);
+  markDirty(true);
 }
 
-function aplicarFuente(f) {
-  state.prefs.fuente = f;
-  api.set_prefs("fuente", f);
-  programarCompilacion();
+function applyFontSize(size) {
+  state.prefs.font_size = size;
+  api.set_prefs("font_size", size);
+  markDirty(true);
 }
 
-function aplicarPlantilla(v) {
-  const esValida = PLANTILLAS_CV.some((o) => o.v === v);
-  registrarHistorial(true);
-  state.datos.plantilla = esValida ? v : "clasico";
-  marcarSucio();
-  actualizarMarcas();
+function applyTemplate(value) {
+  const valid = TEMPLATES_CV.some((tpl) => tpl.value === value);
+  recordHistory(true);
+  state.data.template = valid ? value : "classic";
+  markDirty(true);
+  updateMarks();
 }
 
-function alternarToggle(t) {
-  if (t === "autocompilar") {
-    state.prefs.autocompilar = !state.prefs.autocompilar;
-    api.set_prefs("autocompilar", state.prefs.autocompilar);
-    actualizarMarcas();
-    if (state.prefs.autocompilar) programarCompilacion();
-  } else if (t === "latex") {
-    if (state.modo === "latex") {
-      const editado = state.texEditado;
-      confirmar(
-        editado
-          ? "El código LaTeX se editó a mano. Al volver al formulario se regenerará desde los datos y se perderán los cambios manuales. ¿Continuar?"
-          : "¿Volver al formulario?",
-        () => salirModoLatex(true)
+function toggleOption(option) {
+  if (option === "auto-compile") {
+    state.prefs.auto_compile = !state.prefs.auto_compile;
+    api.set_prefs("auto_compile", state.prefs.auto_compile);
+    updateMarks();
+    if (state.prefs.auto_compile) scheduleCompile();
+  } else if (option === "latex") {
+    if (state.mode === "latex") {
+      const edited = state.texEdited;
+      askConfirm(
+        edited ? t("confirm_exit_latex_edited") : t("confirm_back_to_form"),
+        () => exitLatexMode(true)
       );
     } else {
-      entrarModoLatex();
+      enterLatexMode();
     }
   }
 }
 
-/* ---------------- compilación ---------------- */
+/* ---------------- compilation ---------------- */
 
-function programarCompilacion() {
-  if (!state.prefs || !state.prefs.autocompilar) return;
+function scheduleCompile() {
+  if (!state.prefs || !state.prefs.auto_compile) return;
   clearTimeout(state.timer);
-  state.timer = setTimeout(compilar, 400);
+  state.timer = setTimeout(compileNow, 400);
 }
 
-async function compilar() {
-  if (!api || state.modo === "latex" && state.texManual == null && !state.tex) return;
-  const id = ++state.idCompilacion;
-  const ep = $("#estado-preview");
-  ep.className = "compilando";
-  ep.textContent = "Compilando…";
-  if (state.modo === "latex") {
-    await api.compilar_tex(state.texManual !== null ? state.texManual : state.tex, id, state.datos);
+async function compileNow() {
+  if (!api || (state.mode === "latex" && state.texManual == null && !state.tex)) return;
+  const id = ++state.compileId;
+  state.preview = { state: "compiling" };
+  renderPreviewStatus();
+  if (state.mode === "latex") {
+    await api.compile_tex(state.texManual !== null ? state.texManual : state.tex, id, state.data);
   } else {
-    await api.compile(state.datos, id);
+    await api.compile(state.data, id);
   }
 }
 
-/* ---------------- zoom de la previsualización ---------------- */
+function renderPreviewStatus() {
+  const el = $("#preview-status");
+  if (!el) return;
+  const preview = state.preview || { state: "idle" };
+  el.className = preview.state === "idle" ? "" : preview.state;
+  if (preview.state === "compiling") el.textContent = t("compiling");
+  else if (preview.state === "ok") el.textContent = t("preview_ready");
+  else if (preview.state === "error") el.textContent = t("compile_errors").replace("{n}", preview.errors || 0);
+  else el.textContent = t("waiting");
+}
 
-// El fragmento #zoom=<pct>&view=FitH lo interpreta el visor de PDF. Si el
-// visor integrado de WebView2 lo ignora, el respaldo es el PDF a tamaño de
-// página: el zoom es solo un ajuste visual y nunca afecta al .tex ni al PDF.
-function aplicarZoom(pct) {
-  const valores = [75, 100, 125];
-  const valor = valores.indexOf(Number(pct)) >= 0 ? Number(pct) : (state.zoom || 100);
-  state.zoom = valor;
-  valores.forEach((v) => {
-    const b = $("#zoom-" + v);
-    if (b) b.classList.toggle("activo", v === valor);
+/* ---------------- preview zoom ---------------- */
+
+// The #zoom=<pct>&view=FitH fragment is interpreted by the PDF viewer. If the
+// embedded WebView2 viewer ignores it, the fallback is the page-sized PDF: the
+// zoom is only a visual setting and never affects the .tex nor the PDF.
+function applyZoom(pct) {
+  const values = [75, 100, 125];
+  const value = values.indexOf(Number(pct)) >= 0 ? Number(pct) : (state.zoom || 100);
+  state.zoom = value;
+  values.forEach((v) => {
+    const button = $("#zoom-" + v);
+    if (button) button.classList.toggle("active", v === value);
   });
   const pdf = $("#pdf");
-  if (pdf) pdf.src = "/preview/main.pdf?v=" + Date.now() + "#zoom=" + valor + "&view=FitH";
+  if (pdf) pdf.src = "/preview/main.pdf?v=" + Date.now() + "#zoom=" + value + "&view=FitH";
 }
 
 window.__onCompile = function (res) {
-  if (res.id !== state.idCompilacion) return;
-  const ep = $("#estado-preview");
+  if (res.id !== state.compileId) return;
   if (res.ok) {
-    $("#errores").hidden = true;
-    $("#aviso-motor").hidden = true;
-    aplicarZoom(state.zoom);
-    ep.className = "ok";
-    ep.textContent = "Previsualización lista";
-    estado("");
+    $("#errors").hidden = true;
+    $("#engine-warning").hidden = true;
+    applyZoom(state.zoom);
+    state.preview = { state: "ok" };
+    renderPreviewStatus();
+    setStatus("");
   } else {
-    ep.className = "error";
-    ep.textContent = res.errores.length + " error(es)";
-    const caja = $("#errores");
-    caja.innerHTML = "<ul>" + res.errores.map((e) => "<li>" + escaparHtml(e) + "</li>").join("") + "</ul>";
-    caja.hidden = false;
-    estado("Falló la compilación", "error");
+    state.preview = { state: "error", errors: res.errores.length };
+    renderPreviewStatus();
+    const box = $("#errors");
+    box.innerHTML = "<ul>" + res.errores.map((e) => "<li>" + escapeHtml(e) + "</li>").join("") + "</ul>";
+    box.hidden = false;
+    setStatus("compile_failed", "error");
   }
   if (res.tex) state.tex = res.tex;
-  if (state.modo === "latex" && state.texManual === null && res.tex) {
-    const ta = $("#texto-latex");
-    if (ta) ta.value = res.tex;
+  if (state.mode === "latex" && state.texManual === null && res.tex) {
+    const area = $("#latex-text");
+    if (area) area.value = res.tex;
   }
 };
 
-/* ---------------- autosave ---------------- */
+/* ---------------- autosave and dirty tracking ---------------- */
 
 let _autosaveTimer = null;
 
-function marcarSucio() {
-  state.sucio = true;
-  clearTimeout(_autosaveTimer);
-  _autosaveTimer = setTimeout(autosaveYa, 5000);
-  programarCompilacion();
+// Close guard: keep the backend dirty flag in sync with the form. Any
+// document-changing edit sets it; a successful save/open/new/import clears it.
+function markDirty(flag) {
+  state.dirty = !!flag;
+  if (api) api.set_dirty(state.dirty);
+  if (flag) {
+    clearTimeout(_autosaveTimer);
+    _autosaveTimer = setTimeout(autosaveNow, 5000);
+    scheduleCompile();
+  }
 }
 
-async function autosaveYa() {
-  if (!api || !state.sucio || !state.datos) return;
+async function autosaveNow() {
+  if (!api || !state.dirty || !state.data) return;
   try {
-    await api.autosave(state.datos);
+    await api.autosave(state.data);
   } catch (e) {
     console.error(e);
   }
 }
 
-async function borrarAutosave() {
+async function clearAutosave() {
   if (!api) return;
   try {
-    await api.autosave_borrar();
+    await api.autosave_clear();
   } catch (e) {
     console.error(e);
   }
 }
 
-/* ---------------- deshacer / rehacer ---------------- */
+window.__onCloseRequest = function () {
+  _confirmAccept = saveAndExit;
+  _confirmCancel = null;
+  $("#confirm-message").textContent = t("close_guard_message");
+  $("#confirm-accept").hidden = false;
+  $("#confirm-accept").textContent = t("save");
+  $("#confirm-exit").hidden = false;
+  $("#confirm-exit").textContent = t("exit_without_saving");
+  $("#confirm-cancel").hidden = false;
+  $("#confirm-cancel").textContent = t("cancel");
+  $("#modal-confirm").hidden = false;
+};
 
-const LIMITE_HISTORIAL = 50;
-const COALESCENCIA_HISTORIAL = 600;
+/* ---------------- undo / redo ---------------- */
 
-let _historialTs = 0;
-let _historialEstructural = false;
+const HISTORY_LIMIT = 50;
+const HISTORY_COALESCE_MS = 600;
 
-function copiaProfunda(o) {
+let _historyTs = 0;
+let _historyStructural = false;
+
+function deepCopy(o) {
   return JSON.parse(JSON.stringify(o));
 }
 
-function limpiarHistorial() {
-  state.pilaDeshacer = [];
-  state.pilaRehacer = [];
-  _historialTs = 0;
-  _historialEstructural = false;
-  actualizarBotonesHistorial();
+function clearHistory() {
+  state.undoStack = [];
+  state.redoStack = [];
+  _historyTs = 0;
+  _historyStructural = false;
+  updateHistoryButtons();
 }
 
-/* Guarda un snapshot de state.datos antes de mutarlo. Los cambios no
-   estructurales consecutivos (p. ej. teclear) se agrupan durante 600 ms: solo
-   se conserva el snapshot del primer cambio del tirón. Las acciones
-   estructurales (bloques, entradas, plantilla, columnas, idioma) siempre
-   empujan una entrada nueva. */
-function registrarHistorial(estructural) {
-  if (!state.datos) return;
-  const ahora = Date.now();
-  const reciente = ahora - _historialTs < COALESCENCIA_HISTORIAL;
-  _historialTs = ahora;
-  if (!estructural && reciente && !_historialEstructural && state.pilaDeshacer.length) {
-    state.pilaRehacer = [];
-    actualizarBotonesHistorial();
+/* Store a snapshot of state.data before mutating it. Consecutive non
+   structural changes (e.g. typing) are grouped during 600 ms: only the
+   snapshot of the first change of the burst is kept. Structural actions
+   (blocks, entries, template, columns, language) always push a new entry. */
+function recordHistory(structural) {
+  if (!state.data) return;
+  const now = Date.now();
+  const recent = now - _historyTs < HISTORY_COALESCE_MS;
+  _historyTs = now;
+  if (!structural && recent && !_historyStructural && state.undoStack.length) {
+    state.redoStack = [];
+    updateHistoryButtons();
     return;
   }
-  state.pilaDeshacer.push(copiaProfunda(state.datos));
-  if (state.pilaDeshacer.length > LIMITE_HISTORIAL) state.pilaDeshacer.shift();
-  state.pilaRehacer = [];
-  _historialEstructural = !!estructural;
-  actualizarBotonesHistorial();
+  state.undoStack.push(deepCopy(state.data));
+  if (state.undoStack.length > HISTORY_LIMIT) state.undoStack.shift();
+  state.redoStack = [];
+  _historyStructural = !!structural;
+  updateHistoryButtons();
 }
 
-function actualizarBotonesHistorial() {
-  const marcar = (accion, habilitado) => {
-    const enlace = $("#menus [data-accion='" + accion + "']");
-    if (!enlace) return;
-    enlace.classList.toggle("deshabilitado", !habilitado);
-    enlace.setAttribute("aria-disabled", habilitado ? "false" : "true");
+function updateHistoryButtons() {
+  const setEnabled = (action, enabled) => {
+    const link = $("#menus [data-accion='" + action + "']");
+    if (!link) return;
+    link.classList.toggle("disabled", !enabled);
+    link.setAttribute("aria-disabled", enabled ? "false" : "true");
   };
-  marcar("deshacer", !!(state.pilaDeshacer && state.pilaDeshacer.length));
-  marcar("rehacer", !!(state.pilaRehacer && state.pilaRehacer.length));
+  setEnabled("undo", !!(state.undoStack && state.undoStack.length));
+  setEnabled("redo", !!(state.redoStack && state.redoStack.length));
 }
 
-function aplicarSnapshotHistorial() {
-  _historialTs = 0;
-  _historialEstructural = false;
-  renderFormulario();
-  actualizarMarcas();
-  actualizarBotonesHistorial();
-  marcarSucio(); // sucio + autosave + programarCompilacion, sin tocar el historial
+function applyHistorySnapshot() {
+  _historyTs = 0;
+  _historyStructural = false;
+  renderForm();
+  updateMarks();
+  updateHistoryButtons();
+  markDirty(true);
 }
 
-function deshacer() {
-  if (!state.datos || !state.pilaDeshacer.length) return;
-  if (state.modo === "latex") return; // en modo LaTeX manda el deshacer del textarea
-  state.pilaRehacer.push(copiaProfunda(state.datos));
-  state.datos = state.pilaDeshacer.pop();
-  aplicarSnapshotHistorial();
+function undo() {
+  if (!state.data || !state.undoStack.length) return;
+  if (state.mode === "latex") return; // in LaTeX mode the textarea undo wins
+  state.redoStack.push(deepCopy(state.data));
+  state.data = state.undoStack.pop();
+  applyHistorySnapshot();
 }
 
-function rehacer() {
-  if (!state.datos || !state.pilaRehacer.length) return;
-  if (state.modo === "latex") return;
-  state.pilaDeshacer.push(copiaProfunda(state.datos));
-  state.datos = state.pilaRehacer.pop();
-  aplicarSnapshotHistorial();
+function redo() {
+  if (!state.data || !state.redoStack.length) return;
+  if (state.mode === "latex") return;
+  state.undoStack.push(deepCopy(state.data));
+  state.data = state.redoStack.pop();
+  applyHistorySnapshot();
 }
 
-function ofrecerRecuperacion(datos) {
-  confirmar(
-    "Hay un CV sin guardar. ¿Recuperarlo?",
+function offerRecovery(data) {
+  askConfirm(
+    t("confirm_recover"),
     () => {
-      if (state.modo === "latex") salirModoLatex(false);
-      const base = JSON.parse(JSON.stringify(datosVacios || {}));
-      Object.keys(datos).forEach((k) => { base[k] = datos[k]; });
-      state.datos = base;
-      limpiarHistorial();
-      renderFormulario();
-      actualizarMarcas();
-      marcarSucio();
-      toast("CV sin guardar recuperado");
+      if (state.mode === "latex") exitLatexMode(false);
+      const base = JSON.parse(JSON.stringify(emptyData || {}));
+      Object.keys(data).forEach((key) => { base[key] = data[key]; });
+      state.data = base;
+      clearHistory();
+      renderForm();
+      updateMarks();
+      markDirty(true);
+      compileNow();
+      toast(t("toast_recovered"));
     },
     () => {
-      borrarAutosave();
-      toast("CV sin guardar descartado");
+      clearAutosave();
+      markDirty(false);
+      toast(t("toast_discarded"));
     },
-    "Recuperar",
-    "Descartar"
+    t("recover"),
+    t("discard")
   );
 }
 
-/* ---------------- formulario ---------------- */
+/* ---------------- form ---------------- */
 
-/* Plegado de tarjetas y entradas. Es estado solo de interfaz: vive en este
-   mapa en memoria, se aplica en cada re-render y NUNCA se guarda en el
-   .cvjson ni en el autosave (no forma parte de state.datos). */
-const colapsoUI = { secciones: {}, entradas: {}, bloques: {} };
+/* Collapse state of cards and entries. It is UI-only state: it lives in this
+   in-memory map, is applied on every render and is NEVER saved into the
+   .cvjson nor the autosave (it is not part of state.data). */
+const collapseUI = { sections: {}, entries: {}, blocks: {} };
 
-function estaColapsado(tipo, clave) {
-  return !!colapsoUI[tipo][clave];
+function isCollapsed(type, key) {
+  return !!collapseUI[type][key];
 }
 
-function aplicarColapso(tipo, clave, el) {
-  if (el) el.classList.toggle("colapsada", estaColapsado(tipo, clave));
+function applyCollapse(type, key, el) {
+  if (el) el.classList.toggle("collapsed", isCollapsed(type, key));
 }
 
-function alternarColapso(tipo, clave, el) {
-  colapsoUI[tipo][clave] = !colapsoUI[tipo][clave];
-  if (el) el.classList.toggle("colapsada", colapsoUI[tipo][clave]);
+function toggleCollapse(type, key, el) {
+  collapseUI[type][key] = !collapseUI[type][key];
+  if (el) el.classList.toggle("collapsed", collapseUI[type][key]);
 }
 
-function seccionTitulo(texto, clave, estandar) {
-  const t = document.createElement("div");
-  t.className = "tarjeta-seccion";
-  const cab = document.createElement("div");
-  cab.className = "cab-seccion";
-  const chev = document.createElement("span");
-  chev.className = "chevron";
-  chev.textContent = "▾";
-  cab.appendChild(chev);
-  if (estandar) {
-    // Título inline: escribe/borra state.datos.titulos_seccion[clave]; vacío
-    // vuelve al nombre por defecto (el placeholder muestra ese nombre).
-    const inp = document.createElement("input");
-    inp.type = "text";
-    inp.className = "inp-titulo-seccion";
-    inp.dataset.clave = clave;
-    inp.value = tituloSeccionGuardado(clave);
-    inp.placeholder = texto;
-    inp.title = "Renombrar la sección (vacío = nombre por defecto)";
-    inp.addEventListener("click", (e) => e.stopPropagation());
-    inp.addEventListener("input", () => {
-      registrarHistorial(true);
-      if (!state.datos.titulos_seccion || typeof state.datos.titulos_seccion !== "object") {
-        state.datos.titulos_seccion = {};
+function sectionCard(text, key, standard) {
+  const card = document.createElement("div");
+  card.className = "section-card";
+  const header = document.createElement("div");
+  header.className = "section-header";
+  const chevron = document.createElement("span");
+  chevron.className = "chevron";
+  chevron.textContent = "▾";
+  header.appendChild(chevron);
+  if (standard) {
+    // Inline title: writes/removes state.data.section_titles[key]; empty falls
+    // back to the default name (the placeholder shows that name).
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "section-title-input";
+    input.dataset.key = key;
+    input.value = savedSectionTitle(key);
+    input.placeholder = text;
+    input.title = t("rename_section_tip");
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("input", () => {
+      recordHistory(true);
+      if (!state.data.section_titles || typeof state.data.section_titles !== "object") {
+        state.data.section_titles = {};
       }
-      const valor = inp.value.trim();
-      if (valor) state.datos.titulos_seccion[clave] = valor;
-      else delete state.datos.titulos_seccion[clave];
-      marcarSucio();
+      const value = input.value.trim();
+      if (value) state.data.section_titles[key] = value;
+      else delete state.data.section_titles[key];
+      markDirty(true);
     });
-    // El repintado se aplaza al siguiente turno para que el blur del input no
-    // destruya, antes de su click, los botones de la misma cabecera.
-    inp.addEventListener("change", () => setTimeout(renderFormulario, 0));
-    cab.appendChild(inp);
+    // The repaint is delayed to the next turn so the input blur does not
+    // destroy the header buttons before their click.
+    input.addEventListener("change", () => setTimeout(renderForm, 0));
+    header.appendChild(input);
   } else {
-    const h = document.createElement("h3");
-    h.textContent = texto;
-    cab.appendChild(h);
+    const heading = document.createElement("h3");
+    heading.textContent = text;
+    header.appendChild(heading);
   }
-  if (clave && SECCIONES_DINAMICAS[clave] && SECCIONES_DINAMICAS[clave].columnas) {
-    if (!state.datos.columnas) state.datos.columnas = {};
-    const rot = document.createElement("label");
-    rot.className = "rot-col";
-    rot.textContent = "Columnas:";
-    const sel = document.createElement("select");
-    sel.className = "sel-col";
+  if (key && DYNAMIC_SECTIONS[key] && DYNAMIC_SECTIONS[key].columns) {
+    if (!state.data.columns) state.data.columns = {};
+    const label = document.createElement("label");
+    label.className = "column-label";
+    label.textContent = t("columns_label");
+    const select = document.createElement("select");
+    select.className = "column-select";
     [1, 2, 3].forEach((n) => {
-      const op = document.createElement("option");
-      op.value = n;
-      op.textContent = n;
-      sel.appendChild(op);
+      const option = document.createElement("option");
+      option.value = n;
+      option.textContent = n;
+      select.appendChild(option);
     });
-    sel.value = String(state.datos.columnas[clave] || 1);
-    sel.title = "Muestra esta sección en 1, 2 o 3 columnas en el CV";
-    sel.addEventListener("click", (e) => e.stopPropagation());
-    sel.addEventListener("change", () => {
-      registrarHistorial(true);
-      state.datos.columnas[clave] = Number(sel.value);
-      marcarSucio();
+    select.value = String(state.data.columns[key] || 1);
+    select.title = t("columns_tip");
+    select.addEventListener("click", (e) => e.stopPropagation());
+    select.addEventListener("change", () => {
+      recordHistory(true);
+      state.data.columns[key] = Number(select.value);
+      markDirty(true);
     });
-    rot.appendChild(sel);
-    cab.appendChild(rot);
+    label.appendChild(select);
+    header.appendChild(label);
   }
-  if (estandar) {
-    const oculta = seccionOculta(clave);
-    const orden = ordenSecciones();
-    const pos = orden.indexOf(clave);
+  if (standard) {
+    const hidden = isSectionHidden(key);
+    const order = sectionOrder();
+    const position = order.indexOf(key);
 
-    const acciones = document.createElement("span");
-    acciones.className = "sec-controles";
+    const controls = document.createElement("span");
+    controls.className = "section-controls";
 
-    const vis = document.createElement("button");
-    vis.className = "btn-seccion-ocultar" + (oculta ? " oculta" : "");
-    vis.textContent = oculta ? "○" : "◉";
-    vis.title = oculta ? "Mostrar esta sección en el CV" : "Ocultar esta sección del CV";
-    vis.addEventListener("click", (e) => {
+    const visibility = document.createElement("button");
+    visibility.className = "section-hide-button" + (hidden ? " hidden-section" : "");
+    visibility.textContent = hidden ? "○" : "◉";
+    visibility.title = hidden ? t("show_section") : t("hide_section");
+    visibility.addEventListener("click", (e) => {
       e.stopPropagation();
-      registrarHistorial(true);
-      if (!Array.isArray(state.datos.secciones_ocultas)) state.datos.secciones_ocultas = [];
-      const i = state.datos.secciones_ocultas.indexOf(clave);
-      if (i >= 0) state.datos.secciones_ocultas.splice(i, 1);
-      else state.datos.secciones_ocultas.push(clave);
-      marcarSucio();
-      renderFormulario();
+      recordHistory(true);
+      if (!Array.isArray(state.data.hidden_sections)) state.data.hidden_sections = [];
+      const i = state.data.hidden_sections.indexOf(key);
+      if (i >= 0) state.data.hidden_sections.splice(i, 1);
+      else state.data.hidden_sections.push(key);
+      markDirty(true);
+      renderForm();
     });
 
-    const subir = document.createElement("button");
-    subir.className = "btn-seccion-subir";
-    subir.textContent = "↑";
-    subir.title = "Subir esta sección en el CV";
-    subir.disabled = pos <= 0;
-    subir.addEventListener("click", (e) => {
+    const up = document.createElement("button");
+    up.className = "section-up-button";
+    up.textContent = "↑";
+    up.title = t("move_section_up");
+    up.disabled = position <= 0;
+    up.addEventListener("click", (e) => {
       e.stopPropagation();
-      const o = ordenSecciones();
-      const j = o.indexOf(clave);
+      const current = sectionOrder();
+      const j = current.indexOf(key);
       if (j <= 0) return;
-      registrarHistorial(true);
-      const tmp = o[j - 1];
-      o[j - 1] = o[j];
-      o[j] = tmp;
-      state.datos.orden_secciones = o;
-      marcarSucio();
-      renderFormulario();
+      recordHistory(true);
+      const tmp = current[j - 1];
+      current[j - 1] = current[j];
+      current[j] = tmp;
+      state.data.section_order = current;
+      markDirty(true);
+      renderForm();
     });
 
-    const bajar = document.createElement("button");
-    bajar.className = "btn-seccion-bajar";
-    bajar.textContent = "↓";
-    bajar.title = "Bajar esta sección en el CV";
-    bajar.disabled = pos < 0 || pos >= orden.length - 1;
-    bajar.addEventListener("click", (e) => {
+    const down = document.createElement("button");
+    down.className = "section-down-button";
+    down.textContent = "↓";
+    down.title = t("move_section_down");
+    down.disabled = position < 0 || position >= order.length - 1;
+    down.addEventListener("click", (e) => {
       e.stopPropagation();
-      const o = ordenSecciones();
-      const j = o.indexOf(clave);
-      if (j < 0 || j >= o.length - 1) return;
-      registrarHistorial(true);
-      const tmp = o[j + 1];
-      o[j + 1] = o[j];
-      o[j] = tmp;
-      state.datos.orden_secciones = o;
-      marcarSucio();
-      renderFormulario();
+      const current = sectionOrder();
+      const j = current.indexOf(key);
+      if (j < 0 || j >= current.length - 1) return;
+      recordHistory(true);
+      const tmp = current[j + 1];
+      current[j + 1] = current[j];
+      current[j] = tmp;
+      state.data.section_order = current;
+      markDirty(true);
+      renderForm();
     });
 
-    acciones.append(vis, subir, bajar);
-    cab.appendChild(acciones);
+    controls.append(visibility, up, down);
+    header.appendChild(controls);
   }
-  const contenido = document.createElement("div");
-  contenido.className = "sec-contenido";
-  t.appendChild(cab);
-  t.appendChild(contenido);
-  t.contenido = contenido;
-  const claveColapso = clave || texto;
-  aplicarColapso("secciones", claveColapso, t);
-  cab.addEventListener("click", (e) => {
+  const content = document.createElement("div");
+  content.className = "section-content";
+  card.appendChild(header);
+  card.appendChild(content);
+  card.content = content;
+  const collapseKey = key || text;
+  applyCollapse("sections", collapseKey, card);
+  header.addEventListener("click", (e) => {
     if (e.target.closest("select, button, input")) return;
-    alternarColapso("secciones", claveColapso, t);
+    toggleCollapse("sections", collapseKey, card);
   });
-  return t;
+  return card;
 }
 
-function campoBasico(k, label, area) {
+function basicField(key, label, area) {
   const div = document.createElement("div");
-  div.className = "campo" + (area ? " ancho" : "");
-  if (area) div.classList.add("ancho");
+  div.className = "field" + (area ? " wide" : "");
   const lb = document.createElement("label");
   lb.textContent = label;
-  const inp = document.createElement(area ? "textarea" : "input");
-  inp.value = state.datos[k] || "";
-  inp.addEventListener("input", () => {
-    registrarHistorial(false);
-    state.datos[k] = inp.value;
-    marcarSucio();
+  const input = document.createElement(area ? "textarea" : "input");
+  input.value = state.data[key] || "";
+  input.addEventListener("input", () => {
+    recordHistory(false);
+    state.data[key] = input.value;
+    markDirty(true);
   });
-  div.append(lb, inp);
+  div.append(lb, input);
   return div;
 }
 
-/* Escala el lado mayor de una imagen servida en /media/ hasta maxLado
-   (nunca amplía) y devuelve un data URL (JPEG/PNG) para enviarla a
-   guardar_imagen. El canvas es legible porque la imagen es del mismo origen;
-   si la imagen no carga o el canvas no se puede leer (p. ej. contaminado),
-   rechaza: el llamante conserva entonces la ruta original. */
-function normalizarImagen(fuenteUrl, maxLado, mime, calidad) {
+/* Scale the longest side of an image served from /media/ down to maxSide
+   (never upscales) and return a data URL (JPEG/PNG) to send to save_image.
+   The canvas is readable because the image is same-origin; if the image fails
+   to load or the canvas cannot be read (e.g. tainted), it rejects: the caller
+   then keeps the original path. */
+function normalizeImage(sourceUrl, maxSide, mime, quality) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       try {
-        const mayor = Math.max(img.naturalWidth, img.naturalHeight);
-        const esc = mayor > maxLado ? maxLado / mayor : 1;
-        const cv = document.createElement("canvas");
-        cv.width = Math.max(1, Math.round(img.naturalWidth * esc));
-        cv.height = Math.max(1, Math.round(img.naturalHeight * esc));
-        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
-        resolve(cv.toDataURL(mime, calidad));
+        const longest = Math.max(img.naturalWidth, img.naturalHeight);
+        const scale = longest > maxSide ? maxSide / longest : 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL(mime, quality));
       } catch (e) {
         reject(e);
       }
     };
-    img.onerror = () => reject(new Error("No se pudo cargar la imagen"));
-    img.src = fuenteUrl;
+    img.onerror = () => reject(new Error("Could not load the image"));
+    img.src = sourceUrl;
   });
 }
 
-function pintarFoto() {
-  const vista = $("#foto-vista");
-  if (!vista) return;
-  if (!state.datos.foto) {
-    vista.textContent = "Sin foto";
-    vista.style.width = "64px";
-    vista.style.height = "80px";
-    vista.style.padding = "0 4px";
-    const b = $("#btn-ajustar-foto");
-    if (b) b.hidden = true;
+function paintPhoto() {
+  const view = $("#photo-preview");
+  if (!view) return;
+  if (!state.data.photo) {
+    view.textContent = t("no_photo");
+    view.style.width = "64px";
+    view.style.height = "80px";
+    view.style.padding = "0 4px";
+    const button = $("#photo-adjust-button");
+    if (button) button.hidden = true;
     return;
   }
-  vista.innerHTML = "";
-  vista.style.padding = "0";
-  const a = Number(state.datos.foto_ancho_cm) || 4;
-  const al = Number(state.datos.foto_alto_cm) || 5;
-  vista.style.width = "64px";
-  vista.style.height = Math.min(96, Math.max(50, Math.round((64 * al) / a))) + "px";
+  view.innerHTML = "";
+  view.style.padding = "0";
+  const width = Number(state.data.photo_width_cm) || 4;
+  const height = Number(state.data.photo_height_cm) || 5;
+  view.style.width = "64px";
+  view.style.height = Math.min(96, Math.max(50, Math.round((64 * height) / width))) + "px";
   const img = document.createElement("img");
-  img.src = "/media/" + encodeURIComponent(state.datos.foto.split(/[\\/]/).pop());
-  vista.appendChild(img);
-  const b = $("#btn-ajustar-foto");
-  if (b) b.hidden = false;
+  img.src = "/media/" + encodeURIComponent(state.data.photo.split(/[\\/]/).pop());
+  view.appendChild(img);
+  const button = $("#photo-adjust-button");
+  if (button) button.hidden = false;
 }
 
-function fotoFila() {
-  const fila = document.createElement("div");
-  fila.className = "foto-fila";
-  const vista = document.createElement("div");
-  vista.className = "foto-vista";
-  vista.id = "foto-vista";
-  const controles = document.createElement("div");
-  controles.className = "campo";
-  const lb = document.createElement("label");
-  lb.textContent = "Foto de perfil";
-  const btns = document.createElement("div");
-  const elegir = document.createElement("button");
-  elegir.className = "pequeño";
-  elegir.textContent = "Elegir foto…";
-  const ajustar = document.createElement("button");
-  ajustar.className = "pequeño";
-  ajustar.id = "btn-ajustar-foto";
-  ajustar.textContent = "Ajustar área…";
-  ajustar.hidden = true;
-  const quitar = document.createElement("button");
-  quitar.className = "pequeño";
-  quitar.textContent = "Quitar";
-  btns.append(elegir, ajustar, quitar);
-  btns.style.display = "flex";
-  btns.style.gap = "8px";
-  btns.style.flexWrap = "wrap";
+function photoRow() {
+  const row = document.createElement("div");
+  row.className = "photo-row";
+  const view = document.createElement("div");
+  view.className = "photo-preview";
+  view.id = "photo-preview";
+  const controls = document.createElement("div");
+  controls.className = "field";
+  const label = document.createElement("label");
+  label.textContent = t("field_photo");
+  const buttons = document.createElement("div");
+  const choose = document.createElement("button");
+  choose.className = "small";
+  choose.textContent = t("choose_photo");
+  const adjust = document.createElement("button");
+  adjust.className = "small";
+  adjust.id = "photo-adjust-button";
+  adjust.textContent = t("adjust_area");
+  adjust.hidden = true;
+  const remove = document.createElement("button");
+  remove.className = "small";
+  remove.textContent = t("remove");
+  buttons.append(choose, adjust, remove);
+  buttons.style.display = "flex";
+  buttons.style.gap = "8px";
+  buttons.style.flexWrap = "wrap";
 
-  const tam = document.createElement("div");
-  tam.className = "foto-tam";
-  const lbA = document.createElement("label");
-  lbA.textContent = "Ancho (cm)";
-  const inpA = document.createElement("input");
-  inpA.type = "number";
-  inpA.min = "1";
-  inpA.max = "12";
-  inpA.step = "0.5";
-  const lbAl = document.createElement("label");
-  lbAl.textContent = "Alto (cm)";
-  const inpAl = document.createElement("input");
-  inpAl.type = "number";
-  inpAl.min = "1";
-  inpAl.max = "15";
-  inpAl.step = "0.5";
-  tam.append(lbA, inpA, lbAl, inpAl);
+  const size = document.createElement("div");
+  size.className = "photo-size";
+  const widthLabel = document.createElement("label");
+  widthLabel.textContent = t("width_cm");
+  const widthInput = document.createElement("input");
+  widthInput.type = "number";
+  widthInput.min = "1";
+  widthInput.max = "12";
+  widthInput.step = "0.5";
+  const heightLabel = document.createElement("label");
+  heightLabel.textContent = t("height_cm");
+  const heightInput = document.createElement("input");
+  heightInput.type = "number";
+  heightInput.min = "1";
+  heightInput.max = "15";
+  heightInput.step = "0.5";
+  size.append(widthLabel, widthInput, heightLabel, heightInput);
 
-  controles.append(lb, btns, tam);
-  fila.append(vista, controles);
+  controls.append(label, buttons, size);
+  row.append(view, controls);
 
-  const actualizarTam = () => {
-    inpA.value = Number(state.datos.foto_ancho_cm) || 4;
-    inpAl.value = Number(state.datos.foto_alto_cm) || 5;
+  const updateSize = () => {
+    widthInput.value = Number(state.data.photo_width_cm) || 4;
+    heightInput.value = Number(state.data.photo_height_cm) || 5;
   };
-  const aplicarTam = () => {
-    registrarHistorial(false);
-    state.datos.foto_ancho_cm = Number(inpA.value) || 4;
-    state.datos.foto_alto_cm = Number(inpAl.value) || 5;
-    marcarSucio();
+  const applySize = () => {
+    recordHistory(false);
+    state.data.photo_width_cm = Number(widthInput.value) || 4;
+    state.data.photo_height_cm = Number(heightInput.value) || 5;
+    markDirty(true);
   };
-  inpA.addEventListener("change", () => { aplicarTam(); pintarFoto(); });
-  inpAl.addEventListener("change", () => { aplicarTam(); pintarFoto(); });
-  elegir.onclick = async () => {
-    const r = await api.elegir_foto("foto");
+  widthInput.addEventListener("change", () => { applySize(); paintPhoto(); });
+  heightInput.addEventListener("change", () => { applySize(); paintPhoto(); });
+  choose.onclick = async () => {
+    const r = await api.choose_photo("foto");
     if (!r.ok) {
       if (r.error) toast(r.error);
       return;
     }
-    registrarHistorial(false);
-    let ruta = r.path;
-    let normalizada = false;
+    recordHistory(false);
+    let path = r.path;
+    let normalized = false;
     try {
-      const dataUrl = await normalizarImagen(r.url, 1600, "image/jpeg", 0.9);
-      const res = await api.guardar_imagen(dataUrl, "foto");
-      if (res.ok && res.path) {
-        ruta = res.path;
-        normalizada = true;
+      const dataUrl = await normalizeImage(r.url, 1600, "image/jpeg", 0.9);
+      const saved = await api.save_image(dataUrl, "foto");
+      if (saved.ok && saved.path) {
+        path = saved.path;
+        normalized = true;
       } else {
-        toast((res.errores && res.errores[0]) || "No se pudo normalizar la foto; se conserva la original");
+        toast((saved.errores && saved.errores[0]) || t("toast_photo_normalize_error"));
       }
     } catch (e) {
-      toast("No se pudo normalizar la foto; se conserva la original");
+      toast(t("toast_photo_normalize_error"));
     }
-    state.datos.foto = ruta;
-    state.datos.foto_original = ruta;
-    state.datos.foto_recorte = { x: 0, y: 0, w: 1, h: 1 };
-    actualizarTam();
-    pintarFoto();
-    marcarSucio();
-    // Recorte automático sobre la imagen normalizada completa; si el usuario
-    // cancela, queda guardada la normalizada entera.
-    if (normalizada) abrirRecorte();
+    state.data.photo = path;
+    state.data.photo_original = path;
+    state.data.photo_crop = { x: 0, y: 0, w: 1, h: 1 };
+    updateSize();
+    paintPhoto();
+    markDirty(true);
+    // Automatic crop over the full normalized image; if the user cancels, the
+    // whole normalized image stays saved.
+    if (normalized) openCrop();
   };
-  ajustar.onclick = () => abrirRecorte();
-  quitar.onclick = () => {
-    registrarHistorial(false);
-    state.datos.foto = "";
-    state.datos.foto_original = "";
-    state.datos.foto_recorte = null;
-    pintarFoto();
-    marcarSucio();
+  adjust.onclick = () => openCrop();
+  remove.onclick = () => {
+    recordHistory(false);
+    state.data.photo = "";
+    state.data.photo_original = "";
+    state.data.photo_crop = null;
+    paintPhoto();
+    markDirty(true);
   };
-  actualizarTam();
-  return fila;
+  updateSize();
+  return row;
 }
 
-/* ---------------- recorte de foto ---------------- */
+/* ---------------- photo crop ---------------- */
 
-let _recorte = { img: null, cont: null, caja: null };
+let _crop = { img: null, container: null, box: null };
 
-function abrirRecorte() {
-  const origen = state.datos.foto_original || state.datos.foto;
-  if (!origen) return;
+function openCrop() {
+  const source = state.data.photo_original || state.data.photo;
+  if (!source) return;
   const img = new Image();
   img.onload = () => {
-    _recorte.img = img;
-    $("#modal-recorte").hidden = false;
-    montarRecorte();
+    _crop.img = img;
+    $("#modal-crop").hidden = false;
+    mountCrop();
   };
-  img.onerror = () => toast("No se pudo cargar la foto para ajustar el área");
-  img.src = "/media/" + encodeURIComponent(origen.split(/[\\/]/).pop());
+  img.onerror = () => toast(t("toast_crop_load_error"));
+  img.src = "/media/" + encodeURIComponent(source.split(/[\\/]/).pop());
 }
 
-function ponerCaja(x, y, w, h) {
-  const caja = _recorte.caja;
-  if (!caja) return;
-  caja.style.left = x + "px";
-  caja.style.top = y + "px";
-  caja.style.width = w + "px";
-  caja.style.height = h + "px";
+function placeCropBox(x, y, w, h) {
+  const box = _crop.box;
+  if (!box) return;
+  box.style.left = x + "px";
+  box.style.top = y + "px";
+  box.style.width = w + "px";
+  box.style.height = h + "px";
 }
 
-function montarRecorte() {
-  const cont = $("#recorte-cont");
-  cont.innerHTML = "";
-  const img = _recorte.img;
+function mountCrop() {
+  const container = $("#crop-container");
+  container.innerHTML = "";
+  const img = _crop.img;
   const maxW = 480;
   const maxH = 400;
-  const escala = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
-  const w = Math.round(img.naturalWidth * escala);
-  const h = Math.round(img.naturalHeight * escala);
-  cont.style.width = w + "px";
-  cont.style.height = h + "px";
+  const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+  container.style.width = w + "px";
+  container.style.height = h + "px";
   const im = document.createElement("img");
   im.src = img.src;
-  cont.appendChild(im);
-  const caja = document.createElement("div");
-  caja.className = "recorte-caja";
-  ["nw", "ne", "sw", "se"].forEach((p) => {
-    const hd = document.createElement("div");
-    hd.className = "recorte-p recorte-" + p;
-    hd.dataset.p = p;
-    caja.appendChild(hd);
+  container.appendChild(im);
+  const box = document.createElement("div");
+  box.className = "crop-box";
+  ["nw", "ne", "sw", "se"].forEach((corner) => {
+    const handle = document.createElement("div");
+    handle.className = "crop-handle crop-" + corner;
+    handle.dataset.corner = corner;
+    box.appendChild(handle);
   });
-  cont.appendChild(caja);
-  _recorte.cont = cont;
-  _recorte.caja = caja;
+  container.appendChild(box);
+  _crop.container = container;
+  _crop.box = box;
 
-  const r = state.datos.foto_recorte || { x: 0, y: 0, w: 1, h: 1 };
-  ponerCaja(r.x * w, r.y * h, Math.max(24, r.w * w), Math.max(24, r.h * h));
-  engancharRecorte();
+  const rect = state.data.photo_crop || { x: 0, y: 0, w: 1, h: 1 };
+  placeCropBox(rect.x * w, rect.y * h, Math.max(24, rect.w * w), Math.max(24, rect.h * h));
+  bindCrop();
 }
 
-function engancharRecorte() {
-  const cont = _recorte.cont;
-  const caja = _recorte.caja;
-  const cl = (v, m, M) => Math.min(M, Math.max(m, v));
+function bindCrop() {
+  const container = _crop.container;
+  const box = _crop.box;
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
-  caja.addEventListener("pointerdown", (e) => {
+  box.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    const agarre = e.target.closest(".recorte-p");
-    const anchoC = cont.clientWidth;
-    const altoC = cont.clientHeight;
-    const ax = e.clientX;
-    const ay = e.clientY;
+    const handle = e.target.closest(".crop-handle");
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const startX = e.clientX;
+    const startY = e.clientY;
     const rect = {
-      x: parseFloat(caja.style.left) || 0,
-      y: parseFloat(caja.style.top) || 0,
-      w: parseFloat(caja.style.width) || anchoC,
-      h: parseFloat(caja.style.height) || altoC,
+      x: parseFloat(box.style.left) || 0,
+      y: parseFloat(box.style.top) || 0,
+      w: parseFloat(box.style.width) || containerWidth,
+      h: parseFloat(box.style.height) || containerHeight,
     };
     const onMove = (ev) => {
-      const dx = ev.clientX - ax;
-      const dy = ev.clientY - ay;
-      if (!agarre) {
-        ponerCaja(
-          cl(rect.x + dx, 0, anchoC - rect.w),
-          cl(rect.y + dy, 0, altoC - rect.h),
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!handle) {
+        placeCropBox(
+          clamp(rect.x + dx, 0, containerWidth - rect.w),
+          clamp(rect.y + dy, 0, containerHeight - rect.h),
           rect.w,
           rect.h
         );
       } else {
         let nx = rect.x, ny = rect.y, nw = rect.w, nh = rect.h;
-        if (agarre.dataset.p.includes("e")) nw = cl(rect.w + dx, 24, anchoC - rect.x);
-        if (agarre.dataset.p.includes("s")) nh = cl(rect.h + dy, 24, altoC - rect.y);
-        if (agarre.dataset.p.includes("w")) {
-          nw = cl(rect.w - dx, 24, rect.x + rect.w);
+        if (handle.dataset.corner.includes("e")) nw = clamp(rect.w + dx, 24, containerWidth - rect.x);
+        if (handle.dataset.corner.includes("s")) nh = clamp(rect.h + dy, 24, containerHeight - rect.y);
+        if (handle.dataset.corner.includes("w")) {
+          nw = clamp(rect.w - dx, 24, rect.x + rect.w);
           nx = rect.x + rect.w - nw;
         }
-        if (agarre.dataset.p.includes("n")) {
-          nh = cl(rect.h - dy, 24, rect.y + rect.h);
+        if (handle.dataset.corner.includes("n")) {
+          nh = clamp(rect.h - dy, 24, rect.y + rect.h);
           ny = rect.y + rect.h - nh;
         }
-        ponerCaja(nx, ny, nw, nh);
+        placeCropBox(nx, ny, nw, nh);
       }
     };
     const onUp = () => {
@@ -1232,363 +1335,495 @@ function engancharRecorte() {
   });
 }
 
-function configurarRecorte() {
-  $("#recorte-cancelar").addEventListener("click", () => {
-    $("#modal-recorte").hidden = true;
+function setupCrop() {
+  $("#crop-cancel").addEventListener("click", () => {
+    $("#modal-crop").hidden = true;
   });
-  $("#recorte-aplicar").addEventListener("click", async () => {
-    const cont = _recorte.cont;
-    const img = _recorte.img;
-    const caja = _recorte.caja;
-    if (!cont || !img || !caja) return;
-    const anchoC = cont.clientWidth;
-    const altoC = cont.clientHeight;
-    const x = parseFloat(caja.style.left) / anchoC;
-    const y = parseFloat(caja.style.top) / altoC;
-    const w = parseFloat(caja.style.width) / anchoC;
-    const h = parseFloat(caja.style.height) / altoC;
-    const red = (v) => Math.round(v * 1000) / 1000;
-    registrarHistorial(false);
-    state.datos.foto_recorte = { x: red(x), y: red(y), w: red(w), h: red(h) };
+  $("#crop-apply").addEventListener("click", async () => {
+    const container = _crop.container;
+    const img = _crop.img;
+    const box = _crop.box;
+    if (!container || !img || !box) return;
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    const x = parseFloat(box.style.left) / containerWidth;
+    const y = parseFloat(box.style.top) / containerHeight;
+    const w = parseFloat(box.style.width) / containerWidth;
+    const h = parseFloat(box.style.height) / containerHeight;
+    const round = (v) => Math.round(v * 1000) / 1000;
+    recordHistory(false);
+    state.data.photo_crop = { x: round(x), y: round(y), w: round(w), h: round(h) };
     const sx = x * img.naturalWidth;
     const sy = y * img.naturalHeight;
     const sw = w * img.naturalWidth;
     const sh = h * img.naturalHeight;
-    const maxPix = 1600;
-    const mayor = Math.max(sw, sh);
-    const esc = mayor > maxPix ? maxPix / mayor : 1;
-    const cv = document.createElement("canvas");
-    cv.width = Math.round(sw * esc);
-    cv.height = Math.round(sh * esc);
-    cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
-    const dataUrl = cv.toDataURL("image/jpeg", 0.9);
-    const r = await api.guardar_imagen(dataUrl, "recorte");
+    const maxPixels = 1600;
+    const longest = Math.max(sw, sh);
+    const scale = longest > maxPixels ? maxPixels / longest : 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
+    canvas.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const r = await api.save_image(dataUrl, "recorte");
     if (r.ok) {
-      state.datos.foto = r.path;
-      $("#modal-recorte").hidden = true;
-      pintarFoto();
-      marcarSucio();
-      toast("Área de la foto ajustada");
+      state.data.photo = r.path;
+      $("#modal-crop").hidden = true;
+      paintPhoto();
+      markDirty(true);
+      toast(t("toast_crop_applied"));
     } else {
-      toast((r.errores && r.errores[0]) || "No se pudo guardar el recorte");
+      toast((r.errores && r.errores[0]) || t("toast_crop_save_error"));
     }
   });
 }
 
-function listaDinamica(key) {
-  const def = SECCIONES_DINAMICAS[key];
+function renderDynamicList(key) {
+  const def = DYNAMIC_SECTIONS[key];
   const wrap = document.createElement("div");
 
-  const pintar = () => {
+  const paint = () => {
     wrap.innerHTML = "";
-    const lista = state.datos[key];
-    if (!lista.length) {
+    const list = state.data[key];
+    if (!list.length) {
       const p = document.createElement("p");
-      p.className = "sin-entradas";
-      p.textContent = "Sin entradas todavía.";
+      p.className = "no-entries";
+      p.textContent = t("no_entries");
       wrap.appendChild(p);
     }
-    lista.forEach((ent, idx) => {
+    list.forEach((entry, idx) => {
       const div = document.createElement("div");
-      div.className = "entrada";
-      const claveEntrada = key + ":" + idx;
-      aplicarColapso("entradas", claveEntrada, div);
-      const cab = document.createElement("div");
-      cab.className = "cab-entrada";
-      const rot = document.createElement("span");
-      rot.className = "cab-txt";
-      const chev = document.createElement("span");
-      chev.className = "chevron";
-      chev.textContent = "▾";
-      rot.append(chev, document.createTextNode(" " + def.titulo.replace(/s$/, "") + " " + (idx + 1)));
-      const acciones = document.createElement("span");
-      acciones.className = "entrada-acciones";
+      div.className = "entry";
+      const entryKey = key + ":" + idx;
+      applyCollapse("entries", entryKey, div);
+      const header = document.createElement("div");
+      header.className = "entry-header";
+      const label = document.createElement("span");
+      label.className = "entry-label";
+      const chevron = document.createElement("span");
+      chevron.className = "chevron";
+      chevron.textContent = "▾";
+      label.append(chevron, document.createTextNode(" " + t(def.titleKey).replace(/s$/, "") + " " + (idx + 1)));
+      const actions = document.createElement("span");
+      actions.className = "entry-actions";
 
-      const duplicar = document.createElement("button");
-      duplicar.className = "pequeño";
-      duplicar.textContent = "⧉";
-      duplicar.title = "Duplicar entrada";
-      duplicar.onclick = (e) => {
+      const duplicate = document.createElement("button");
+      duplicate.className = "small";
+      duplicate.textContent = "⧉";
+      duplicate.title = t("entry_duplicate");
+      duplicate.onclick = (e) => {
         e.stopPropagation();
-        registrarHistorial(true);
-        const copia = JSON.parse(JSON.stringify(ent));
-        state.datos[key].splice(idx + 1, 0, copia);
-        pintar();
-        marcarSucio();
+        recordHistory(true);
+        const copy = JSON.parse(JSON.stringify(entry));
+        state.data[key].splice(idx + 1, 0, copy);
+        paint();
+        markDirty(true);
       };
 
-      const subir = document.createElement("button");
-      subir.className = "pequeño";
-      subir.textContent = "↑";
-      subir.title = "Subir entrada";
-      subir.disabled = idx === 0;
-      subir.onclick = (e) => {
+      const up = document.createElement("button");
+      up.className = "small";
+      up.textContent = "↑";
+      up.title = t("entry_up");
+      up.disabled = idx === 0;
+      up.onclick = (e) => {
         e.stopPropagation();
-        const l = state.datos[key];
+        const l = state.data[key];
         if (idx <= 0) return;
-        registrarHistorial(true);
+        recordHistory(true);
         const tmp = l[idx - 1];
         l[idx - 1] = l[idx];
         l[idx] = tmp;
-        pintar();
-        marcarSucio();
+        paint();
+        markDirty(true);
       };
 
-      const bajar = document.createElement("button");
-      bajar.className = "pequeño";
-      bajar.textContent = "↓";
-      bajar.title = "Bajar entrada";
-      bajar.disabled = idx >= lista.length - 1;
-      bajar.onclick = (e) => {
+      const down = document.createElement("button");
+      down.className = "small";
+      down.textContent = "↓";
+      down.title = t("entry_down");
+      down.disabled = idx >= list.length - 1;
+      down.onclick = (e) => {
         e.stopPropagation();
-        const l = state.datos[key];
+        const l = state.data[key];
         if (idx >= l.length - 1) return;
-        registrarHistorial(true);
+        recordHistory(true);
         const tmp = l[idx + 1];
         l[idx + 1] = l[idx];
         l[idx] = tmp;
-        pintar();
-        marcarSucio();
+        paint();
+        markDirty(true);
       };
 
-      const quitar = document.createElement("button");
-      quitar.className = "btn-quitar";
-      quitar.textContent = "✕";
-      quitar.title = "Eliminar entrada";
-      quitar.onclick = (e) => {
+      const remove = document.createElement("button");
+      remove.className = "remove-button";
+      remove.textContent = "✕";
+      remove.title = t("entry_delete");
+      remove.onclick = (e) => {
         e.stopPropagation();
-        registrarHistorial(true);
-        state.datos[key].splice(idx, 1);
-        pintar();
-        marcarSucio();
+        recordHistory(true);
+        state.data[key].splice(idx, 1);
+        paint();
+        markDirty(true);
       };
 
-      acciones.append(duplicar, subir, bajar, quitar);
-      cab.append(rot, acciones);
-      cab.addEventListener("click", (e) => {
+      actions.append(duplicate, up, down, remove);
+      header.append(label, actions);
+      header.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
-        alternarColapso("entradas", claveEntrada, div);
+        toggleCollapse("entries", entryKey, div);
       });
-      div.appendChild(cab);
-      const campos = document.createElement("div");
-      campos.className = "campos";
-      def.campos.forEach((c) => {
-        const camp = document.createElement("div");
-        camp.className = "campo" + (c.area ? " ancho" : "");
+      div.appendChild(header);
+      const fields = document.createElement("div");
+      fields.className = "fields";
+      def.fields.forEach((field) => {
+        const fieldDiv = document.createElement("div");
+        fieldDiv.className = "field" + (field.area ? " wide" : "");
         const lb = document.createElement("label");
-        lb.textContent = c.l;
-        camp.appendChild(lb);
-        if (c.tipo === "select") {
-          const sel = document.createElement("select");
-          const vacio = document.createElement("option");
-          vacio.value = "";
-          vacio.textContent = "—";
-          sel.appendChild(vacio);
-          (c.opciones || []).forEach((op) => {
-            const o = document.createElement("option");
-            o.value = op;
-            o.textContent = op;
-            sel.appendChild(o);
+        lb.textContent = t(field.labelKey);
+        fieldDiv.appendChild(lb);
+        if (field.type === "select") {
+          const select = document.createElement("select");
+          const empty = document.createElement("option");
+          empty.value = "";
+          empty.textContent = "—";
+          select.appendChild(empty);
+          (field.options || []).forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = field.optionKind ? optionLabel(field.optionKind, value) : value;
+            select.appendChild(option);
           });
-          sel.value = ent[c.k] || "";
-          sel.addEventListener("change", () => {
-            registrarHistorial(true);
-            ent[c.k] = sel.value;
-            marcarSucio();
+          select.value = entry[field.k] || "";
+          select.addEventListener("change", () => {
+            recordHistory(true);
+            entry[field.k] = select.value;
+            markDirty(true);
           });
-          camp.appendChild(sel);
-        } else if (c.tipo === "logo") {
-          const fila = document.createElement("div");
-          fila.className = "fila-logo";
-          const estadoSpan = document.createElement("span");
-          estadoSpan.className = "logo-estado";
-          const pintarLogo = () => {
-            const nombre = ent[c.k] ? ent[c.k].split(/[\\/]/).pop() : "";
-            estadoSpan.textContent = nombre ? "✓ " + nombre : "Sin logo";
-            estadoSpan.style.color = nombre ? "var(--ok)" : "";
+          fieldDiv.appendChild(select);
+        } else if (field.type === "logo") {
+          const row = document.createElement("div");
+          row.className = "logo-row";
+          const status = document.createElement("span");
+          status.className = "logo-status";
+          const paintLogo = () => {
+            const name = entry[field.k] ? entry[field.k].split(/[\\/]/).pop() : "";
+            status.textContent = name ? "✓ " + name : t("no_logo");
+            status.style.color = name ? "var(--ok)" : "";
           };
-          const boton = document.createElement("button");
-          boton.className = "pequeño";
-          boton.textContent = "Elegir logo…";
-          boton.onclick = async () => {
-            const r = await api.elegir_foto("logo");
+          const button = document.createElement("button");
+          button.className = "small";
+          button.textContent = t("choose_logo");
+          button.onclick = async () => {
+            const r = await api.choose_photo("logo");
             if (!r.ok) {
               if (r.error) toast(r.error);
               return;
             }
-            registrarHistorial(true);
-            let ruta = r.path;
+            recordHistory(true);
+            let path = r.path;
             try {
-              const dataUrl = await normalizarImagen(r.url, 512, "image/png");
-              const res = await api.guardar_imagen(dataUrl, "logo");
-              if (res.ok && res.path) ruta = res.path;
-              else toast((res.errores && res.errores[0]) || "No se pudo normalizar el logo; se conserva el original");
+              const dataUrl = await normalizeImage(r.url, 512, "image/png");
+              const saved = await api.save_image(dataUrl, "logo");
+              if (saved.ok && saved.path) path = saved.path;
+              else toast((saved.errores && saved.errores[0]) || t("toast_logo_normalize_error"));
             } catch (e) {
-              toast("No se pudo normalizar el logo; se conserva el original");
+              toast(t("toast_logo_normalize_error"));
             }
-            ent[c.k] = ruta;
-            pintarLogo();
-            marcarSucio();
+            entry[field.k] = path;
+            paintLogo();
+            markDirty(true);
           };
-          const quitar = document.createElement("button");
-          quitar.className = "btn-quitar";
-          quitar.textContent = "✕";
-          quitar.title = "Quitar logo";
-          quitar.onclick = () => {
-            registrarHistorial(true);
-            ent[c.k] = "";
-            pintarLogo();
-            marcarSucio();
+          const remove = document.createElement("button");
+          remove.className = "remove-button";
+          remove.textContent = "✕";
+          remove.title = t("remove_logo");
+          remove.onclick = () => {
+            recordHistory(true);
+            entry[field.k] = "";
+            paintLogo();
+            markDirty(true);
           };
-          pintarLogo();
-          fila.append(boton, quitar, estadoSpan);
-          camp.appendChild(fila);
+          paintLogo();
+          row.append(button, remove, status);
+          fieldDiv.appendChild(row);
         } else {
-          const inp = document.createElement(c.area ? "textarea" : "input");
-          inp.value = ent[c.k] || "";
-          inp.addEventListener("input", () => {
-            registrarHistorial(true);
-            ent[c.k] = inp.value;
-            marcarSucio();
+          const input = document.createElement(field.area ? "textarea" : "input");
+          input.value = entry[field.k] || "";
+          input.addEventListener("input", () => {
+            recordHistory(true);
+            entry[field.k] = input.value;
+            markDirty(true);
           });
-          camp.appendChild(inp);
+          fieldDiv.appendChild(input);
         }
-        campos.appendChild(camp);
+        fields.appendChild(fieldDiv);
       });
-      div.appendChild(campos);
+      div.appendChild(fields);
       wrap.appendChild(div);
     });
-    const boton = document.createElement("button");
-    boton.className = "btn-anadir";
-    boton.textContent = "+ Añadir";
-    boton.onclick = () => {
-      const vacio = {};
-      def.campos.forEach((c) => (vacio[c.k] = ""));
-      registrarHistorial(true);
-      state.datos[key].push(vacio);
-      pintar();
-      marcarSucio();
+    const button = document.createElement("button");
+    button.className = "add-entry-button";
+    button.textContent = t("add");
+    button.onclick = () => {
+      const empty = {};
+      def.fields.forEach((field) => (empty[field.k] = ""));
+      recordHistory(true);
+      state.data[key].push(empty);
+      paint();
+      markDirty(true);
     };
-    wrap.appendChild(boton);
+    wrap.appendChild(button);
   };
-  pintar();
+  paint();
   return wrap;
 }
 
-function campoLogoPersonal(k, label) {
-  const camp = document.createElement("div");
-  camp.className = "campo";
+/* ---------------- social networks card ---------------- */
+
+function socialNetworkLabel(value) {
+  const network = SOCIAL_NETWORKS.find((n) => n.value === value);
+  if (!network) return String(value || "");
+  return network.labelKey ? t(network.labelKey) : network.label;
+}
+
+function socialsList() {
+  if (!state.data) return [];
+  if (!Array.isArray(state.data.socials)) state.data.socials = [];
+  return state.data.socials;
+}
+
+/* "Social networks" card: a dynamic list that is not a standard section, so
+   it has no inline rename/visibility controls. Every row is a network select,
+   an optional custom name (only visible for "other") and the URL/handle. */
+function renderSocials() {
+  const wrap = document.createElement("div");
+  wrap.id = "socials-list";
+
+  const paint = () => {
+    wrap.innerHTML = "";
+    socialsList().forEach((social) => {
+      const row = document.createElement("div");
+      row.className = "entry social-row";
+      const header = document.createElement("div");
+      header.className = "entry-header";
+      const name = document.createElement("span");
+      name.className = "entry-label";
+      const remove = document.createElement("button");
+      remove.className = "remove-button";
+      remove.textContent = "✕";
+      remove.title = t("social_remove");
+      header.append(name, remove);
+
+      const fields = document.createElement("div");
+      fields.className = "fields";
+
+      const networkField = document.createElement("div");
+      networkField.className = "field";
+      const networkLabel = document.createElement("label");
+      networkLabel.textContent = t("social_network");
+      const select = document.createElement("select");
+      select.className = "social-network";
+      select.title = t("social_network");
+      SOCIAL_NETWORKS.forEach((network) => {
+        const option = document.createElement("option");
+        option.value = network.value;
+        option.textContent = socialNetworkLabel(network.value);
+        select.appendChild(option);
+      });
+      if (!SOCIAL_NETWORKS.some((n) => n.value === social.network)) social.network = "github";
+      select.value = social.network;
+      networkField.append(networkLabel, select);
+
+      const customField = document.createElement("div");
+      customField.className = "field social-label-field";
+      const customLabel = document.createElement("label");
+      customLabel.textContent = t("social_label");
+      const customInput = document.createElement("input");
+      customInput.type = "text";
+      customInput.className = "social-label";
+      customInput.value = social.label || "";
+      customInput.placeholder = t("social_label");
+      customField.append(customLabel, customInput);
+      customField.hidden = social.network !== "other";
+
+      const valueField = document.createElement("div");
+      valueField.className = "field wide";
+      const valueLabel = document.createElement("label");
+      valueLabel.textContent = t("social_value");
+      const valueInput = document.createElement("input");
+      valueInput.type = "text";
+      valueInput.className = "social-value";
+      valueInput.value = social.value || "";
+      valueInput.placeholder = t("social_value");
+      valueField.append(valueLabel, valueInput);
+
+      name.textContent = socialNetworkLabel(social.network);
+
+      select.addEventListener("change", () => {
+        recordHistory(false);
+        social.network = select.value;
+        customField.hidden = social.network !== "other";
+        name.textContent = socialNetworkLabel(social.network);
+        markDirty(true);
+      });
+      customInput.addEventListener("input", () => {
+        recordHistory(false);
+        social.label = customInput.value;
+        markDirty(true);
+      });
+      valueInput.addEventListener("input", () => {
+        recordHistory(false);
+        social.value = valueInput.value;
+        markDirty(true);
+      });
+      remove.addEventListener("click", () => {
+        recordHistory(true);
+        const list = socialsList();
+        const i = list.indexOf(social);
+        if (i >= 0) list.splice(i, 1);
+        markDirty(true);
+        paint();
+      });
+
+      fields.append(networkField, customField, valueField);
+      row.append(header, fields);
+      wrap.appendChild(row);
+    });
+  };
+
+  paint();
+
+  const add = document.createElement("button");
+  add.id = "social-add";
+  add.className = "add-entry-button";
+  add.textContent = t("social_add");
+  add.addEventListener("click", () => {
+    recordHistory(true);
+    socialsList().push({ network: "github", label: "", value: "" });
+    markDirty(true);
+    paint();
+  });
+
+  const cont = document.createElement("div");
+  cont.className = "socials";
+  cont.append(wrap, add);
+  return cont;
+}
+
+function personalLogoField(key, label) {
+  const fieldDiv = document.createElement("div");
+  fieldDiv.className = "field";
   const lb = document.createElement("label");
   lb.textContent = label;
-  const fila = document.createElement("div");
-  fila.className = "fila-logo";
-  const estadoSpan = document.createElement("span");
-  estadoSpan.className = "logo-estado";
-  const pintar = () => {
-    const nombre = state.datos[k] ? state.datos[k].split(/[\\/]/).pop() : "";
-    estadoSpan.textContent = nombre ? "✓ " + nombre : "Sin logo";
-    estadoSpan.style.color = nombre ? "var(--ok)" : "";
+  const row = document.createElement("div");
+  row.className = "logo-row";
+  const status = document.createElement("span");
+  status.className = "logo-status";
+  const paint = () => {
+    const name = state.data[key] ? state.data[key].split(/[\\/]/).pop() : "";
+    status.textContent = name ? "✓ " + name : t("no_logo");
+    status.style.color = name ? "var(--ok)" : "";
   };
-  const boton = document.createElement("button");
-  boton.className = "pequeño";
-  boton.textContent = "Elegir logo…";
-  boton.onclick = async () => {
-    const r = await api.elegir_foto("logo");
+  const button = document.createElement("button");
+  button.className = "small";
+  button.textContent = t("choose_logo");
+  button.onclick = async () => {
+    const r = await api.choose_photo("logo");
     if (!r.ok) {
       if (r.error) toast(r.error);
       return;
     }
-    registrarHistorial(false);
-    let ruta = r.path;
+    recordHistory(false);
+    let path = r.path;
     try {
-      const dataUrl = await normalizarImagen(r.url, 512, "image/png");
-      const res = await api.guardar_imagen(dataUrl, "logo");
-      if (res.ok && res.path) ruta = res.path;
-      else toast((res.errores && res.errores[0]) || "No se pudo normalizar el logo; se conserva el original");
+      const dataUrl = await normalizeImage(r.url, 512, "image/png");
+      const saved = await api.save_image(dataUrl, "logo");
+      if (saved.ok && saved.path) path = saved.path;
+      else toast((saved.errores && saved.errores[0]) || t("toast_logo_normalize_error"));
     } catch (e) {
-      toast("No se pudo normalizar el logo; se conserva el original");
+      toast(t("toast_logo_normalize_error"));
     }
-    state.datos[k] = ruta;
-    pintar();
-    marcarSucio();
+    state.data[key] = path;
+    paint();
+    markDirty(true);
   };
-  const quitar = document.createElement("button");
-  quitar.className = "btn-quitar";
-  quitar.textContent = "✕";
-  quitar.title = "Quitar logo";
-  quitar.onclick = () => {
-    registrarHistorial(false);
-    state.datos[k] = "";
-    pintar();
-    marcarSucio();
+  const remove = document.createElement("button");
+  remove.className = "remove-button";
+  remove.textContent = "✕";
+  remove.title = t("remove_logo");
+  remove.onclick = () => {
+    recordHistory(false);
+    state.data[key] = "";
+    paint();
+    markDirty(true);
   };
-  pintar();
-  fila.append(boton, quitar, estadoSpan);
+  paint();
+  row.append(button, remove, status);
 
-  const tam = document.createElement("div");
-  tam.className = "foto-tam";
-  const lbA = document.createElement("label");
-  lbA.textContent = "Ancho (cm)";
-  const inpA = document.createElement("input");
-  inpA.type = "number";
-  inpA.min = "0.5";
-  inpA.max = "6";
-  inpA.step = "0.1";
-  const lbAl = document.createElement("label");
-  lbAl.textContent = "Alto (cm)";
-  const inpAl = document.createElement("input");
-  inpAl.type = "number";
-  inpAl.min = "0.3";
-  inpAl.max = "4";
-  inpAl.step = "0.1";
-  const llenarTam = () => {
-    inpA.value = Number(state.datos.logo_egresado_ancho_cm) || 2.4;
-    inpAl.value = Number(state.datos.logo_egresado_alto_cm) || 0.85;
+  const size = document.createElement("div");
+  size.className = "photo-size";
+  const widthLabel = document.createElement("label");
+  widthLabel.textContent = t("width_cm");
+  const widthInput = document.createElement("input");
+  widthInput.type = "number";
+  widthInput.min = "0.5";
+  widthInput.max = "6";
+  widthInput.step = "0.1";
+  const heightLabel = document.createElement("label");
+  heightLabel.textContent = t("height_cm");
+  const heightInput = document.createElement("input");
+  heightInput.type = "number";
+  heightInput.min = "0.3";
+  heightInput.max = "4";
+  heightInput.step = "0.1";
+  const fillSize = () => {
+    widthInput.value = Number(state.data.school_logo_width_cm) || 2.4;
+    heightInput.value = Number(state.data.school_logo_height_cm) || 0.85;
   };
-  inpA.addEventListener("change", () => {
-    registrarHistorial(false);
-    state.datos.logo_egresado_ancho_cm = Number(inpA.value) || 2.4;
-    marcarSucio();
+  widthInput.addEventListener("change", () => {
+    recordHistory(false);
+    state.data.school_logo_width_cm = Number(widthInput.value) || 2.4;
+    markDirty(true);
   });
-  inpAl.addEventListener("change", () => {
-    registrarHistorial(false);
-    state.datos.logo_egresado_alto_cm = Number(inpAl.value) || 0.85;
-    marcarSucio();
+  heightInput.addEventListener("change", () => {
+    recordHistory(false);
+    state.data.school_logo_height_cm = Number(heightInput.value) || 0.85;
+    markDirty(true);
   });
-  tam.append(lbA, inpA, lbAl, inpAl);
-  llenarTam();
+  size.append(widthLabel, widthInput, heightLabel, heightInput);
+  fillSize();
 
-  camp.append(lb, fila, tam);
-  return camp;
+  fieldDiv.append(lb, row, size);
+  return fieldDiv;
 }
 
-function campoSelectIdioma() {
-  const camp = document.createElement("div");
-  camp.className = "campo";
+function cvLanguageField() {
+  const fieldDiv = document.createElement("div");
+  fieldDiv.className = "field";
   const lb = document.createElement("label");
-  lb.textContent = "Idioma de las etiquetas del CV";
-  const sel = document.createElement("select");
-  IDIOMAS_CV.forEach((o) => {
-    const op = document.createElement("option");
-    op.value = o.v;
-    op.textContent = o.l;
-    sel.appendChild(op);
+  lb.textContent = t("cv_language_label");
+  const select = document.createElement("select");
+  CV_LANGUAGES.forEach((language) => {
+    const option = document.createElement("option");
+    option.value = language.value;
+    option.textContent = t(language.labelKey);
+    select.appendChild(option);
   });
-  sel.value = state.datos.idioma_cv || "zh";
-  sel.addEventListener("change", () => {
-    registrarHistorial(true);
-    state.datos.idioma_cv = sel.value;
-    marcarSucio();
+  select.value = state.data.cv_language || "zh";
+  select.addEventListener("change", () => {
+    recordHistory(true);
+    state.data.cv_language = select.value;
+    markDirty(true);
   });
-  camp.append(lb, sel);
-  return camp;
+  fieldDiv.append(lb, select);
+  return fieldDiv;
 }
 
-function renderFormulario() {
+function renderForm() {
   let cont = $("#form-panel");
   if (!cont) {
-    // Recuperación: si #form-panel desapareció del DOM, se recrea vacío.
-    const host = $("#panel-formulario") || document.body;
+    // Recovery: if #form-panel disappeared from the DOM, recreate it empty.
+    const host = $("#form-area") || document.body;
     host.innerHTML = "";
     cont = document.createElement("div");
     cont.id = "form-panel";
@@ -1596,77 +1831,76 @@ function renderFormulario() {
   }
   cont.innerHTML = "";
 
-  const t1 = seccionTitulo("Datos personales");
-  const c1 = document.createElement("div");
-  c1.className = "campos";
-  c1.append(
-    campoSelectIdioma(),
-    campoBasico("nombre", "Nombre completo"),
-    campoBasico("profesion", "Puesto deseado (意向岗位)"),
-    campoBasico("email", "Correo electrónico"),
-    campoBasico("telefono", "Teléfono"),
-    campoBasico("nacimiento", "Fecha de nacimiento"),
-    campoBasico("nacionalidad", "Nacionalidad"),
-    campoBasico("direccion", "Dirección"),
-    campoBasico("web", "Web"),
-    campoBasico("github", "Github"),
-    campoBasico("linkedin", "Linkedin"),
-    campoBasico("institucion_egresado", "Institución educativa (donde te graduaste)"),
-    campoLogoPersonal("logo_egresado", "Logo de la institución")
+  const personal = sectionCard(t("section_personal"));
+  const fields = document.createElement("div");
+  fields.className = "fields";
+  fields.append(
+    cvLanguageField(),
+    basicField("name", t("field_name")),
+    basicField("profession", t("field_profession")),
+    basicField("email", t("field_email")),
+    basicField("phone", t("field_phone")),
+    basicField("address", t("field_address")),
+    basicField("school_name", t("field_school_name")),
+    personalLogoField("school_logo", t("field_school_logo"))
   );
-  c1.appendChild(fotoFila());
-  t1.contenido.appendChild(c1);
-  cont.appendChild(t1);
-  pintarFoto(); // ahora #foto-vista ya está en el DOM
+  fields.appendChild(photoRow());
+  personal.content.appendChild(fields);
+  cont.appendChild(personal);
+  paintPhoto(); // now #photo-preview is in the DOM
 
-  const td = seccionTitulo("Datos adicionales");
-  td.title = "Estos datos se muestran en el encabezado del CV junto a los datos personales";
-  td.contenido.appendChild(listaDinamica("datos_extra"));
-  cont.appendChild(td);
+  const socials = sectionCard(t("socials_title"));
+  socials.content.appendChild(renderSocials());
+  cont.appendChild(socials);
 
-  // Secciones estándar en el orden elegido por el usuario; cada cabecera
-  // permite renombrar, ocultar y reordenar. "Datos personales" y "Datos
-  // adicionales" quedan fijos arriba y la tarjeta "Bloques" al final.
-  ordenSecciones().forEach((key) => {
-    const t = seccionTitulo(nombreSeccion(key), key, true);
-    if (seccionOculta(key)) {
-      t.classList.add("seccion-oculta");
-      t.contenido.hidden = true;
+  const extra = sectionCard(t("section_extra"));
+  extra.title = t("extra_fields_tip");
+  extra.content.appendChild(renderDynamicList("extra_fields"));
+  cont.appendChild(extra);
+
+  // Standard sections in the order chosen by the user; each header allows
+  // renaming, hiding and reordering. "Personal details", "Social networks" and
+  // "Extra details" stay fixed at the top and the "Blocks" card at the end.
+  sectionOrder().forEach((key) => {
+    const card = sectionCard(sectionName(key), key, true);
+    if (isSectionHidden(key)) {
+      card.classList.add("section-hidden");
+      card.content.hidden = true;
     }
-    if (key === "perfil") {
-      t.contenido.appendChild(campoBasico("perfil", "Resumen profesional", true));
+    if (key === "summary") {
+      card.content.appendChild(basicField("summary", t("field_summary"), true));
     } else {
-      t.contenido.appendChild(listaDinamica(key));
+      card.content.appendChild(renderDynamicList(key));
     }
-    cont.appendChild(t);
+    cont.appendChild(card);
   });
 
-  const tb = seccionTitulo("Bloques");
-  tb.title = "Separadores y secciones personalizadas que se insertan en el CV";
-  const listaB = document.createElement("div");
-  listaB.id = "bloques-inline";
-  tb.contenido.appendChild(listaB);
-  cont.appendChild(tb);
-  pintarListaBloques(listaB);
+  const blocksCard = sectionCard(t("section_blocks"));
+  blocksCard.title = t("blocks_tip");
+  const blockList = document.createElement("div");
+  blockList.id = "blocks-inline";
+  blocksCard.content.appendChild(blockList);
+  cont.appendChild(blocksCard);
+  paintBlocksList(blockList);
 }
 
-/* ---------------- bloques añadidos (menú Añadir) ---------------- */
+/* ---------------- free blocks (Add menu) ---------------- */
 
-let _bloqueEditando = null;
+let _editingBlock = null;
 
-function bloquesActuales() {
-  if (!state.datos) return [];
-  if (!Array.isArray(state.datos.bloques)) state.datos.bloques = [];
-  return state.datos.bloques;
+function currentBlocks() {
+  if (!state.data) return [];
+  if (!Array.isArray(state.data.blocks)) state.data.blocks = [];
+  return state.data.blocks;
 }
 
-function nuevoIdBloque() {
+function newBlockId() {
   try {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
       return window.crypto.randomUUID().replace(/-/g, "");
     }
   } catch (e) {
-    /* crypto.randomUUID no disponible: se usa el respaldo hexadecimal */
+    /* crypto.randomUUID unavailable: the hexadecimal fallback is used */
   }
   let id = "";
   const hex = "0123456789abcdef";
@@ -1674,934 +1908,979 @@ function nuevoIdBloque() {
   return id;
 }
 
-function normalizarPosicion(pos) {
-  const p = String(pos || "").trim();
-  return anclasUI().indexOf(p) >= 0 ? p : "final";
+function normalizeBlockPosition(pos) {
+  const value = String(pos || "").trim();
+  return blockAnchorsUI().indexOf(value) >= 0 ? value : "end";
 }
 
-function etiquetaPosicion(pos) {
-  const p = normalizarPosicion(pos);
-  if (p === "inicio") return "Al inicio";
-  if (p === "final") return "Al final";
-  return "Después de " + nombreSeccion(p);
+function blockPositionLabel(pos) {
+  const value = normalizeBlockPosition(pos);
+  if (value === "start") return t("position_start");
+  if (value === "end") return t("position_end");
+  return t("position_after") + sectionName(value);
 }
 
-function recortarTexto(s, max) {
-  const t = String(s);
-  return t.length > max ? t.slice(0, max - 1).replace(/\s+$/, "") + "…" : t;
+function trimText(s, max) {
+  const text = String(s);
+  return text.length > max ? text.slice(0, max - 1).replace(/\s+$/, "") + "…" : text;
 }
 
-function etiquetaBloque(b) {
-  if (!b || typeof b !== "object") return "Bloque";
-  if (b.tipo === "seccion") {
-    const titulo = String(b.titulo || "").trim();
-    if (titulo) return "Sección: " + titulo;
-    const linea = String(b.contenido || "").split(/\r?\n/).find((l) => l.trim());
-    return "Sección: " + (linea ? recortarTexto(linea.trim(), 48) : "sin contenido");
+function blockLabel(block) {
+  if (!block || typeof block !== "object") return t("block_label");
+  if (block.type === "section") {
+    const title = String(block.title || "").trim();
+    if (title) return t("block_section_prefix") + title;
+    const line = String(block.content || "").split(/\r?\n/).find((l) => l.trim());
+    return t("block_section_prefix") + (line ? trimText(line.trim(), 48) : t("block_no_content"));
   }
-  if (b.tipo === "separador") {
-    const estilos = {
-      linea: "Línea separadora",
-      banda: "Banda de color",
-      espacio: "Espacio en blanco",
+  if (block.type === "separator") {
+    const styles = {
+      line: t("separator_line"),
+      band: t("separator_band"),
+      space: t("separator_space"),
     };
-    return "Separador: " + (estilos[b.estilo] || estilos.linea);
+    return t("block_separator_prefix") + (styles[block.style] || styles.line);
   }
-  if (b.tipo === "listado") {
-    const base = nombreLista(b.modo, b.columnas);
-    const titulo = String(b.titulo || "").trim();
-    return titulo ? base + ": " + recortarTexto(titulo, 40) : base;
+  if (block.type === "list") {
+    const base = listName(block.mode, block.columns);
+    const title = String(block.title || "").trim();
+    return title ? base + ": " + trimText(title, 40) : base;
   }
-  return "Bloque";
+  return t("block_label");
 }
 
-/* Punto ÚNICO de mutación de state.datos.bloques: los altas, las ediciones,
-   los movimientos y los borrados de bloques pasan todos por aquí.
-   marcarSucio() deja el CV sucio y programa el autosave y la recompilación.
-   t6 (deshacer/rehacer) debe engancharse en este único punto: no mutar
-   state.datos.bloques desde ningún otro sitio. `estructural` repinta las
-   listas visibles (tarjeta del formulario y modal) salvo que se pase false. */
-function mutarBloques(fn, estructural) {
-  if (!state.datos) return null;
-  // Enganche de deshacer/rehacer: snapshot antes de mutar. Las acciones de
-  // bloques son estructurales y no se agrupan con los cambios de texto.
-  registrarHistorial(estructural !== false);
-  const bloques = bloquesActuales();
-  const resultado = fn(bloques);
-  marcarSucio();
-  if (estructural !== false) refrescarListasBloques();
-  return resultado;
+/* SINGLE mutation point for state.data.blocks: creations, edits, movements and
+   deletions of blocks all go through here. markDirty() leaves the CV dirty and
+   schedules autosave and recompilation. Undo/redo hooks into this single point:
+   state.data.blocks is never mutated anywhere else. `structural` repaints the
+   visible lists (form card and modal) unless false is passed. */
+function mutateBlocks(fn, structural) {
+  if (!state.data) return null;
+  // Undo/redo hook: snapshot before mutating. Block actions are structural and
+  // are not grouped with text changes.
+  recordHistory(structural !== false);
+  const blocks = currentBlocks();
+  const result = fn(blocks);
+  markDirty(true);
+  if (structural !== false) refreshBlockLists();
+  return result;
 }
 
-function crearBloqueSeparador(estilo) {
-  if (["linea", "banda", "espacio"].indexOf(estilo) < 0) estilo = "linea";
-  mutarBloques((bloques) => {
-    bloques.push({ id: nuevoIdBloque(), tipo: "separador", estilo, posicion: "final" });
+function createSeparatorBlock(style) {
+  if (["line", "band", "space"].indexOf(style) < 0) style = "line";
+  mutateBlocks((blocks) => {
+    blocks.push({ id: newBlockId(), type: "separator", style, position: "end" });
   });
 }
 
-function moverBloque(b, paso) {
-  mutarBloques((bloques) => {
-    if (bloques.indexOf(b) < 0) return;
-    const anclas = anclasUI();
-    const j = anclas.indexOf(normalizarPosicion(b.posicion)) + paso;
-    if (j < 0 || j >= anclas.length) return;
-    b.posicion = anclas[j];
+function moveBlock(block, step) {
+  mutateBlocks((blocks) => {
+    if (blocks.indexOf(block) < 0) return;
+    const anchors = blockAnchorsUI();
+    const j = anchors.indexOf(normalizeBlockPosition(block.position)) + step;
+    if (j < 0 || j >= anchors.length) return;
+    block.position = anchors[j];
   });
 }
 
-function eliminarBloque(b) {
-  mutarBloques((bloques) => {
-    const i = bloques.indexOf(b);
-    if (i >= 0) bloques.splice(i, 1);
+function deleteBlock(block) {
+  mutateBlocks((blocks) => {
+    const i = blocks.indexOf(block);
+    if (i >= 0) blocks.splice(i, 1);
   });
 }
 
-function refrescarListasBloques() {
-  const inline = $("#bloques-inline");
-  if (inline) pintarListaBloques(inline);
-  const modal = $("#bloques-lista");
-  if (modal) pintarListaBloques(modal);
+function refreshBlockLists() {
+  const inline = $("#blocks-inline");
+  if (inline) paintBlocksList(inline);
+  const modal = $("#blocks-list");
+  if (modal) paintBlocksList(modal);
 }
 
-function pintarListaBloques(cont) {
+function paintBlocksList(cont) {
   if (!cont) return;
   cont.innerHTML = "";
-  const bloques = bloquesActuales();
-  if (!bloques.length) {
+  const blocks = currentBlocks();
+  if (!blocks.length) {
     const p = document.createElement("p");
-    p.className = "sin-entradas";
-    p.textContent = "Sin bloques todavía. Añádelos desde el menú «Añadir».";
+    p.className = "no-entries";
+    p.textContent = t("no_blocks");
     cont.appendChild(p);
     return;
   }
-  bloques.forEach((b) => cont.appendChild(filaBloque(b)));
+  blocks.forEach((block) => cont.appendChild(blockRow(block)));
 }
 
-function filaBloque(b) {
+function blockRow(block) {
   const div = document.createElement("div");
-  div.className = "entrada";
-  const claveBloque = b && b.id ? String(b.id) : "";
-  aplicarColapso("bloques", claveBloque, div);
-  const cab = document.createElement("div");
-  cab.className = "cab-entrada";
-  const rot = document.createElement("span");
-  rot.className = "cab-txt";
-  const nombre = document.createElement("span");
-  nombre.textContent = etiquetaBloque(b);
-  const pos = document.createElement("span");
-  pos.className = "bloque-posicion";
-  pos.textContent = etiquetaPosicion(b && b.posicion);
-  pos.title = "Posición del bloque en el CV";
-  rot.append(nombre, pos);
+  div.className = "entry";
+  const blockKey = block && block.id ? String(block.id) : "";
+  applyCollapse("blocks", blockKey, div);
+  const header = document.createElement("div");
+  header.className = "entry-header";
+  const label = document.createElement("span");
+  label.className = "entry-label";
+  const name = document.createElement("span");
+  name.textContent = blockLabel(block);
+  const position = document.createElement("span");
+  position.className = "block-position";
+  position.textContent = blockPositionLabel(block && block.position);
+  position.title = t("block_position_tip");
+  label.append(name, position);
 
-  const acciones = document.createElement("span");
-  acciones.className = "bloque-acciones";
-  acciones.style.display = "flex";
-  acciones.style.alignItems = "center";
-  acciones.style.gap = "6px";
-  const anclas = anclasUI();
-  const ancla = anclas.indexOf(normalizarPosicion(b && b.posicion));
+  const actions = document.createElement("span");
+  actions.className = "block-actions";
+  actions.style.display = "flex";
+  actions.style.alignItems = "center";
+  actions.style.gap = "6px";
+  const anchors = blockAnchorsUI();
+  const anchorIndex = anchors.indexOf(normalizeBlockPosition(block && block.position));
 
-  const arriba = document.createElement("button");
-  arriba.className = "pequeño";
-  arriba.textContent = "↑";
-  arriba.title = "Mover una posición antes en el CV";
-  arriba.disabled = ancla <= 0;
-  arriba.addEventListener("click", (e) => {
+  const up = document.createElement("button");
+  up.className = "small";
+  up.textContent = "↑";
+  up.title = t("move_block_up");
+  up.disabled = anchorIndex <= 0;
+  up.addEventListener("click", (e) => {
     e.stopPropagation();
-    moverBloque(b, -1);
+    moveBlock(block, -1);
   });
 
-  const abajo = document.createElement("button");
-  abajo.className = "pequeño";
-  abajo.textContent = "↓";
-  abajo.title = "Mover una posición después en el CV";
-  abajo.disabled = ancla >= anclas.length - 1;
-  abajo.addEventListener("click", (e) => {
+  const down = document.createElement("button");
+  down.className = "small";
+  down.textContent = "↓";
+  down.title = t("move_block_down");
+  down.disabled = anchorIndex >= anchors.length - 1;
+  down.addEventListener("click", (e) => {
     e.stopPropagation();
-    moverBloque(b, 1);
+    moveBlock(block, 1);
   });
 
-  acciones.append(arriba, abajo);
+  actions.append(up, down);
 
-  if (b && (b.tipo === "seccion" || b.tipo === "listado")) {
-    const editar = document.createElement("button");
-    editar.className = "pequeño";
-    editar.textContent = "Editar";
-    editar.title = b.tipo === "listado" ? "Editar el título, las columnas y las entradas" : "Editar el título y el contenido";
-    editar.addEventListener("click", (e) => {
+  if (block && (block.type === "section" || block.type === "list")) {
+    const edit = document.createElement("button");
+    edit.className = "small";
+    edit.textContent = t("edit");
+    edit.title = block.type === "list" ? t("edit_list_block_tip") : t("edit_section_block_tip");
+    edit.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (b.tipo === "listado") abrirModalBloqueListado(b.modo, b);
-      else abrirModalBloqueSeccion(b);
+      if (block.type === "list") openListBlockModal(block.mode, block);
+      else openCustomSectionModal(block);
     });
-    acciones.appendChild(editar);
+    actions.appendChild(edit);
   }
 
-  const quitar = document.createElement("button");
-  quitar.className = "btn-quitar";
-  quitar.textContent = "✕";
-  quitar.title = "Eliminar bloque";
-  quitar.addEventListener("click", (e) => {
+  const remove = document.createElement("button");
+  remove.className = "remove-button";
+  remove.textContent = "✕";
+  remove.title = t("delete_block");
+  remove.addEventListener("click", (e) => {
     e.stopPropagation();
-    eliminarBloque(b);
+    deleteBlock(block);
   });
-  acciones.appendChild(quitar);
+  actions.appendChild(remove);
 
-  cab.append(rot, acciones);
-  cab.addEventListener("click", (e) => {
+  header.append(label, actions);
+  header.addEventListener("click", (e) => {
     if (e.target.closest("button")) return;
-    alternarColapso("bloques", claveBloque, div);
+    toggleCollapse("blocks", blockKey, div);
   });
-  div.appendChild(cab);
+  div.appendChild(header);
   return div;
 }
 
-function abrirModalBloqueSeccion(bloque) {
-  _bloqueEditando = bloque || null;
-  $("#bs-titulo").value = _bloqueEditando ? String(_bloqueEditando.titulo || "") : "";
-  $("#bs-contenido").value = _bloqueEditando ? String(_bloqueEditando.contenido || "") : "";
-  $("#modal-bloque-seccion").hidden = false;
-  $("#bs-titulo").focus();
+function openCustomSectionModal(block) {
+  _editingBlock = block || null;
+  $("#custom-section-title").value = _editingBlock ? String(_editingBlock.title || "") : "";
+  $("#custom-section-content").value = _editingBlock ? String(_editingBlock.content || "") : "";
+  $("#modal-custom-section").hidden = false;
+  $("#custom-section-title").focus();
 }
 
-function aceptarBloqueSeccion() {
-  const titulo = $("#bs-titulo").value.trim();
-  const contenido = $("#bs-contenido").value.trim();
-  if (!titulo && !contenido) {
-    toast("Escribe un título o un contenido para la sección");
+function acceptCustomSection() {
+  const title = $("#custom-section-title").value.trim();
+  const content = $("#custom-section-content").value.trim();
+  if (!title && !content) {
+    toast(t("toast_section_empty"));
     return;
   }
-  const editando = _bloqueEditando;
-  _bloqueEditando = null;
-  mutarBloques((bloques) => {
-    if (editando && bloques.indexOf(editando) >= 0) {
-      editando.titulo = titulo;
-      editando.contenido = contenido;
+  const editing = _editingBlock;
+  _editingBlock = null;
+  mutateBlocks((blocks) => {
+    if (editing && blocks.indexOf(editing) >= 0) {
+      editing.title = title;
+      editing.content = content;
     } else {
-      bloques.push({ id: nuevoIdBloque(), tipo: "seccion", titulo, contenido, posicion: "final" });
+      blocks.push({ id: newBlockId(), type: "section", title, content, position: "end" });
     }
   });
-  cerrarModal($("#modal-bloque-seccion"));
+  closeModal($("#modal-custom-section"));
 }
 
-/* Plantillas genericas de lista (tipo "listado"): pares titulo+detalle en
-   1-3 columnas o periodo+descripcion. El backend las sanea y las pinta igual
-   en LaTeX y en Word. */
+/* Generic list templates ("list" block type): title+detail pairs in 1-3
+   columns or period+description. The backend sanitizes them and renders them
+   the same way in LaTeX and Word. */
 
-const MODOS_LISTA = {
-  columnas: {
-    nombre: "Lista en columnas",
-    ayuda: "Cada entrada es un título corto con un detalle opcional; se reparten en columnas en el CV.",
+const LIST_MODES = {
+  columns: {
+    nameKey: "list_block_columns_title",
+    helpKey: "list_columns_help",
   },
-  periodo: {
-    nombre: "Periodo + descripción",
-    ayuda: "Cada entrada tiene un periodo (fechas) y una descripción, como una cronología.",
+  period: {
+    nameKey: "list_block_period_title",
+    helpKey: "list_period_help",
   },
 };
 
-let _listaModo = "columnas";
-let _listaEditando = null;
+let _listMode = "columns";
+let _listEditing = null;
 
-function nombreLista(modo, columnas) {
-  if (modo === "periodo") return "Periodo + descripción";
-  const n = Math.min(Math.max(Number(columnas) || 1, 1), 3);
-  return n === 1 ? "Lista en 1 columna" : "Lista en " + n + " columnas";
+function listName(mode, columns) {
+  if (mode === "period") return t("list_block_period_title");
+  const n = Math.min(Math.max(Number(columns) || 1, 1), 3);
+  return n === 1 ? t("list_name_1") : t("list_name_n").replace("{n}", n);
 }
 
-function campoLista(campo, label, area) {
+function listField(field, label, area) {
   const div = document.createElement("div");
-  div.className = "campo" + (area ? " ancho" : "");
+  div.className = "field" + (area ? " wide" : "");
   const lb = document.createElement("label");
   lb.textContent = label;
-  const inp = document.createElement(area ? "textarea" : "input");
-  if (!area) inp.type = "text";
-  if (area) inp.rows = 3;
-  inp.dataset.campo = campo;
-  div.append(lb, inp);
+  const input = document.createElement(area ? "textarea" : "input");
+  if (!area) input.type = "text";
+  if (area) input.rows = 3;
+  input.dataset.field = field;
+  div.append(lb, input);
   return div;
 }
 
-function renumerarLista() {
-  $$("#bl-entradas .numero-lista").forEach((el, i) => {
-    el.textContent = "Entrada " + (i + 1);
+function renumberList() {
+  $$("#list-block-entries .entry-number").forEach((el, i) => {
+    el.textContent = t("entry_number").replace("{n}", i + 1);
   });
 }
 
-function filaLista(datos) {
-  const d = datos || {};
+function listRow(entry) {
+  const data = entry || {};
   const div = document.createElement("div");
-  div.className = "entrada";
-  const cab = document.createElement("div");
-  cab.className = "cab-entrada";
-  const num = document.createElement("span");
-  num.className = "cab-txt numero-lista";
-  const quitar = document.createElement("button");
-  quitar.className = "btn-quitar";
-  quitar.textContent = "✕";
-  quitar.title = "Eliminar entrada";
-  quitar.addEventListener("click", () => {
+  div.className = "entry";
+  const header = document.createElement("div");
+  header.className = "entry-header";
+  const number = document.createElement("span");
+  number.className = "entry-label entry-number";
+  const remove = document.createElement("button");
+  remove.className = "remove-button";
+  remove.textContent = "✕";
+  remove.title = t("entry_delete");
+  remove.addEventListener("click", () => {
     div.remove();
-    renumerarLista();
+    renumberList();
   });
-  cab.append(num, quitar);
-  const campos = document.createElement("div");
-  campos.className = "campos";
-  const texto = (v) => (v == null ? "" : String(v));
-  if (_listaModo === "periodo") {
-    const p = campoLista("periodo", "Periodo (fechas)");
-    p.querySelector("input").value = texto(d.periodo);
-    const desc = campoLista("descripcion", "Descripción", true);
-    desc.querySelector("textarea").value = texto(d.descripcion);
-    campos.append(p, desc);
+  header.append(number, remove);
+  const fields = document.createElement("div");
+  fields.className = "fields";
+  const text = (v) => (v == null ? "" : String(v));
+  if (_listMode === "period") {
+    const period = listField("period", t("period_dates"));
+    period.querySelector("input").value = text(data.period);
+    const description = listField("description", t("description"), true);
+    description.querySelector("textarea").value = text(data.description);
+    fields.append(period, description);
   } else {
-    const t = campoLista("titulo", "Título");
-    t.querySelector("input").value = texto(d.titulo);
-    const det = campoLista("detalle", "Detalle (opcional)", true);
-    det.querySelector("textarea").value = texto(d.detalle);
-    campos.append(t, det);
+    const title = listField("title", t("title_field"));
+    title.querySelector("input").value = text(data.title);
+    const detail = listField("detail", t("detail_optional"), true);
+    detail.querySelector("textarea").value = text(data.detail);
+    fields.append(title, detail);
   }
-  div.append(cab, campos);
+  div.append(header, fields);
   return div;
 }
 
-function anadirEntradaLista(datos) {
-  const cont = $("#bl-entradas");
+function addListEntry(entry) {
+  const cont = $("#list-block-entries");
   if (!cont) return;
-  const fila = filaLista(datos);
-  cont.appendChild(fila);
-  renumerarLista();
+  const row = listRow(entry);
+  cont.appendChild(row);
+  renumberList();
   cont.scrollTop = cont.scrollHeight;
-  const primer = fila.querySelector("input, textarea");
-  if (primer) primer.focus();
+  const first = row.querySelector("input, textarea");
+  if (first) first.focus();
 }
 
-function leerEntradasLista() {
-  const entradas = [];
-  $$("#bl-entradas .entrada").forEach((fila) => {
-    const ent = {};
-    let vacia = true;
-    $$("[data-campo]", fila).forEach((inp) => {
-      const valor = String(inp.value || "").trim();
-      ent[inp.dataset.campo] = valor;
-      if (valor) vacia = false;
+function readListEntries() {
+  const entries = [];
+  $$("#list-block-entries .entry").forEach((row) => {
+    const entry = {};
+    let empty = true;
+    $$("[data-field]", row).forEach((input) => {
+      const value = String(input.value || "").trim();
+      entry[input.dataset.field] = value;
+      if (value) empty = false;
     });
-    if (!vacia) entradas.push(ent);
+    if (!empty) entries.push(entry);
   });
-  return entradas;
+  return entries;
 }
 
-function abrirModalBloqueListado(modo, bloque, columnas) {
-  _listaModo = modo === "periodo" ? "periodo" : "columnas";
-  _listaEditando = bloque || null;
-  const edit = _listaEditando;
-  $("#bl-titulo-modal").textContent = MODOS_LISTA[_listaModo].nombre;
-  $("#bl-titulo").value = edit ? String(edit.titulo || "") : "";
-  const col = edit ? Number(edit.columnas) || 1 : Number(columnas) || 1;
-  $("#bl-columnas").value = String(Math.min(Math.max(col, 1), 3));
-  $("#bl-columnas-campo").hidden = _listaModo !== "columnas";
-  $("#bl-ayuda").textContent = MODOS_LISTA[_listaModo].ayuda;
-  const cont = $("#bl-entradas");
+function openListBlockModal(mode, block, columns) {
+  _listMode = mode === "period" ? "period" : "columns";
+  _listEditing = block || null;
+  const editing = _listEditing;
+  $("#list-block-heading").textContent = t(LIST_MODES[_listMode].nameKey);
+  $("#list-block-title").value = editing ? String(editing.title || "") : "";
+  const col = editing ? Number(editing.columns) || 1 : Number(columns) || 1;
+  $("#list-block-columns").value = String(Math.min(Math.max(col, 1), 3));
+  $("#list-block-columns-field").hidden = _listMode !== "columns";
+  $("#list-block-help").textContent = t(LIST_MODES[_listMode].helpKey);
+  const cont = $("#list-block-entries");
   cont.innerHTML = "";
-  const previas = edit && Array.isArray(edit.entradas) ? edit.entradas : [];
-  if (previas.length) previas.forEach((ent) => cont.appendChild(filaLista(ent)));
-  else cont.appendChild(filaLista({}));
-  renumerarLista();
-  $("#modal-bloque-lista").hidden = false;
-  $("#bl-titulo").focus();
+  const previous = editing && Array.isArray(editing.entries) ? editing.entries : [];
+  if (previous.length) previous.forEach((entry) => cont.appendChild(listRow(entry)));
+  else cont.appendChild(listRow({}));
+  renumberList();
+  $("#modal-list-block").hidden = false;
+  $("#list-block-title").focus();
 }
 
-function aceptarBloqueListado() {
-  const titulo = $("#bl-titulo").value.trim();
-  const modo = _listaModo;
-  const columnas = modo === "columnas" ? Number($("#bl-columnas").value) || 1 : 1;
-  const entradas = leerEntradasLista();
-  if (!titulo && !entradas.length) {
-    toast("Escribe un título o añade al menos una entrada");
+function acceptListBlock() {
+  const title = $("#list-block-title").value.trim();
+  const mode = _listMode;
+  const columns = mode === "columns" ? Number($("#list-block-columns").value) || 1 : 1;
+  const entries = readListEntries();
+  if (!title && !entries.length) {
+    toast(t("toast_list_empty"));
     return;
   }
-  const editando = _listaEditando;
-  _listaEditando = null;
-  mutarBloques((bloques) => {
-    if (editando && bloques.indexOf(editando) >= 0) {
-      editando.modo = modo;
-      editando.titulo = titulo;
-      editando.columnas = columnas;
-      editando.entradas = entradas;
+  const editing = _listEditing;
+  _listEditing = null;
+  mutateBlocks((blocks) => {
+    if (editing && blocks.indexOf(editing) >= 0) {
+      editing.mode = mode;
+      editing.title = title;
+      editing.columns = columns;
+      editing.entries = entries;
     } else {
-      bloques.push({
-        id: nuevoIdBloque(), tipo: "listado", modo, titulo, columnas, entradas,
-        posicion: "final",
+      blocks.push({
+        id: newBlockId(), type: "list", mode, title, columns, entries,
+        position: "end",
       });
     }
   });
-  cerrarModal($("#modal-bloque-lista"));
+  closeModal($("#modal-list-block"));
 }
 
-function abrirModalBloques() {
-  pintarListaBloques($("#bloques-lista"));
-  $("#modal-bloques").hidden = false;
+function openBlocksModal() {
+  paintBlocksList($("#blocks-list"));
+  $("#modal-blocks").hidden = false;
 }
 
-function configurarBloques() {
-  $("#bs-cancelar").addEventListener("click", () => {
-    _bloqueEditando = null;
-    cerrarModal($("#modal-bloque-seccion"));
+function setupBlocks() {
+  $("#custom-section-cancel").addEventListener("click", () => {
+    _editingBlock = null;
+    closeModal($("#modal-custom-section"));
   });
-  $("#bs-aceptar").addEventListener("click", aceptarBloqueSeccion);
-  $("#bl-cancelar").addEventListener("click", () => {
-    _listaEditando = null;
-    cerrarModal($("#modal-bloque-lista"));
+  $("#custom-section-accept").addEventListener("click", acceptCustomSection);
+  $("#list-block-cancel").addEventListener("click", () => {
+    _listEditing = null;
+    closeModal($("#modal-list-block"));
   });
-  $("#bl-aceptar").addEventListener("click", aceptarBloqueListado);
-  $("#bl-anadir").addEventListener("click", () => anadirEntradaLista({}));
-  $("#bloques-cerrar").addEventListener("click", () => cerrarModal($("#modal-bloques")));
+  $("#list-block-accept").addEventListener("click", acceptListBlock);
+  $("#list-block-add").addEventListener("click", () => addListEntry({}));
+  $("#blocks-close").addEventListener("click", () => closeModal($("#modal-blocks")));
 }
 
-/* ---------------- modo LaTeX ---------------- */
+/* ---------------- LaTeX mode ---------------- */
 
-function entrarModoLatex() {
-  state.modo = "latex";
-  const host = $("#panel-formulario") || document.body;
+function enterLatexMode() {
+  state.mode = "latex";
+  const host = $("#form-area") || document.body;
   const panelForm = $("#form-panel");
   if (panelForm) panelForm.hidden = true;
-  const previo = $("#panel-latex");
-  if (previo) previo.remove();
+  const existing = $("#latex-panel");
+  if (existing) existing.remove();
 
   const cont = document.createElement("div");
-  cont.id = "panel-latex";
+  cont.id = "latex-panel";
 
-  const barra = document.createElement("div");
-  barra.id = "barra-latex";
-  const rotulo = document.createElement("span");
-  rotulo.textContent = "Código LaTeX generado — puedes editarlo a mano";
-  const volver = document.createElement("button");
-  volver.className = "pequeño";
-  volver.id = "volver-formulario";
-  volver.textContent = "Volver al formulario";
-  volver.onclick = () => alternarToggle("latex");
-  barra.append(rotulo, volver);
+  const bar = document.createElement("div");
+  bar.id = "latex-bar";
+  const label = document.createElement("span");
+  label.textContent = t("latex_bar");
+  const back = document.createElement("button");
+  back.className = "small";
+  back.id = "back-to-form";
+  back.textContent = t("back_to_form");
+  back.onclick = () => toggleOption("latex");
+  bar.append(label, back);
 
-  const ta = document.createElement("textarea");
-  ta.id = "texto-latex";
-  ta.spellcheck = false;
-  ta.value = state.texManual !== null ? state.texManual : (state.tex || "");
-  state.texEditado = false;
-  ta.addEventListener("input", () => {
-    state.texManual = ta.value;
-    state.texEditado = true;
-    programarCompilacion();
+  const area = document.createElement("textarea");
+  area.id = "latex-text";
+  area.spellcheck = false;
+  area.value = state.texManual !== null ? state.texManual : (state.tex || "");
+  state.texEdited = false;
+  area.addEventListener("input", () => {
+    state.texManual = area.value;
+    state.texEdited = true;
+    scheduleCompile();
   });
 
-  cont.append(barra, ta);
+  cont.append(bar, area);
   host.appendChild(cont);
-  actualizarMarcas();
+  updateMarks();
 }
 
-function salirModoLatex(recompilar) {
-  state.modo = "formulario";
+function exitLatexMode(recompile) {
+  state.mode = "form";
   state.texManual = null;
-  state.texEditado = false;
-  const pl = $("#panel-latex");
+  state.texEdited = false;
+  const pl = $("#latex-panel");
   if (pl) pl.remove();
   const panelForm = $("#form-panel");
   if (panelForm) panelForm.hidden = false;
-  renderFormulario();
-  actualizarMarcas();
-  if (recompilar) programarCompilacion();
+  renderForm();
+  updateMarks();
+  if (recompile) scheduleCompile();
 }
 
-/* ---------------- wizard motor LaTeX ---------------- */
+/* ---------------- LaTeX engine wizard ---------------- */
 
-function abrirWizard() {
-  $("#wz-progreso").hidden = true;
-  $("#wz-estado").textContent = "";
-  $("#wz-barra").style.width = "0%";
+function openWizard() {
+  $("#wz-progress").hidden = true;
+  $("#wz-status").textContent = "";
+  $("#wz-bar").style.width = "0%";
+  $("#install-cancel").hidden = true;
+  $("#install-cancel").disabled = false;
+  $("#wz-install").disabled = false;
   $("#modal-wizard").hidden = false;
 }
 
-function cerrarWizard(ok) {
+function closeWizard(ok) {
   $("#modal-wizard").hidden = true;
   state.latexOk = ok;
-  $("#aviso-motor").hidden = ok;
-  if (ok) compilar();
+  $("#engine-warning").hidden = ok;
+  if (ok) compileNow();
 }
 
-function configurarWizard() {
-  $("#wz-instalar").addEventListener("click", async () => {
-    const boton = $("#wz-instalar");
-    boton.disabled = true;
-    $("#wz-progreso").hidden = false;
-    $("#wz-estado").textContent = "";
-    $("#wz-barra").style.width = "0%";
+function setupWizard() {
+  $("#wz-install").addEventListener("click", async () => {
+    const button = $("#wz-install");
+    button.disabled = true;
+    $("#install-cancel").hidden = false;
+    $("#install-cancel").disabled = false;
+    $("#wz-progress").hidden = false;
+    $("#wz-status").textContent = "";
+    $("#wz-bar").style.width = "0%";
     try {
       await api.install_latex();
     } catch (e) {
-      boton.disabled = false;
-      $("#wz-estado").textContent = "No se pudo iniciar la instalación.";
+      button.disabled = false;
+      $("#install-cancel").hidden = true;
+      $("#wz-status").textContent = t("wizard_install_start_error");
       console.error(e);
     }
   });
 
-  $("#wz-tengo").addEventListener("click", async () => {
-    const r = await api.comprobar_latex();
-    if (r.ok) cerrarWizard(true);
-    else $("#wz-estado").textContent = "No se encontró LaTeX en el sistema. Indica la ruta manualmente o instala TinyTeX.";
+  $("#install-cancel").addEventListener("click", async () => {
+    $("#install-cancel").disabled = true;
+    try {
+      await api.cancel_install();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  $("#wz-have").addEventListener("click", async () => {
+    const r = await api.check_latex();
+    if (r.ok) closeWizard(true);
+    else $("#wz-status").textContent = t("wizard_not_found");
   });
 
   $("#wz-manual").addEventListener("click", async () => {
-    const r = await api.elegir_ruta_latex();
-    if (r.ok) cerrarWizard(true);
-    else if (r.error) $("#wz-estado").textContent = r.error;
+    const r = await api.choose_latex_path();
+    if (r.ok) closeWizard(true);
+    else if (r.error) $("#wz-status").textContent = r.error;
   });
 
-  $("#wz-ahora").addEventListener("click", async (e) => {
+  $("#wz-later").addEventListener("click", async (e) => {
     e.preventDefault();
-    await api.marcar_setup_ignorado();
-    cerrarWizard(false);
-    $("#aviso-motor").hidden = false;
+    await api.dismiss_setup();
+    closeWizard(false);
+    $("#engine-warning").hidden = false;
   });
 }
 
 window.__onInstallProgress = function (p) {
   if (p.total) {
-    const porc = Math.min(100, Math.round((100 * p.hecho) / p.total));
-    $("#wz-barra").style.width = porc + "%";
-    $("#wz-progreso-texto").textContent =
-      "Descargando e instalando TinyTeX… " + porc + "% (" + fmBytes(p.hecho) + " de " + fmBytes(p.total) + ")";
+    const percent = Math.min(100, Math.round((100 * p.hecho) / p.total));
+    $("#wz-bar").style.width = percent + "%";
+    $("#wz-progress-text").textContent = t("install_progress")
+      .replace("{pct}", percent)
+      .replace("{done}", formatBytes(p.hecho))
+      .replace("{total}", formatBytes(p.total));
   } else {
-    $("#wz-barra").style.width = "100%";
-    $("#wz-progreso-texto").textContent = "Trabajando…";
+    $("#wz-bar").style.width = "100%";
+    $("#wz-progress-text").textContent = t("install_working");
   }
 };
 
 window.__onInstallDone = function (r) {
-  $("#wz-instalar").disabled = false;
-  $("#wz-barra").style.width = "100%";
+  $("#wz-install").disabled = false;
+  $("#install-cancel").hidden = true;
+  $("#install-cancel").disabled = false;
+  $("#wz-bar").style.width = "100%";
   if (r.ok) {
-    $("#wz-progreso").hidden = true;
+    $("#wz-progress").hidden = true;
     toast(r.msg);
-    cerrarWizard(true);
+    closeWizard(true);
   } else {
-    $("#wz-progreso").hidden = true;
-    $("#wz-estado").textContent = r.msg;
+    $("#wz-progress").hidden = true;
+    $("#wz-status").textContent = r.msg;
   }
 };
 
-/* ---------------- preferencias ---------------- */
+/* ---------------- settings ---------------- */
 
-// Devuelve "" si el valor está vacío, "#RRGGBB" en mayúsculas si es un color
-// válido (#RGB o #RRGGBB) y null si no es un hexadecimal válido.
-function normalizarHex(valor) {
-  const v = String(valor == null ? "" : valor).trim();
-  if (!v) return "";
-  if (/^#[0-9a-fA-F]{3}$/.test(v)) {
-    const c = v.slice(1).toUpperCase();
+// Returns "" if the value is empty, "#RRGGBB" in uppercase if it is a valid
+// color (#RGB or #RRGGBB) and null if it is not valid hexadecimal.
+function parseHex(value) {
+  const text = String(value == null ? "" : value).trim();
+  if (!text) return "";
+  if (/^#[0-9a-fA-F]{3}$/.test(text)) {
+    const c = text.slice(1).toUpperCase();
     return "#" + c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
   }
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toUpperCase();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) return text.toUpperCase();
   return null;
 }
 
-function leerColoresPrefs() {
-  const colores = {};
-  CAMPOS_COLOR.forEach((campo) => {
-    const v = normalizarHex($("#pf-color-" + campo).value);
-    colores[campo] = v === null ? "" : v;
+function readColorPrefs() {
+  const colors = {};
+  COLOR_FIELDS.forEach((field) => {
+    const value = parseHex($("#pf-color-" + field).value);
+    colors[field] = value === null ? "" : value;
   });
-  return colores;
+  return colors;
 }
 
-// Si el campo vacío tiene un marcador válido, la rueda lo muestra; si no,
-// conserva su último valor.
-function sincronizarRuedaColores(campo) {
-  const texto = $("#pf-color-" + campo);
-  const rueda = $("#pf-color-" + campo + "-rueda");
-  const v = normalizarHex(texto.value) || normalizarHex(texto.placeholder);
-  if (v) rueda.value = v;
+// If the empty field has a valid placeholder, the wheel shows it; otherwise it
+// keeps its last value.
+function syncColorWheel(field) {
+  const text = $("#pf-color-" + field);
+  const wheel = $("#pf-color-" + field + "-wheel");
+  const value = parseHex(text.value) || parseHex(text.placeholder);
+  if (value) wheel.value = value;
 }
 
-async function cargarColoresPlantilla() {
-  let colores = {};
+async function loadTemplateColors() {
+  let colors = {};
   try {
-    const r = await api.colores_plantilla(state.datos.plantilla);
-    if (r && r.ok && r.colores) colores = r.colores;
+    const r = await api.template_colors(state.data.template);
+    if (r && r.ok && r.colores) colors = r.colores;
   } catch (e) {
     console.error(e);
   }
-  const porCampo = {
-    primario: colores.accent,
-    secundario: colores.acento2,
-    texto: "#000000",
-    gris: colores.gris,
+  const perField = {
+    primary: colors.accent,
+    secondary: colors.acento2,
+    text: "#000000",
+    gray: colors.gris,
   };
-  CAMPOS_COLOR.forEach((campo) => {
-    const ph = normalizarHex(porCampo[campo]);
-    $("#pf-color-" + campo).placeholder = ph === null ? "" : ph;
+  COLOR_FIELDS.forEach((field) => {
+    const placeholder = parseHex(perField[field]);
+    $("#pf-color-" + field).placeholder = placeholder === null ? "" : placeholder;
   });
 }
 
-function guardarColoresPrefs() {
-  state.prefs.colores = leerColoresPrefs();
-  api.set_prefs("colores", state.prefs.colores);
-  programarCompilacion();
+function saveColorPrefs() {
+  state.prefs.colors = readColorPrefs();
+  api.set_prefs("colors", state.prefs.colors);
+  markDirty(true);
 }
 
-function configurarColoresPrefs() {
-  CAMPOS_COLOR.forEach((campo) => {
-    const texto = $("#pf-color-" + campo);
-    const rueda = $("#pf-color-" + campo + "-rueda");
-    const reset = $("#pf-color-" + campo + "-reset");
-    texto.addEventListener("change", () => {
-      const v = normalizarHex(texto.value);
-      if (v === null) {
-        const previo = normalizarHex((state.prefs.colores || {})[campo]);
-        texto.value = previo === null ? "" : previo;
+function setupColorPrefs() {
+  COLOR_FIELDS.forEach((field) => {
+    const text = $("#pf-color-" + field);
+    const wheel = $("#pf-color-" + field + "-wheel");
+    const reset = $("#pf-color-" + field + "-reset");
+    text.addEventListener("change", () => {
+      const value = parseHex(text.value);
+      if (value === null) {
+        const previous = parseHex((state.prefs.colors || {})[field]);
+        text.value = previous === null ? "" : previous;
         return;
       }
-      texto.value = v;
-      sincronizarRuedaColores(campo);
-      guardarColoresPrefs();
+      text.value = value;
+      syncColorWheel(field);
+      saveColorPrefs();
     });
-    rueda.addEventListener("input", () => {
-      texto.value = normalizarHex(rueda.value) || "";
-      guardarColoresPrefs();
+    wheel.addEventListener("input", () => {
+      text.value = parseHex(wheel.value) || "";
+      saveColorPrefs();
     });
     reset.addEventListener("click", () => {
-      texto.value = "";
-      const ph = normalizarHex(texto.placeholder);
-      if (ph) rueda.value = ph;
-      guardarColoresPrefs();
+      text.value = "";
+      const placeholder = parseHex(text.placeholder);
+      if (placeholder) wheel.value = placeholder;
+      saveColorPrefs();
     });
   });
 }
 
-async function abrirPrefs() {
-  $("#pf-msj").textContent = "";
-  $("#pf-papel").value = state.prefs.papel;
-  $("#pf-fuente").value = String(state.prefs.fuente);
-  $("#pf-autocompilar").checked = state.prefs.autocompilar;
+async function openPrefs() {
+  $("#pf-message").textContent = "";
+  $("#pf-paper").value = state.prefs.paper;
+  $("#pf-font-size").value = String(state.prefs.font_size);
+  $("#pf-auto-compile").checked = !!state.prefs.auto_compile;
   $("#pf-breakpoint").value = state.prefs.breakpoint;
-  $("#pf-m-sup").value = state.prefs.margenes.top;
-  $("#pf-m-inf").value = state.prefs.margenes.bottom;
-  $("#pf-m-izq").value = state.prefs.margenes.left;
-  $("#pf-m-der").value = state.prefs.margenes.right;
-  const colores = state.prefs.colores || {};
-  CAMPOS_COLOR.forEach((campo) => {
-    const v = normalizarHex(colores[campo]);
-    $("#pf-color-" + campo).value = v === null ? "" : v;
+  $("#pf-margin-top").value = state.prefs.margins.top;
+  $("#pf-margin-bottom").value = state.prefs.margins.bottom;
+  $("#pf-margin-left").value = state.prefs.margins.left;
+  $("#pf-margin-right").value = state.prefs.margins.right;
+  $("#ui-language").value = getLang();
+  const colors = state.prefs.colors || {};
+  COLOR_FIELDS.forEach((field) => {
+    const value = parseHex(colors[field]);
+    $("#pf-color-" + field).value = value === null ? "" : value;
   });
-  $("#modal-prefs").hidden = false;
-  comprobarMotorPrefs();
-  await cargarColoresPlantilla();
-  CAMPOS_COLOR.forEach(sincronizarRuedaColores);
+  $("#modal-settings").hidden = false;
+  checkEnginePrefs();
+  await loadTemplateColors();
+  COLOR_FIELDS.forEach(syncColorWheel);
 }
 
-async function comprobarMotorPrefs() {
-  const r = await api.comprobar_latex();
-  $("#pf-motor-estado").textContent = r.ok ? "Motor listo: " + r.path : "Motor LaTeX no configurado";
-  $("#aviso-motor").hidden = r.ok;
+async function checkEnginePrefs() {
+  const r = await api.check_latex();
+  $("#pf-engine-status").textContent = r.ok
+    ? t("engine_ready").replace("{path}", r.path)
+    : t("engine_missing");
+  $("#engine-warning").hidden = r.ok;
   state.latexOk = r.ok;
 }
 
-function configurarPrefs() {
-  $("#pf-papel").addEventListener("change", (e) => {
-    state.prefs.papel = e.target.value;
-    api.set_prefs("papel", e.target.value);
-    programarCompilacion();
+function onLanguageChange(event) {
+  setLang(event.target.value);
+  applyI18n(document);
+  document.title = t("app_title");
+  if (api) api.set_prefs("ui_language", event.target.value);
+  renderForm();
+  updateMarks();
+  refreshBlockLists();
+  renderPreviewStatus();
+  renderStatus();
+  scheduleCompile();
+}
+
+function setupPrefs() {
+  $("#pf-paper").addEventListener("change", (e) => {
+    state.prefs.paper = e.target.value;
+    api.set_prefs("paper", e.target.value);
+    markDirty(true);
   });
-  $("#pf-fuente").addEventListener("change", (e) => {
-    state.prefs.fuente = Number(e.target.value);
-    api.set_prefs("fuente", Number(e.target.value));
-    programarCompilacion();
+  $("#pf-font-size").addEventListener("change", (e) => {
+    state.prefs.font_size = Number(e.target.value);
+    api.set_prefs("font_size", Number(e.target.value));
+    markDirty(true);
   });
-  $("#pf-autocompilar").addEventListener("change", (e) => {
-    state.prefs.autocompilar = e.target.checked;
-    api.set_prefs("autocompilar", e.target.checked);
-    actualizarMarcas();
-    if (e.target.checked) programarCompilacion();
+  $("#pf-auto-compile").addEventListener("change", (e) => {
+    state.prefs.auto_compile = e.target.checked;
+    api.set_prefs("auto_compile", e.target.checked);
+    updateMarks();
+    if (e.target.checked) scheduleCompile();
   });
   $("#pf-breakpoint").addEventListener("change", (e) => {
     state.prefs.breakpoint = Number(e.target.value);
     api.set_prefs("breakpoint", Number(e.target.value));
-    aplicarResponsive();
+    applyResponsive();
   });
-  ["m-sup", "m-inf", "m-izq", "m-der"].forEach((id) => {
-    $("#pf-" + id).addEventListener("change", () => {
-      const m = {
-        top: Number($("#pf-m-sup").value) || 0,
-        bottom: Number($("#pf-m-inf").value) || 0,
-        left: Number($("#pf-m-izq").value) || 0,
-        right: Number($("#pf-m-der").value) || 0,
+  ["top", "bottom", "left", "right"].forEach((side) => {
+    $("#pf-margin-" + side).addEventListener("change", () => {
+      const margins = {
+        top: Number($("#pf-margin-top").value) || 0,
+        bottom: Number($("#pf-margin-bottom").value) || 0,
+        left: Number($("#pf-margin-left").value) || 0,
+        right: Number($("#pf-margin-right").value) || 0,
       };
-      state.prefs.margenes = m;
-      api.set_prefs("margenes", m);
-      programarCompilacion();
+      state.prefs.margins = margins;
+      api.set_prefs("margins", margins);
+      markDirty(true);
     });
   });
-  $("#pf-motor-comprobar").addEventListener("click", comprobarMotorPrefs);
-  $("#pf-motor-ruta").addEventListener("click", async () => {
-    const r = await api.elegir_ruta_latex();
+  $("#pf-engine-check").addEventListener("click", checkEnginePrefs);
+  $("#pf-engine-path").addEventListener("click", async () => {
+    const r = await api.choose_latex_path();
     if (r.ok) {
-      $("#pf-msj").textContent = "Ruta guardada.";
-      await comprobarMotorPrefs();
-      programarCompilacion();
+      $("#pf-message").textContent = t("path_saved");
+      await checkEnginePrefs();
+      scheduleCompile();
     }
   });
-  $("#pf-motor-instalar").addEventListener("click", () => {
-    $("#modal-prefs").hidden = true;
-    abrirWizard();
-    $("#wz-instalar").click();
+  $("#pf-engine-install").addEventListener("click", () => {
+    $("#modal-settings").hidden = true;
+    openWizard();
+    $("#wz-install").click();
   });
-  $("#pf-cerrar").addEventListener("click", () => {
-    $("#modal-prefs").hidden = true;
-    $("#pf-msj").textContent = "";
+  $("#pf-close").addEventListener("click", () => {
+    $("#modal-settings").hidden = true;
+    $("#pf-message").textContent = "";
   });
-  configurarColoresPrefs();
+  $("#ui-language").addEventListener("change", onLanguageChange);
+  setupColorPrefs();
 }
 
-/* ---------------- márgenes personalizados ---------------- */
+/* ---------------- custom margins ---------------- */
 
-function abrirModalMargenes() {
-  $("#mg-sup").value = state.prefs.margenes.top;
-  $("#mg-inf").value = state.prefs.margenes.bottom;
-  $("#mg-izq").value = state.prefs.margenes.left;
-  $("#mg-der").value = state.prefs.margenes.right;
-  $("#modal-margenes").hidden = false;
+function openMarginsModal() {
+  $("#mg-top").value = state.prefs.margins.top;
+  $("#mg-bottom").value = state.prefs.margins.bottom;
+  $("#mg-left").value = state.prefs.margins.left;
+  $("#mg-right").value = state.prefs.margins.right;
+  $("#modal-margins").hidden = false;
 }
 
-function configurarMargenes() {
-  $("#mg-aplicar").addEventListener("click", () => {
-    const m = {
-      top: Number($("#mg-sup").value) || 0,
-      bottom: Number($("#mg-inf").value) || 0,
-      left: Number($("#mg-izq").value) || 0,
-      right: Number($("#mg-der").value) || 0,
+function setupMargins() {
+  $("#mg-apply").addEventListener("click", () => {
+    const margins = {
+      top: Number($("#mg-top").value) || 0,
+      bottom: Number($("#mg-bottom").value) || 0,
+      left: Number($("#mg-left").value) || 0,
+      right: Number($("#mg-right").value) || 0,
     };
-    state.prefs.margenes = m;
-    api.set_prefs("margenes", m);
-    $("#modal-margenes").hidden = true;
-    programarCompilacion();
+    state.prefs.margins = margins;
+    api.set_prefs("margins", margins);
+    $("#modal-margins").hidden = true;
+    markDirty(true);
   });
-  $("#mg-cancelar").addEventListener("click", () => {
-    $("#modal-margenes").hidden = true;
-  });
-}
-
-/* ---------------- confirmar / varios ---------------- */
-
-function configurarConfirmar() {
-  $("#confirmar-si").addEventListener("click", () => {
-    const aceptar = _confirmarAceptar;
-    cerrarModal($("#modal-confirmar"));
-    if (aceptar) aceptar();
-  });
-  $("#confirmar-no").addEventListener("click", () => {
-    const cancelar = _confirmarCancelar;
-    cerrarModal($("#modal-confirmar"));
-    if (cancelar) cancelar();
+  $("#mg-cancel").addEventListener("click", () => {
+    $("#modal-margins").hidden = true;
   });
 }
 
-function configurarModales() {
+/* ---------------- confirm dialog and modals ---------------- */
+
+function setupConfirm() {
+  $("#confirm-accept").addEventListener("click", () => {
+    const accept = _confirmAccept;
+    closeModal($("#modal-confirm"));
+    if (accept) accept();
+  });
+  $("#confirm-cancel").addEventListener("click", () => {
+    const cancel = _confirmCancel;
+    closeModal($("#modal-confirm"));
+    if (cancel) cancel();
+  });
+}
+
+function setupModals() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
-      $$(".modal").forEach((m) => {
-        if (!m.hidden) cerrarModal(m);
+      $$(".modal").forEach((modal) => {
+        if (!modal.hidden) closeModal(modal);
       });
     }
   });
-  $$(".modal").forEach((m) => {
-    m.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal")) cerrarModal(e.target);
+  $$(".modal").forEach((modal) => {
+    modal.addEventListener("click", (e) => {
+      if (e.target.classList.contains("modal")) closeModal(e.target);
     });
   });
 }
 
-/* ---------------- atajos de teclado ---------------- */
+/* ---------------- keyboard shortcuts ---------------- */
 
-function hayModalAbierto() {
-  return $$(".modal").some((m) => !m.hidden);
+function anyModalOpen() {
+  return $$(".modal").some((modal) => !modal.hidden);
 }
 
-function configurarAtajos() {
+function setupShortcuts() {
   document.addEventListener("keydown", (e) => {
-    // Mientras se teclea (incluida la composición IME) el texto normal no se
-    // intercepta: solo actúan las combinaciones con Ctrl.
+    // While typing (including IME composition) normal text is not intercepted:
+    // only Ctrl combinations act.
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.isComposing) return;
-    // Con un modal abierto no actúan los atajos globales (Escape los cierra).
-    if (hayModalAbierto()) return;
-    const k = String(e.key || "").toLowerCase();
-    if (k === "z" && !e.shiftKey) {
-      // En el editor LaTeX se respeta el deshacer nativo del textarea.
-      if (state.modo === "latex") return;
+    // With a modal open the global shortcuts do not act (Escape closes them).
+    if (anyModalOpen()) return;
+    const key = String(e.key || "").toLowerCase();
+    if (key === "z" && !e.shiftKey) {
+      // The LaTeX editor keeps the native textarea undo.
+      if (state.mode === "latex") return;
       e.preventDefault();
-      deshacer();
+      undo();
       return;
     }
-    if (k === "y" || (k === "z" && e.shiftKey)) {
-      if (state.modo === "latex") return;
+    if (key === "y" || (key === "z" && e.shiftKey)) {
+      if (state.mode === "latex") return;
       e.preventDefault();
-      rehacer();
+      redo();
       return;
     }
-    if (k === "s") {
-      if (e.repeat) return; // no repetir el diálogo al mantener pulsado
+    if (key === "s") {
+      if (e.repeat) return; // do not repeat the dialog while held down
       e.preventDefault();
-      accionGuardar();
+      saveCurrentCv();
       return;
     }
-    if (k === "o") {
+    if (key === "o") {
       if (e.repeat) return;
       e.preventDefault();
-      accionAbrir();
+      openCv();
       return;
     }
-    if (k === "n") {
+    if (key === "n") {
       if (e.repeat) return;
       e.preventDefault();
-      accionNuevo();
+      newCv();
       return;
     }
-    if (k === "enter") {
-      // Ctrl+Enter recompila; el Enter normal sigue escribiendo en los campos.
+    if (key === "enter") {
+      // Ctrl+Enter recompiles; plain Enter keeps typing in the fields.
       e.preventDefault();
       clearTimeout(state.timer);
-      compilar();
+      compileNow();
       return;
     }
   });
 }
 
-/* ---------------- separador central ---------------- */
+/* ---------------- center splitter ---------------- */
 
-// Ancho mínimo del formulario y de la previsualización al arrastrar el
-// separador. La posición elegida se guarda en prefs ("split", en %); es solo
-// interfaz: nunca afecta al .tex ni al PDF. Doble clic restablece el 50 %.
-const SEPARADOR_MIN_FORM = 300;
-const SEPARADOR_MIN_PREVIEW = 320;
+// Minimum width of the form and the preview while dragging the splitter. The
+// chosen position is stored in prefs ("split", in %); it is UI only and never
+// affects the .tex nor the PDF. Double-click resets to 50 %.
+const SPLITTER_MIN_FORM = 300;
+const SPLITTER_MIN_PREVIEW = 320;
 
-function aplicarSeparacion(pct) {
-  const cont = $("#contenido");
-  if (!cont) return;
-  const valor = Number(pct);
-  if (!(valor > 0) || document.body.classList.contains("apilado")) {
-    cont.style.removeProperty("--ancho-form");
+function applySplit(pct) {
+  const container = $("#content");
+  if (!container) return;
+  const value = Number(pct);
+  if (!(value > 0) || document.body.classList.contains("stacked")) {
+    container.style.removeProperty("--form-width");
     return;
   }
-  cont.style.setProperty("--ancho-form", valor + "%");
+  container.style.setProperty("--form-width", value + "%");
 }
 
-function configurarSeparador() {
-  const sep = $("#separador");
-  const cont = $("#contenido");
-  const form = $("#panel-formulario");
-  if (!sep || !cont || !form) return;
-  let arrastrando = false;
-  let x0 = 0;
-  let ancho0 = 0;
+function setupSplitter() {
+  const splitter = $("#splitter");
+  const container = $("#content");
+  const form = $("#form-area");
+  if (!splitter || !container || !form) return;
+  let dragging = false;
+  let startX = 0;
+  let startWidth = 0;
 
-  const limitar = (px) => {
-    const total = cont.getBoundingClientRect().width || 1;
-    const min = Math.min(SEPARADOR_MIN_FORM, total * 0.35);
-    const max = Math.max(min, total - SEPARADOR_MIN_PREVIEW);
+  const clamp = (px) => {
+    const total = container.getBoundingClientRect().width || 1;
+    const min = Math.min(SPLITTER_MIN_FORM, total * 0.35);
+    const max = Math.max(min, total - SPLITTER_MIN_PREVIEW);
     return Math.min(Math.max(px, min), max);
   };
 
-  sep.addEventListener("pointerdown", (e) => {
-    if (document.body.classList.contains("apilado")) return;
-    arrastrando = true;
-    x0 = e.clientX;
-    ancho0 = form.getBoundingClientRect().width;
-    document.body.classList.add("redimensionando");
+  splitter.addEventListener("pointerdown", (e) => {
+    if (document.body.classList.contains("stacked")) return;
+    dragging = true;
+    startX = e.clientX;
+    startWidth = form.getBoundingClientRect().width;
+    document.body.classList.add("resizing");
     e.preventDefault();
   });
 
   document.addEventListener("pointermove", (e) => {
-    if (!arrastrando) return;
-    const ancho = limitar(ancho0 + (e.clientX - x0));
-    cont.style.setProperty("--ancho-form", ancho + "px");
+    if (!dragging) return;
+    const width = clamp(startWidth + (e.clientX - startX));
+    container.style.setProperty("--form-width", width + "px");
   });
 
-  const soltar = () => {
-    if (!arrastrando) return;
-    arrastrando = false;
-    document.body.classList.remove("redimensionando");
-    const total = cont.getBoundingClientRect().width;
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("resizing");
+    const total = container.getBoundingClientRect().width;
     if (total > 0) {
       const pct = Math.round((form.getBoundingClientRect().width / total) * 1000) / 10;
       state.prefs.split = pct;
       api.set_prefs("split", pct);
     }
   };
-  document.addEventListener("pointerup", soltar);
-  document.addEventListener("pointercancel", soltar);
+  document.addEventListener("pointerup", release);
+  document.addEventListener("pointercancel", release);
 
-  sep.addEventListener("dblclick", () => {
+  splitter.addEventListener("dblclick", () => {
     if (state.prefs) state.prefs.split = 50;
     api.set_prefs("split", 50);
-    aplicarSeparacion(50);
+    applySplit(50);
   });
 }
 
 /* ---------------- responsive ---------------- */
 
-function aplicarResponsive() {
-  const bp = Number(state.prefs && state.prefs.breakpoint) || 960;
-  document.body.classList.toggle("apilado", window.innerWidth < bp);
-  aplicarSeparacion(state.prefs && state.prefs.split);
+function applyResponsive() {
+  const breakpoint = Number(state.prefs && state.prefs.breakpoint) || 960;
+  document.body.classList.toggle("stacked", window.innerWidth < breakpoint);
+  applySplit(state.prefs && state.prefs.split);
 }
 
-/* ---------------- inicio ---------------- */
+/* ---------------- startup ---------------- */
 
-async function iniciar() {
+async function startApp() {
   try {
-    api = await apiLista();
+    api = await waitForApi();
     if (!api) {
-      estado("pywebview no disponible: ejecuta la app con main.py", "error");
+      setStatus("status_pywebview_missing", "error");
       return;
     }
     const info = await api.init();
     state.prefs = info.prefs;
-    aplicarTema(state.prefs.tema);
-    datosVacios = await api.datos_vacios();
-    state.datos = JSON.parse(JSON.stringify(datosVacios));
+    try {
+      const stored = await api.get_prefs();
+      if (stored && typeof stored === "object") state.prefs = stored;
+    } catch (e) {
+      console.error(e);
+    }
+    setLang((state.prefs && state.prefs.ui_language) || "en");
+    applyI18n(document);
+    document.title = t("app_title");
+    applyTheme(state.prefs.theme);
+    emptyData = await api.empty_data();
+    state.data = JSON.parse(JSON.stringify(emptyData));
     state.latexOk = info.latex_ok;
 
-    let autosavePendiente = null;
+    let pendingAutosave = null;
     try {
-      const a = await api.autosave_leer();
-      if (a && typeof a === "object" && !Array.isArray(a)) autosavePendiente = a;
+      const a = await api.autosave_read();
+      if (a && typeof a === "object" && !Array.isArray(a)) pendingAutosave = a;
     } catch (e) {
       console.error(e);
     }
 
-    renderFormulario();
-    actualizarMarcas();
-    actualizarBotonesHistorial();
-    aplicarResponsive();
-    window.addEventListener("resize", aplicarResponsive);
-    $("#aviso-motor").hidden = info.latex_ok;
+    renderForm();
+    updateMarks();
+    updateHistoryButtons();
+    applyResponsive();
+    window.addEventListener("resize", applyResponsive);
+    $("#engine-warning").hidden = info.latex_ok;
+    renderPreviewStatus();
 
-    configurarWizard();
-    configurarPrefs();
-    configurarMargenes();
-    configurarConfirmar();
-    configurarModales();
-    configurarRecorte();
-    configurarBloques();
-    configurarSeparador();
-    configurarAtajos();
-    setInterval(autosaveYa, 30000);
+    setupWizard();
+    setupPrefs();
+    setupMargins();
+    setupConfirm();
+    setupModals();
+    setupCrop();
+    setupBlocks();
+    setupSplitter();
+    setupShortcuts();
+    setInterval(autosaveNow, 30000);
 
-    if (autosavePendiente && datosConContenido(autosavePendiente)) ofrecerRecuperacion(autosavePendiente);
-    else if (autosavePendiente) borrarAutosave();
-    if (info.needs_setup) abrirWizard();
-    else compilar();
+    if (pendingAutosave && dataHasContent(pendingAutosave)) offerRecovery(pendingAutosave);
+    else if (pendingAutosave) clearAutosave();
+    if (info.needs_setup) openWizard();
+    else compileNow();
   } catch (e) {
-    estado("Error al iniciar: " + (e && e.message ? e.message : e), "error");
+    setStatus("status_start_error", "error", (e && e.message ? e.message : e));
     console.error(e);
   }
 }
 
-iniciar();
+startApp();

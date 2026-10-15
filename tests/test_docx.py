@@ -16,37 +16,37 @@ import docx_gen  # noqa: E402
 import latex_gen  # noqa: E402
 
 PREFS_PRUEBA = {
-    "papel": "a4",
-    "margenes": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
-    "fuente": 11,
+    "paper": "a4",
+    "margins": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
+    "font_size": 11,
 }
 
 
 def _datos_docx():
-    d = latex_gen.datos_vacios()
-    d["idioma_cv"] = "es"
-    d["nombre"] = "Ana García López"
-    d["profesion"] = "Ingeniera de software"
+    d = latex_gen.empty_data()
+    d["cv_language"] = "es"
+    d["name"] = "Ana García López"
+    d["profession"] = "Ingeniera de software"
     d["email"] = "ana.garcia@example.com"
-    d["perfil"] = "Perfil profesional de prueba para la exportación Word."
-    d["educacion"] = [{
-        "tipo": "Grado", "titulo": "Ingeniería Informática",
-        "institucion": "Universidad de Madrid", "desde": "2012", "hasta": "2016",
-        "nota": "8.5/10",
+    d["summary"] = "Perfil profesional de prueba para la exportación Word."
+    d["education"] = [{
+        "degree_type": "bachelor", "degree": "Ingeniería Informática",
+        "institution": "Universidad de Madrid", "start": "2012", "end": "2016",
+        "grade": "8.5/10",
     }]
-    d["trabajo"] = [{
-        "puesto": "Ingeniera backend", "empresa": "Fintech Nova", "desde": "2020",
-        "hasta": "Actualidad", "logros": "Migramos a microservicios.",
+    d["work"] = [{
+        "position": "Ingeniera backend", "company": "Fintech Nova", "start": "2020",
+        "end": "Actualidad", "achievements": "Migramos a microservicios.",
     }]
-    d["habilidades"] = [{"categoria": "Lenguajes", "valores": "Python, Java"}]
-    d["idiomas"] = [{"idioma": "Español", "nivel": "Nativo"}]
-    d["referencias"] = [{"nombre": "Luis Pérez", "contacto": "luis@example.com"}]
+    d["skills"] = [{"category": "Lenguajes", "values": "Python, Java"}]
+    d["languages"] = [{"language": "Español", "level": "Nativo"}]
+    d["references"] = [{"name": "Luis Pérez", "contact": "luis@example.com"}]
     return d
 
 
 def test_exportar_docx_incluye_nombre_y_secciones(tmp_path):
     ruta = tmp_path / "cv.docx"
-    docx_gen.exportar(_datos_docx(), PREFS_PRUEBA, str(ruta))
+    docx_gen.export(_datos_docx(), PREFS_PRUEBA, str(ruta))
     assert ruta.is_file()
 
     doc = Document(str(ruta))
@@ -69,10 +69,37 @@ def test_exportar_docx_incluye_nombre_y_secciones(tmp_path):
 
 def test_exportar_docx_con_datos_vacios_no_falla(tmp_path):
     ruta = tmp_path / "vacio.docx"
-    docx_gen.exportar(latex_gen.datos_vacios(), PREFS_PRUEBA, str(ruta))
+    docx_gen.export(latex_gen.empty_data(), PREFS_PRUEBA, str(ruta))
     assert ruta.is_file()
     doc = Document(str(ruta))
     assert [p.text for p in doc.paragraphs] is not None
+
+
+# ---------------------------------------------------------------------------
+# Cabecera dinamica: socials y datos adicionales
+# ---------------------------------------------------------------------------
+
+def test_exportar_docx_cabecera_socials(tmp_path):
+    d = _datos_docx()
+    d["socials"] = [
+        {"network": "github", "label": "Ignorado", "value": "github.com/ana"},
+        {"network": "linkedin", "label": "", "value": "linkedin.com/in/a"},
+        {"network": "website", "label": "", "value": "ana.dev"},
+        {"network": "other", "label": "Mastodon", "value": "mastodon/@ana"},
+        {"network": "x", "label": "", "value": "   "},
+    ]
+    d["extra_fields"] = [{"label": "Nacimiento", "value": "12/05/1994"}]
+    textos = _textos_docx(d, tmp_path, "cabecera_socials.docx")
+    cabecera = " ".join(textos)
+
+    assert "GitHub: github.com/ana" in cabecera
+    assert "LinkedIn: linkedin.com/in/a" in cabecera
+    assert "Web: ana.dev" in cabecera
+    assert "Mastodon: mastodon/@ana" in cabecera
+    assert "Nacimiento: 12/05/1994" in cabecera
+    assert "Ignorado" not in cabecera
+    # Los socials van antes de los datos adicionales.
+    assert cabecera.index("GitHub:") < cabecera.index("Nacimiento:")
 
 
 # ---------------------------------------------------------------------------
@@ -81,19 +108,19 @@ def test_exportar_docx_con_datos_vacios_no_falla(tmp_path):
 
 def _datos_docx_con_bloque_educacion():
     d = _datos_docx()
-    d["bloques"] = [
-        {"id": "linea", "tipo": "separador", "estilo": "linea",
-         "posicion": "educacion"},
-        {"id": "seccion", "tipo": "seccion", "titulo": "Mi sección",
-         "contenido": "Primera línea del bloque.\nSegunda línea del bloque.",
-         "posicion": "educacion"},
+    d["blocks"] = [
+        {"id": "linea", "type": "separator", "style": "line",
+         "position": "education"},
+        {"id": "seccion", "type": "section", "title": "Mi sección",
+         "content": "Primera línea del bloque.\nSegunda línea del bloque.",
+         "position": "education"},
     ]
     return d
 
 
 def _textos_docx(datos, tmp_path, nombre):
     ruta = tmp_path / nombre
-    docx_gen.exportar(datos, PREFS_PRUEBA, str(ruta))
+    docx_gen.export(datos, PREFS_PRUEBA, str(ruta))
     return [p.text for p in Document(str(ruta)).paragraphs]
 
 
@@ -112,11 +139,11 @@ def test_exportar_docx_bloque_seccion_vacio_se_omite(tmp_path):
     sin_bloque = _textos_docx(_datos_docx(), tmp_path, "sin_bloque.docx")
 
     d = _datos_docx()
-    d["bloques"] = [
-        {"id": "vacio", "tipo": "seccion", "titulo": "",
-         "contenido": "", "posicion": "educacion"},
-        {"id": "nulos", "tipo": "seccion", "titulo": None,
-         "contenido": None, "posicion": "final"},
+    d["blocks"] = [
+        {"id": "vacio", "type": "section", "title": "",
+         "content": "", "position": "education"},
+        {"id": "nulos", "type": "section", "title": None,
+         "content": None, "position": "end"},
     ]
     con_vacios = _textos_docx(d, tmp_path, "con_vacios.docx")
     assert con_vacios == sin_bloque
@@ -124,13 +151,13 @@ def test_exportar_docx_bloque_seccion_vacio_se_omite(tmp_path):
 
 def test_exportar_docx_bloques_listado(tmp_path):
     d = _datos_docx()
-    d["bloques"] = [
-        {"id": "l1", "tipo": "listado", "modo": "columnas", "titulo": "Enlaces",
-         "columnas": 2, "posicion": "final",
-         "entradas": [{"titulo": "Web", "detalle": "example.com"}]},
-        {"id": "l2", "tipo": "listado", "modo": "periodo", "titulo": "Cronología",
-         "columnas": 1, "posicion": "final",
-         "entradas": [{"periodo": "2020", "descripcion": "Hito uno."}]},
+    d["blocks"] = [
+        {"id": "l1", "type": "list", "mode": "columns", "title": "Enlaces",
+         "columns": 2, "position": "end",
+         "entries": [{"title": "Web", "detail": "example.com"}]},
+        {"id": "l2", "type": "list", "mode": "period", "title": "Cronología",
+         "columns": 1, "position": "end",
+         "entries": [{"period": "2020", "description": "Hito uno."}]},
     ]
     textos = _textos_docx(d, tmp_path, "listado.docx")
     assert "Enlaces" in textos
@@ -142,27 +169,27 @@ def test_exportar_docx_bloques_listado(tmp_path):
 
 def test_exportar_docx_bloques_mal_formados_no_lanzan(tmp_path):
     d = _datos_docx()
-    d["bloques"] = [
+    d["blocks"] = [
         None, 3, "texto", [], (),
         {},
-        {"tipo": "otro"},
-        {"tipo": "seccion", "titulo": None, "contenido": None},
-        {"tipo": "seccion", "titulo": 7, "contenido": 7},
-        {"tipo": "separador", "estilo": "inexistente"},
-        {"tipo": "separador", "estilo": None, "posicion": None},
-        {"tipo": "separador", "posicion": "marte"},
+        {"type": "other"},
+        {"type": "section", "title": None, "content": None},
+        {"type": "section", "title": 7, "content": 7},
+        {"type": "separator", "style": "inexistente"},
+        {"type": "separator", "style": None, "position": None},
+        {"type": "separator", "position": "marte"},
     ]
     ruta = tmp_path / "mal_formados.docx"
-    docx_gen.exportar(d, PREFS_PRUEBA, str(ruta))
+    docx_gen.export(d, PREFS_PRUEBA, str(ruta))
     assert ruta.is_file()
     textos = [p.text for p in Document(str(ruta)).paragraphs]
     assert "7" in textos
     assert "Educación" in textos
 
-    # "bloques" con un tipo que no es lista tampoco rompe la exportacion.
-    d["bloques"] = "no-es-lista"
+    # "blocks" con un tipo que no es lista tampoco rompe la exportacion.
+    d["blocks"] = "no-es-lista"
     ruta2 = tmp_path / "no_lista.docx"
-    docx_gen.exportar(d, PREFS_PRUEBA, str(ruta2))
+    docx_gen.export(d, PREFS_PRUEBA, str(ruta2))
     assert ruta2.is_file()
 
 
@@ -193,7 +220,7 @@ def _secuencia_encabezados(textos, etiquetas):
 
 
 def test_exportar_docx_orden_por_defecto_no_cambia(tmp_path):
-    # _datos_docx() hereda de datos_vacios() orden_secciones vacio y ninguna
+    # _datos_docx() hereda de datos_vacios() section_order vacio y ninguna
     # seccion oculta: la secuencia por defecto debe ser la canonica.
     textos = _textos_docx(_datos_docx(), tmp_path, "defecto.docx")
     assert _secuencia_encabezados(textos, ETIQUETAS_ES) == ETIQUETAS_ES
@@ -201,7 +228,7 @@ def test_exportar_docx_orden_por_defecto_no_cambia(tmp_path):
 
 def test_exportar_docx_orden_secciones_invertido(tmp_path):
     d = _datos_docx()
-    d["orden_secciones"] = list(reversed(latex_gen.ORDEN_SECCIONES_DEFECTO))
+    d["section_order"] = list(reversed(latex_gen.DEFAULT_SECTION_ORDER))
     textos = _textos_docx(d, tmp_path, "orden_inverso.docx")
 
     assert _secuencia_encabezados(textos, ETIQUETAS_ES) == [
@@ -225,7 +252,7 @@ def test_exportar_docx_orden_secciones_invertido(tmp_path):
 
 def test_exportar_docx_seccion_oculta_sin_encabezado_ni_entradas(tmp_path):
     d = _datos_docx()
-    d["secciones_ocultas"] = ["educacion"]
+    d["hidden_sections"] = ["education"]
     textos = _textos_docx(d, tmp_path, "oculta.docx")
 
     assert "Educación" not in textos
@@ -241,10 +268,10 @@ def test_exportar_docx_seccion_oculta_sin_encabezado_ni_entradas(tmp_path):
 
 def test_exportar_docx_titulos_seccion_sustituyen_etiquetas(tmp_path):
     d = _datos_docx()
-    d["titulos_seccion"] = {
-        "educacion": "Formación académica",
-        "trabajo": "Trayectoria profesional",
-        "habilidades": "Competencias",
+    d["section_titles"] = {
+        "education": "Formación académica",
+        "work": "Trayectoria profesional",
+        "skills": "Competencias",
     }
     textos = _textos_docx(d, tmp_path, "titulos.docx")
 
@@ -263,11 +290,11 @@ def test_exportar_docx_titulos_seccion_sustituyen_etiquetas(tmp_path):
 
 def test_exportar_docx_bloque_anclado_a_seccion_oculta_conserva_posicion(tmp_path):
     d = _datos_docx()
-    d["secciones_ocultas"] = ["trabajo"]
-    d["bloques"] = [{
-        "id": "nota", "tipo": "seccion", "titulo": "Nota de trayectoria",
-        "contenido": "Bloque anclado a una seccion oculta.",
-        "posicion": "trabajo",
+    d["hidden_sections"] = ["work"]
+    d["blocks"] = [{
+        "id": "nota", "type": "section", "title": "Nota de trayectoria",
+        "content": "Bloque anclado a una seccion oculta.",
+        "position": "work",
     }]
     textos = _textos_docx(d, tmp_path, "oculta_con_bloque.docx")
 

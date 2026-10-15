@@ -1,82 +1,84 @@
-"""Incrustado y extraccion del bloque base64 de datos en el .tex de CVLaTeX.
+"""Embedding and extraction of the base64 data block in the CVLaTeX .tex file.
 
-El bloque se escribe como comentarios LaTeX (lineas que empiezan por "%"), de
-modo que el documento sigue compilando igual, y permite reconstruir el dict de
-datos original (round-trip) a partir del .tex generado.
+The block is written as LaTeX comments (lines starting with "%"), so the
+document still compiles the same way, and it allows rebuilding the original
+data dict (round-trip) from the generated .tex.
 """
 
 import base64
 import json
 import re
 
-MARCA_INICIO = "% CVLaTeX-DATA-BEGIN"
-MARCA_FIN = "% CVLaTeX-DATA-END"
-ANCHO_LINEA = 76  # deja lineas de 78 caracteres: por debajo del limite de TeX
+MARK_START = "% CVLaTeX-DATA-BEGIN"
+MARK_END = "% CVLaTeX-DATA-END"
+LINE_WIDTH = 76  # leaves 78-character lines: below the TeX limit
 
-_RE_BLOQUE = re.compile(
-    re.escape(MARCA_INICIO) + r".*?" + re.escape(MARCA_FIN) + r"[^\n]*\n?",
+_RE_BLOCK = re.compile(
+    re.escape(MARK_START) + r".*?" + re.escape(MARK_END) + r"[^\n]*\n?",
     re.DOTALL,
 )
-_RE_CONTENIDO = re.compile(
-    re.escape(MARCA_INICIO) + r"(.*?)" + re.escape(MARCA_FIN),
+_RE_CONTENT = re.compile(
+    re.escape(MARK_START) + r"(.*?)" + re.escape(MARK_END),
     re.DOTALL,
 )
-_RE_DOCUMENTO = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
+_RE_DOCUMENT = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
 
 
-class SinBloqueDatos(Exception):
-    """El .tex no contiene los marcadores del bloque de datos."""
+class MissingDataBlock(Exception):
+    """The .tex does not contain the data block markers."""
 
 
-class BloqueDatosInvalido(Exception):
-    """El bloque existe pero su base64, su JSON o su forma no son validos."""
+class InvalidDataBlock(Exception):
+    """The block exists but its base64, its JSON or its shape is not valid."""
 
 
-def bloque(datos):
-    """Devuelve el bloque de comentarios LaTeX con los datos codificados."""
-    crudo = json.dumps(datos, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    codificado = base64.b64encode(crudo).decode("ascii")
-    partes = [MARCA_INICIO + "\n"]
-    for i in range(0, len(codificado), ANCHO_LINEA):
-        partes.append("% " + codificado[i:i + ANCHO_LINEA] + "\n")
-    partes.append(MARCA_FIN + "\n")
-    return "".join(partes)
+def data_block(data):
+    """Return the LaTeX comment block with the encoded data."""
+    raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    encoded = base64.b64encode(raw).decode("ascii")
+    parts = [MARK_START + "\n"]
+    for i in range(0, len(encoded), LINE_WIDTH):
+        parts.append("% " + encoded[i:i + LINE_WIDTH] + "\n")
+    parts.append(MARK_END + "\n")
+    return "".join(parts)
 
 
-def incrustar(tex, datos):
-    """Reemplaza todos los bloques existentes por el nuevo o lo inserta.
+def embed(tex, data):
+    """Replace every existing block with the new one or insert it.
 
-    Si no hay bloque, lo coloca justo antes de la primera linea
-    \\begin{document}; si esa linea no existe, al inicio del fichero.
+    If there is no block, it is placed just before the first
+    \\begin{document} line; if that line does not exist, at the start of the
+    file.
     """
-    nuevo = bloque(datos)
-    if _RE_BLOQUE.search(tex):
-        tex = _RE_BLOQUE.sub(lambda _m: nuevo, tex)
-        # Si habia varias copias, deja solo la primera para no duplicar datos.
-        primera = tex.find(nuevo)
-        return tex[:primera + len(nuevo)] + tex[primera + len(nuevo):].replace(nuevo, "")
-    m = _RE_DOCUMENTO.search(tex)
+    new_block = data_block(data)
+    if _RE_BLOCK.search(tex):
+        tex = _RE_BLOCK.sub(lambda _m: new_block, tex)
+        # If there were several copies, keep only the first to avoid
+        # duplicating data.
+        first = tex.find(new_block)
+        return tex[:first + len(new_block)] + tex[first + len(new_block):].replace(new_block, "")
+    m = _RE_DOCUMENT.search(tex)
     if m:
-        return tex[:m.start()] + nuevo + tex[m.start():]
-    return nuevo + tex
+        return tex[:m.start()] + new_block + tex[m.start():]
+    return new_block + tex
 
 
-def extraer(tex):
-    """Reconstruye el dict de datos incrustado en el .tex."""
-    m = _RE_CONTENIDO.search(tex or "")
+def extract(tex):
+    """Rebuild the data dict embedded in the .tex."""
+    m = _RE_CONTENT.search(tex or "")
     if not m:
-        raise SinBloqueDatos("No se encontro el bloque de datos en el .tex.")
-    partes = []
-    for linea in m.group(1).splitlines():
-        limpia = linea.strip()
-        if limpia.startswith("%"):
-            limpia = limpia[1:].strip()
-        partes.append(limpia)
+        raise MissingDataBlock("No data block found in the .tex.")
+    parts = []
+    for line in m.group(1).splitlines():
+        clean = line.strip()
+        if clean.startswith("%"):
+            clean = clean[1:].strip()
+        parts.append(clean)
     try:
-        crudo = base64.b64decode("".join(partes))
-        datos = json.loads(crudo.decode("utf-8"))
+        raw = base64.b64decode("".join(parts))
+        data = json.loads(raw.decode("utf-8"))
     except ValueError as e:
-        raise BloqueDatosInvalido("El bloque de datos no es base64/JSON valido.") from e
-    if not isinstance(datos, dict):
-        raise BloqueDatosInvalido("El bloque de datos no contiene un diccionario JSON.")
-    return datos
+        raise InvalidDataBlock("The data block is not valid base64/JSON.") from e
+    if not isinstance(data, dict):
+        raise InvalidDataBlock("The data block does not contain a JSON object.")
+    return data

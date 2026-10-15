@@ -1,9 +1,9 @@
-% Plantilla Moderno - CVLaTeX
-% Estilo moderno: nombre grande en color de acento y regla gruesa.
-\documentclass[{{fuente}}pt]{article}
+% Plantilla CV - CVLaTeX
+% El contenido dinamico se inyecta en los marcadores {{...}}
+\documentclass[{{font_size}}pt]{article}
 
-\usepackage[{{papel}},top={{marg_sup}}cm,bottom={{marg_inf}}cm,left={{marg_izq}}cm,right={{marg_der}}cm]{geometry}
-{{motor_tipografia}}
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
 \usepackage{graphicx}
 \usepackage{xcolor}
 
@@ -11,29 +11,29 @@
 \setlength{\parskip}{4pt}
 \setlength{\emergencystretch}{3em}
 
-\definecolor{accent}{RGB}{0,102,153}
-\definecolor{gris}{RGB}{108,117,125}
+\definecolor{accent}{RGB}{35,58,94}
+\definecolor{gris}{RGB}{110,118,132}
 
 \newcommand{\cvsection}[1]{%
-  \vspace{1.2em}%
+  \vspace{1.3em}%
   {\Large\bfseries\color{accent}#1}\par
   \vspace{0.15em}%
-  {\color{accent}\hrule height 1.6pt}\par
+  {\color{accent}\hrule height 0.7pt}\par
   \vspace{0.5em}%
 }
 
 % Separadores de bloques libres: linea fina, banda de acento y espacio.
-\newcommand{\cvbloquelinea}{%
+\newcommand{\cvblockline}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.6pt}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloquebanda}{%
+\newcommand{\cvblockband}{%
   \par\vspace{0.45em}%
   {\color{accent}\hrule height 0.35em}%
   \par\vspace{0.45em}%
 }
-\newcommand{\cvbloqueespacio}{%
+\newcommand{\cvblockspace}{%
   \par\vspace{2em}%
 }
 
@@ -41,8 +41,8 @@
 
 \sloppy
 
-{{cabecera}}
+{{header}}
 
-{{cuerpo}}
+{{body}}
 
 \end{document}

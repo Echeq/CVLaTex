@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Generacion de curriculums en formato DOCX con python-docx.
+"""Word (.docx) CV generation with python-docx.
 
-No depende de LaTeX ni de pywebview: solo de python-docx y de los helpers de
-latex_gen (tabla de traduccion LANG, orden/visibilidad/titulos de seccion).
+It does not depend on LaTeX or pywebview: only on python-docx and on the
+latex_gen helpers (LANG translation table, section order/visibility/titles).
 """
 
 import os
@@ -14,374 +14,382 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
 import latex_gen
-from latex_gen import ANCLAS_BLOQUE, ESTILOS_SEPARADOR, LANG, MODOS_LISTADO
+from latex_gen import BLOCK_ANCHORS, LANG, LIST_MODES, SEPARATOR_STYLES, option_label
 
-# Tamano de pagina en centimetros: (ancho, alto).
-PAPELES = {
+# Page size in centimetres: (width, height).
+PAPER_SIZES = {
     "a4": (21.0, 29.7),
     "letter": (21.59, 27.94),
     "legal": (21.59, 35.56),
 }
 
-# Extensiones de imagen admitidas para la foto.
-FOTO_EXTS = {".jpg", ".jpeg", ".png"}
+# Image extensions accepted for the photo.
+PHOTO_EXTS = {".jpg", ".jpeg", ".png"}
 
-MARGEN_DEFECTO = 2.0
-FUENTE_DEFECTO = 11.0
-TAMANO_NOMBRE = 20.0
-ANCHO_FOTO_DEFECTO = 4.0
+DEFAULT_MARGIN = 2.0
+DEFAULT_FONT_SIZE = 11.0
+NAME_FONT_SIZE = 20.0
+DEFAULT_PHOTO_WIDTH = 4.0
 
-# Azul de acento de la plantilla clasica (color por defecto del CV): se usa
-# en los bordes y bandas de los separadores de bloques libres.
-COLOR_ACENTO = "233A5E"
+# Accent blue of the classic template (default CV color): used in the
+# borders and bands of the free-block separators.
+COLOR_ACCENT = "233A5E"
 
 
-def _texto(valor):
-    """Devuelve el valor como texto sin espacios sobrantes."""
-    if valor is None:
+def _text(value):
+    """Return the value as text without surrounding spaces."""
+    if value is None:
         return ""
-    return str(valor).strip()
+    return str(value).strip()
 
 
-def _num(valor, defecto):
-    """Convierte a float y cae al valor por defecto si no es numerico."""
+def _number(value, default):
+    """Cast to float and fall back to the default when not numeric."""
     try:
-        return float(valor)
+        return float(value)
     except (TypeError, ValueError):
-        return float(defecto)
+        return float(default)
 
 
-def _rgb_de_hex(valor):
-    """Normaliza "#RGB" o "#RRGGBB" a RGBColor.
+def _rgb_from_hex(value):
+    """Normalize "#RGB" or "#RRGGBB" to RGBColor.
 
-    Acepta mayusculas y minusculas, recorta los espacios de fuera y expande
-    la forma corta duplicando cada digito (#ABC -> #AABBCC). Cualquier otro
-    valor (incluido lo que no sea str) cae a None; nunca lanza.
+    It accepts upper and lower case, trims outer spaces and expands the short
+    form by doubling every digit (#ABC -> #AABBCC). Any other value (including
+    non-str) falls back to None; it never raises.
     """
-    if not isinstance(valor, str):
+    if not isinstance(value, str):
         return None
-    texto = valor.strip()
-    if not texto.startswith("#"):
+    text = value.strip()
+    if not text.startswith("#"):
         return None
-    hexa = texto[1:]
-    if len(hexa) == 3 and all(c in "0123456789abcdefABCDEF" for c in hexa):
-        hexa = "".join(c * 2 for c in hexa)
-    if len(hexa) != 6 or any(c not in "0123456789abcdefABCDEF" for c in hexa):
+    hex_digits = text[1:]
+    if len(hex_digits) == 3 and all(c in "0123456789abcdefABCDEF" for c in hex_digits):
+        hex_digits = "".join(c * 2 for c in hex_digits)
+    if len(hex_digits) != 6 or any(c not in "0123456789abcdefABCDEF" for c in hex_digits):
         return None
     try:
-        return RGBColor(int(hexa[0:2], 16), int(hexa[2:4], 16), int(hexa[4:6], 16))
+        return RGBColor(int(hex_digits[0:2], 16), int(hex_digits[2:4], 16), int(hex_digits[4:6], 16))
     except (TypeError, ValueError):
         return None
 
 
-def _color_prefs(prefs_dict, clave):
-    """Color RGBColor de prefs["colores"][clave]; vacio o invalido -> None."""
+def _pref_color(prefs_dict, key):
+    """RGBColor from prefs["colors"][key]; empty or invalid -> None."""
     try:
-        colores = prefs_dict.get("colores") if isinstance(prefs_dict, dict) else None
-        if not isinstance(colores, dict):
+        colors = prefs_dict.get("colors") if isinstance(prefs_dict, dict) else None
+        if not isinstance(colors, dict):
             return None
-        return _rgb_de_hex(colores.get(clave))
+        return _rgb_from_hex(colors.get(key))
     except Exception:
         return None
 
 
-def _hex_de_color(color):
-    """RGBColor o "#RRGGBB" -> "RRGGBB"; None o invalido -> None."""
+def _hex_from_color(color):
+    """RGBColor or "#RRGGBB" -> "RRGGBB"; None or invalid -> None."""
     if isinstance(color, RGBColor):
         return str(color)
-    rgb = _rgb_de_hex(color)
+    rgb = _rgb_from_hex(color)
     return str(rgb) if rgb is not None else None
 
 
-def _color_rgb(color):
-    """Normaliza el parametro color a RGBColor; None o invalido -> None."""
+def _to_rgb(color):
+    """Normalize the color parameter to RGBColor; None or invalid -> None."""
     if isinstance(color, RGBColor):
         return color
-    return _rgb_de_hex(color)
+    return _rgb_from_hex(color)
 
 
-def _entradas_con_contenido(lista):
-    """Filtra entradas vacias, igual que hace latex_gen con las secciones."""
-    if not isinstance(lista, (list, tuple)):
+def _entries_with_content(entries):
+    """Filter empty entries, just like latex_gen does with sections."""
+    if not isinstance(entries, (list, tuple)):
         return []
-    return [e for e in lista if _tiene_contenido(e)]
+    return [entry for entry in entries if _has_content(entry)]
 
 
-def _tiene_contenido(entrada):
-    if not isinstance(entrada, dict):
-        return bool(_texto(entrada))
-    return any(_texto(v) for v in entrada.values())
+def _has_content(entry):
+    if not isinstance(entry, dict):
+        return bool(_text(entry))
+    return any(_text(value) for value in entry.values())
 
 
-def _rango(desde, hasta):
-    desde = _texto(desde)
-    hasta = _texto(hasta)
-    if desde and hasta:
-        return f"{desde} – {hasta}"
-    return desde or hasta
+def _date_range(start, end):
+    start = _text(start)
+    end = _text(end)
+    if start and end:
+        return f"{start} – {end}"
+    return start or end
 
 
-def _parrafos(doc, texto):
-    """Anade un parrafo por cada linea no vacia (descripciones y perfil)."""
-    for linea in str(texto or "").splitlines():
-        linea = linea.strip()
-        if linea:
-            doc.add_paragraph(linea)
+def _add_paragraphs(doc, text):
+    """Add one paragraph per non-empty line (descriptions and profile)."""
+    for line in str(text or "").splitlines():
+        line = line.strip()
+        if line:
+            doc.add_paragraph(line)
 
 
-def _vineta(doc, texto):
-    """Vineta simple; si la plantilla no tiene el estilo, usa un prefijo."""
+def _add_bullet(doc, text):
+    """Simple bullet; if the template lacks the style, use a prefix."""
     try:
-        doc.add_paragraph(texto, style="List Bullet")
+        doc.add_paragraph(text, style="List Bullet")
     except Exception:
-        doc.add_paragraph("• " + texto)
+        doc.add_paragraph("• " + text)
 
 
-def _encabezado(doc, titulo, color=None):
-    """Titulo de seccion en negrita, dos puntos mayor que la fuente normal.
+def _add_heading(doc, title, color=None):
+    """Section title in bold, two points larger than the normal font.
 
-    ``color`` (RGBColor) tiñe el titulo; None conserva el color por defecto.
+    ``color`` (RGBColor) tints the title; None keeps the default color.
     """
-    parrafo = doc.add_paragraph()
-    run = parrafo.add_run(titulo)
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run(title)
     run.bold = True
-    tamano = doc.styles["Normal"].font.size
-    base = tamano.pt if tamano is not None else FUENTE_DEFECTO
+    size = doc.styles["Normal"].font.size
+    base = size.pt if size is not None else DEFAULT_FONT_SIZE
     run.font.size = Pt(base + 2)
-    rgb = _color_rgb(color)
+    rgb = _to_rgb(color)
     if rgb is not None:
         run.font.color.rgb = rgb
-    return parrafo
+    return paragraph
 
 
-def _parrafo_titulo(doc, desde, hasta, titulo):
-    """Primera linea de una entrada: fecha en cursiva y titulo en negrita."""
-    fecha = _rango(desde, hasta)
-    titulo = _texto(titulo)
-    if not fecha and not titulo:
+def _add_entry_title(doc, start, end, title):
+    """First line of an entry: date in italics and title in bold."""
+    date = _date_range(start, end)
+    title = _text(title)
+    if not date and not title:
         return None
-    parrafo = doc.add_paragraph()
-    if fecha:
-        parrafo.add_run(fecha).italic = True
-    if titulo:
-        if fecha:
-            parrafo.add_run("   ")
-        parrafo.add_run(titulo).bold = True
-    return parrafo
+    paragraph = doc.add_paragraph()
+    if date:
+        paragraph.add_run(date).italic = True
+    if title:
+        if date:
+            paragraph.add_run("   ")
+        paragraph.add_run(title).bold = True
+    return paragraph
 
 
-def _configurar_documento(doc, prefs_dict):
-    """Tamano de pagina, margenes y fuente Normal segun prefs_dict."""
+def _configure_document(doc, prefs_dict):
+    """Page size, margins and Normal font size from prefs_dict."""
     p = prefs_dict or {}
-    ancho, alto = PAPELES.get(str(p.get("papel") or "a4").lower(), PAPELES["a4"])
-    seccion = doc.sections[0]
-    seccion.page_width = Cm(ancho)
-    seccion.page_height = Cm(alto)
-    margenes = p.get("margenes") or {}
-    seccion.top_margin = Cm(_num(margenes.get("top"), MARGEN_DEFECTO))
-    seccion.bottom_margin = Cm(_num(margenes.get("bottom"), MARGEN_DEFECTO))
-    seccion.left_margin = Cm(_num(margenes.get("left"), MARGEN_DEFECTO))
-    seccion.right_margin = Cm(_num(margenes.get("right"), MARGEN_DEFECTO))
-    doc.styles["Normal"].font.size = Pt(_num(p.get("fuente"), FUENTE_DEFECTO))
+    width, height = PAPER_SIZES.get(str(p.get("paper") or "a4").lower(), PAPER_SIZES["a4"])
+    section = doc.sections[0]
+    section.page_width = Cm(width)
+    section.page_height = Cm(height)
+    margins = p.get("margins") or {}
+    section.top_margin = Cm(_number(margins.get("top"), DEFAULT_MARGIN))
+    section.bottom_margin = Cm(_number(margins.get("bottom"), DEFAULT_MARGIN))
+    section.left_margin = Cm(_number(margins.get("left"), DEFAULT_MARGIN))
+    section.right_margin = Cm(_number(margins.get("right"), DEFAULT_MARGIN))
+    doc.styles["Normal"].font.size = Pt(_number(p.get("font_size"), DEFAULT_FONT_SIZE))
 
 
-def _agregar_contactos(doc, d, L):
-    """Linea de contactos con las etiquetas traducidas de LANG; omite vacios."""
-    piezas = []
+def _add_contacts(doc, d, L):
+    """Contact line with the LANG translated labels; skips empty values."""
+    pieces = []
 
-    def agregar(etiqueta, valor):
-        valor = _texto(valor)
-        if valor:
-            piezas.append((etiqueta, valor))
+    def add(label, value):
+        value = _text(value)
+        if value:
+            pieces.append((label, value))
 
-    agregar(L["nacimiento"], d.get("nacimiento"))
-    agregar(L["telefono"], d.get("telefono"))
-    agregar(L["nacionalidad"], d.get("nacionalidad"))
-    agregar(L["correo"], d.get("email"))
-    agregar(L["direccion"], d.get("direccion"))
-    agregar(L["egresado"], d.get("institucion_egresado"))
-    agregar(L["puesto"], d.get("profesion"))
-    agregar(L["github"], d.get("github"))
-    agregar(L["linkedin"], d.get("linkedin"))
-    agregar("Web:", d.get("web"))
-    for x in d.get("datos_extra") or []:
+    add(L["phone"], d.get("phone"))
+    add(L["email"], d.get("email"))
+    add(L["address"], d.get("address"))
+    add(L["school_name"], d.get("school_name"))
+    add(L["profession"], d.get("profession"))
+    socials = d.get("socials")
+    if isinstance(socials, (list, tuple)):
+        for x in socials:
+            try:
+                if not isinstance(x, dict):
+                    continue
+                value = _text(x.get("value"))
+                if not value:
+                    continue
+                label = latex_gen.social_label(x.get("network"), x.get("label"), L)
+            except Exception:
+                continue
+            pieces.append((label + ":", value))
+    for x in d.get("extra_fields") or []:
         x = x or {}
-        etiqueta = _texto(x.get("etiqueta"))
-        valor = _texto(x.get("valor"))
-        if etiqueta and valor:
-            piezas.append((etiqueta + ":", valor))
-    if not piezas:
+        label = _text(x.get("label"))
+        value = _text(x.get("value"))
+        if label and value:
+            pieces.append((label + ":", value))
+    if not pieces:
         return
-    parrafo = doc.add_paragraph()
-    for i, (etiqueta, valor) in enumerate(piezas):
+    paragraph = doc.add_paragraph()
+    for i, (label, value) in enumerate(pieces):
         if i:
-            parrafo.add_run("   |   ")
-        run = parrafo.add_run(etiqueta + " ")
+            paragraph.add_run("   |   ")
+        run = paragraph.add_run(label + " ")
         run.bold = True
-        parrafo.add_run(valor)
+        paragraph.add_run(value)
 
 
-def _agregar_foto(doc, d):
-    """Inserta la foto si es un fichero valido; ignora cualquier fallo."""
-    foto = _texto(d.get("foto"))
-    if not foto:
+def _add_photo(doc, d):
+    """Insert the photo if it is a valid file; ignore any failure."""
+    photo = _text(d.get("photo"))
+    if not photo:
         return
-    if os.path.splitext(foto)[1].lower() not in FOTO_EXTS or not os.path.isfile(foto):
+    if os.path.splitext(photo)[1].lower() not in PHOTO_EXTS or not os.path.isfile(photo):
         return
     try:
-        ancho = float(d.get("foto_ancho_cm") or ANCHO_FOTO_DEFECTO)
-        parrafo = doc.add_paragraph()
-        parrafo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        parrafo.add_run().add_picture(foto, width=Cm(ancho))
+        width = float(d.get("photo_width_cm") or DEFAULT_PHOTO_WIDTH)
+        paragraph = doc.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        paragraph.add_run().add_picture(photo, width=Cm(width))
     except Exception:
-        # Cualquier fallo de imagen se ignora: la exportacion nunca se rompe.
+        # Any image failure is ignored: the export never breaks.
         pass
 
 
-def _cabecera(doc, d, L):
-    parrafo = doc.add_paragraph()
-    run = parrafo.add_run(_texto(d.get("nombre")))
+def _add_header(doc, d, L):
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run(_text(d.get("name")))
     run.bold = True
-    run.font.size = Pt(TAMANO_NOMBRE)
-    profesion = _texto(d.get("profesion"))
-    if profesion:
-        doc.add_paragraph().add_run(profesion).italic = True
-    _agregar_contactos(doc, d, L)
-    _agregar_foto(doc, d)
+    run.font.size = Pt(NAME_FONT_SIZE)
+    profession = _text(d.get("profession"))
+    if profession:
+        doc.add_paragraph().add_run(profession).italic = True
+    _add_contacts(doc, d, L)
+    _add_photo(doc, d)
 
 
-def _entrada_educacion(doc, ent, L):
-    tipo = _texto(ent.get("tipo"))
-    titulo = _texto(ent.get("titulo"))
-    rotulo = " — ".join(x for x in (tipo, titulo) if x)
-    _parrafo_titulo(doc, ent.get("desde"), ent.get("hasta"), rotulo)
-    institucion = _texto(ent.get("institucion"))
-    if institucion:
-        doc.add_paragraph().add_run(institucion).italic = True
-    nota = _texto(ent.get("nota"))
-    if nota:
-        parrafo = doc.add_paragraph()
-        parrafo.add_run(_texto(L["nota"]) + " ").bold = True
-        parrafo.add_run(nota)
+def _add_education_entry(doc, entry, L):
+    degree_type = _text(option_label(entry.get("degree_type"), L.get("degree_type")))
+    degree = _text(entry.get("degree"))
+    label = " — ".join(x for x in (degree_type, degree) if x)
+    _add_entry_title(doc, entry.get("start"), entry.get("end"), label)
+    institution = _text(entry.get("institution"))
+    if institution:
+        doc.add_paragraph().add_run(institution).italic = True
+    grade = _text(entry.get("grade"))
+    if grade:
+        paragraph = doc.add_paragraph()
+        paragraph.add_run(_text(L["grade"]) + " ").bold = True
+        paragraph.add_run(grade)
 
 
-def _entrada_trabajo(doc, ent, L):
-    _parrafo_titulo(doc, ent.get("desde"), ent.get("hasta"), ent.get("puesto"))
-    empresa = _texto(ent.get("empresa"))
-    if empresa:
-        doc.add_paragraph().add_run(empresa).italic = True
-    modalidad = _texto(ent.get("modalidad"))
-    if modalidad:
-        doc.add_paragraph().add_run("(" + modalidad + ")")
-    logros = [x.strip() for x in str(ent.get("logros") or "").splitlines() if x.strip()]
-    for logro in logros:
-        _vineta(doc, logro)
+def _add_work_entry(doc, entry, L):
+    _add_entry_title(doc, entry.get("start"), entry.get("end"), entry.get("position"))
+    company = _text(entry.get("company"))
+    if company:
+        doc.add_paragraph().add_run(company).italic = True
+    work_mode = _text(option_label(entry.get("work_mode"), L.get("work_mode")))
+    if work_mode:
+        doc.add_paragraph().add_run("(" + work_mode + ")")
+    achievements = [x.strip() for x in str(entry.get("achievements") or "").splitlines() if x.strip()]
+    for achievement in achievements:
+        _add_bullet(doc, achievement)
 
 
-def _entrada_proyecto(doc, ent, L, con_asignatura):
-    _parrafo_titulo(doc, ent.get("desde"), ent.get("hasta"), ent.get("nombre"))
-    organizacion = _texto(ent.get("organizacion"))
-    asignatura = _texto(ent.get("asignatura")) if con_asignatura else ""
-    if organizacion or asignatura:
-        parrafo = doc.add_paragraph()
-        if organizacion:
-            parrafo.add_run(organizacion).italic = True
-        if asignatura:
-            if organizacion:
-                parrafo.add_run("   ")
-            parrafo.add_run(asignatura)
-    _parrafos(doc, ent.get("descripcion"))
-    resultado = _texto(ent.get("resultado"))
-    if resultado:
-        parrafo = doc.add_paragraph()
-        parrafo.add_run(_texto(L["resultado"]) + " ").bold = True
-        parrafo.add_run(resultado)
-    enlace = _texto(ent.get("enlace"))
-    if enlace:
-        parrafo = doc.add_paragraph()
-        parrafo.add_run(_texto(L["enlace"]) + " ").bold = True
-        parrafo.add_run(enlace)
+def _add_project_entry(doc, entry, L, with_course):
+    _add_entry_title(doc, entry.get("start"), entry.get("end"), entry.get("name"))
+    organization = _text(entry.get("organization"))
+    course = _text(entry.get("course")) if with_course else ""
+    if organization or course:
+        paragraph = doc.add_paragraph()
+        if organization:
+            paragraph.add_run(organization).italic = True
+        if course:
+            if organization:
+                paragraph.add_run("   ")
+            paragraph.add_run(course)
+    _add_paragraphs(doc, entry.get("description"))
+    result = _text(entry.get("result"))
+    if result:
+        paragraph = doc.add_paragraph()
+        paragraph.add_run(_text(L["result"]) + " ").bold = True
+        paragraph.add_run(result)
+    link = _text(entry.get("link"))
+    if link:
+        paragraph = doc.add_paragraph()
+        paragraph.add_run(_text(L["link"]) + " ").bold = True
+        paragraph.add_run(link)
 
 
-def _seccion_habilidades(doc, d, L, titulo=None, color=None):
-    entradas = [e for e in (d.get("habilidades") or []) if isinstance(e, dict)]
-    filas = []
-    for e in entradas:
-        categoria = _texto(e.get("categoria"))
-        valores = [v.strip() for v in str(e.get("valores") or "").split(",") if v.strip()]
-        if categoria or valores:
-            filas.append((categoria, valores))
-    if not filas:
+def _add_skills_section(doc, d, L, title=None, color=None):
+    entries = [e for e in (d.get("skills") or []) if isinstance(e, dict)]
+    rows = []
+    for e in entries:
+        category = _text(e.get("category"))
+        values = [v.strip() for v in str(e.get("values") or "").split(",") if v.strip()]
+        if category or values:
+            rows.append((category, values))
+    if not rows:
         return
-    _encabezado(doc, titulo or L["habilidades"], color)
-    for categoria, valores in filas:
-        parrafo = doc.add_paragraph()
-        if categoria and valores:
-            parrafo.add_run(categoria + L["sep_hab"] + " ").bold = True
-            parrafo.add_run(", ".join(valores))
-        elif categoria:
-            parrafo.add_run(categoria).bold = True
+    _add_heading(doc, title or L["skills"], color)
+    for category, values in rows:
+        paragraph = doc.add_paragraph()
+        if category and values:
+            paragraph.add_run(category + L["skill_separator"] + " ").bold = True
+            paragraph.add_run(", ".join(values))
+        elif category:
+            paragraph.add_run(category).bold = True
         else:
-            parrafo.add_run(", ".join(valores))
+            paragraph.add_run(", ".join(values))
 
 
-def _seccion_parejas(doc, entradas, L, clave, campo_a, campo_b, titulo=None, color=None):
-    filas = []
-    for e in entradas or []:
+def _add_pairs_section(doc, entries, L, key, field_a, field_b, title=None, color=None):
+    rows = []
+    for e in entries or []:
         if not isinstance(e, dict):
             continue
-        a = _texto(e.get(campo_a))
-        b = _texto(e.get(campo_b))
+        a = _text(e.get(field_a))
+        b = _text(e.get(field_b))
         if a or b:
-            filas.append((a, b))
-    if not filas:
+            rows.append((a, b))
+    if not rows:
         return
-    _encabezado(doc, titulo or L[clave], color)
-    for a, b in filas:
-        parrafo = doc.add_paragraph()
+    _add_heading(doc, title or L[key], color)
+    for a, b in rows:
+        paragraph = doc.add_paragraph()
         if a and b:
-            parrafo.add_run(a).bold = True
-            parrafo.add_run(" – " + b)
+            paragraph.add_run(a).bold = True
+            paragraph.add_run(" – " + b)
         elif a:
-            parrafo.add_run(a).bold = True
+            paragraph.add_run(a).bold = True
         else:
-            parrafo.add_run(b)
+            paragraph.add_run(b)
 
 
-def _ancla_bloque(valor):
-    """Ancla valida o "final" para un bloque con posicion ausente o desconocida."""
-    ancla = _texto(valor)
-    return ancla if ancla in ANCLAS_BLOQUE else "final"
+def _block_anchor(value):
+    """Valid anchor or "end" for a block with a missing or unknown position."""
+    anchor = _text(value)
+    return anchor if anchor in BLOCK_ANCHORS else "end"
 
 
-def _agrupar_bloques(d):
-    """Reparte los bloques libres por ancla; ignora lo que no sea diccionario."""
-    grupos = {ancla: [] for ancla in ANCLAS_BLOQUE}
-    entradas = d.get("bloques")
-    if not isinstance(entradas, (list, tuple)):
-        return grupos
-    for bloque in entradas:
-        if isinstance(bloque, dict):
-            grupos[_ancla_bloque(bloque.get("posicion"))].append(bloque)
-    return grupos
+def _group_blocks(d):
+    """Distribute free blocks by anchor; ignore anything that is not a dict."""
+    groups = {anchor: [] for anchor in BLOCK_ANCHORS}
+    entries = d.get("blocks")
+    if not isinstance(entries, (list, tuple)):
+        return groups
+    for block in entries:
+        if isinstance(block, dict):
+            groups[_block_anchor(block.get("position"))].append(block)
+    return groups
 
 
-def _borde_inferior(parrafo, color, grosor=6):
-    """Anade el borde inferior XML (w:pBdr) al parrafo indicado."""
-    p_pr = parrafo._p.get_or_add_pPr()
+def _bottom_border(paragraph, color, thickness=6):
+    """Add the lower border XML (w:pBdr) to the given paragraph."""
+    p_pr = paragraph._p.get_or_add_pPr()
     p_bdr = OxmlElement("w:pBdr")
-    inferior = OxmlElement("w:bottom")
-    inferior.set(qn("w:val"), "single")
-    inferior.set(qn("w:sz"), str(grosor))
-    inferior.set(qn("w:space"), "1")
-    inferior.set(qn("w:color"), color)
-    p_bdr.append(inferior)
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), str(thickness))
+    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:color"), color)
+    p_bdr.append(bottom)
     p_pr.append(p_bdr)
 
 
-def _sombreado(parrafo, color):
-    """Anade el sombreado XML (w:shd) al parrafo indicado."""
-    p_pr = parrafo._p.get_or_add_pPr()
+def _add_shading(paragraph, color):
+    """Add the shading XML (w:shd) to the given paragraph."""
+    p_pr = paragraph._p.get_or_add_pPr()
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
     shd.set(qn("w:color"), "auto")
@@ -389,185 +397,185 @@ def _sombreado(parrafo, color):
     p_pr.append(shd)
 
 
-def _separador_linea(doc, color=None):
-    """Separador fino: parrafo vacio con borde inferior en el color de acento."""
-    parrafo = doc.add_paragraph()
-    _borde_inferior(parrafo, _hex_de_color(color) or COLOR_ACENTO)
-    return parrafo
+def _line_separator(doc, color=None):
+    """Thin separator: empty paragraph with a lower border in the accent color."""
+    paragraph = doc.add_paragraph()
+    _bottom_border(paragraph, _hex_from_color(color) or COLOR_ACCENT)
+    return paragraph
 
 
-def _separador_banda(doc, color=None):
-    """Separador ancho: parrafo vacio sombreado con el color de acento."""
-    hexa = _hex_de_color(color) or COLOR_ACENTO
-    parrafo = doc.add_paragraph()
-    _borde_inferior(parrafo, hexa, grosor=24)
-    _sombreado(parrafo, hexa)
-    return parrafo
+def _band_separator(doc, color=None):
+    """Wide separator: empty paragraph shaded with the accent color."""
+    hex_color = _hex_from_color(color) or COLOR_ACCENT
+    paragraph = doc.add_paragraph()
+    _bottom_border(paragraph, hex_color, thickness=24)
+    _add_shading(paragraph, hex_color)
+    return paragraph
 
 
-def _bloque_separador(doc, bloque, color=None):
-    """Un separador siempre se dibuja; un estilo desconocido cae a "linea"."""
-    estilo = _texto(bloque.get("estilo"))
-    if estilo not in ESTILOS_SEPARADOR:
-        estilo = "linea"
-    if estilo == "banda":
-        _separador_banda(doc, color)
-    elif estilo == "espacio":
+def _render_separator_block(doc, block, color=None):
+    """A separator is always drawn; an unknown style falls back to "line"."""
+    style = _text(block.get("style"))
+    if style not in SEPARATOR_STYLES:
+        style = "line"
+    if style == "band":
+        _band_separator(doc, color)
+    elif style == "space":
         doc.add_paragraph()
     else:
-        _separador_linea(doc, color)
+        _line_separator(doc, color)
 
 
-def _bloque_seccion(doc, bloque, color=None):
-    """Titulo en negrita y contenido por lineas; se omite solo si esta todo vacio."""
-    titulo = _texto(bloque.get("titulo"))
-    if not titulo and not _texto(bloque.get("contenido")):
+def _render_section_block(doc, block, color=None):
+    """Bold title and content by lines; it is skipped only when all is empty."""
+    title = _text(block.get("title"))
+    if not title and not _text(block.get("content")):
         return
-    if titulo:
-        _encabezado(doc, titulo, color)
-    _parrafos(doc, bloque.get("contenido"))
+    if title:
+        _add_heading(doc, title, color)
+    _add_paragraphs(doc, block.get("content"))
 
 
-def _bloque_listado(doc, bloque, color=None):
-    """Lista generica: pares titulo/detalle o periodo/descripcion.
+def _render_list_block(doc, block, color=None):
+    """Generic list: title/detail or period/description pairs.
 
-    Las columnas del bloque degradan a una sola columna (igual que el resto
-    de secciones con ``columnas`` en la exportacion Word).
+    Block columns degrade to a single column (same as the rest of the
+    sections with ``columns`` in the Word export).
     """
-    modo = _texto(bloque.get("modo"))
-    if modo not in MODOS_LISTADO:
-        modo = "columnas"
-    titulo = _texto(bloque.get("titulo"))
-    entradas = bloque.get("entradas")
-    filas = []
-    for ent in entradas if isinstance(entradas, (list, tuple)) else []:
-        if not isinstance(ent, dict):
+    mode = _text(block.get("mode"))
+    if mode not in LIST_MODES:
+        mode = "columns"
+    title = _text(block.get("title"))
+    entries = block.get("entries")
+    rows = []
+    for entry in entries if isinstance(entries, (list, tuple)) else []:
+        if not isinstance(entry, dict):
             continue
-        if modo == "periodo":
-            periodo = _texto(ent.get("periodo"))
-            descripcion = _texto(ent.get("descripcion"))
-            if periodo or descripcion:
-                filas.append((periodo, descripcion))
+        if mode == "period":
+            period = _text(entry.get("period"))
+            description = _text(entry.get("description"))
+            if period or description:
+                rows.append((period, description))
         else:
-            encabezado = _texto(ent.get("titulo"))
-            detalle = _texto(ent.get("detalle"))
-            if encabezado or detalle:
-                filas.append((encabezado, detalle))
-    if not filas:
+            heading = _text(entry.get("title"))
+            detail = _text(entry.get("detail"))
+            if heading or detail:
+                rows.append((heading, detail))
+    if not rows:
         return
-    if titulo:
-        _encabezado(doc, titulo, color)
-    for a, b in filas:
-        if modo == "periodo":
+    if title:
+        _add_heading(doc, title, color)
+    for a, b in rows:
+        if mode == "period":
             if a:
                 doc.add_paragraph().add_run(a).italic = True
             if b:
                 doc.add_paragraph(b)
         else:
-            parrafo = doc.add_paragraph()
+            paragraph = doc.add_paragraph()
             if a and b:
-                parrafo.add_run(a).bold = True
-                parrafo.add_run(" --- " + b)
+                paragraph.add_run(a).bold = True
+                paragraph.add_run(" --- " + b)
             elif a:
-                parrafo.add_run(a).bold = True
+                paragraph.add_run(a).bold = True
             else:
-                parrafo.add_run(b)
+                paragraph.add_run(b)
 
 
-def _render_bloques(doc, bloques, color=None):
-    """Dibuja los bloques de un ancla en el mismo orden de la lista."""
-    for bloque in bloques:
-        if not isinstance(bloque, dict):
+def _render_blocks(doc, blocks, color=None):
+    """Draw the blocks of one anchor in the same list order."""
+    for block in blocks:
+        if not isinstance(block, dict):
             continue
-        tipo = _texto(bloque.get("tipo"))
-        if tipo == "separador":
-            _bloque_separador(doc, bloque, color)
-        elif tipo == "seccion":
-            _bloque_seccion(doc, bloque, color)
-        elif tipo == "listado":
-            _bloque_listado(doc, bloque, color)
+        block_type = _text(block.get("type"))
+        if block_type == "separator":
+            _render_separator_block(doc, block, color)
+        elif block_type == "section":
+            _render_section_block(doc, block, color)
+        elif block_type == "list":
+            _render_list_block(doc, block, color)
 
 
-def _cuerpo(doc, d, L, color=None):
-    """Secciones con el mismo orden, visibilidad y titulos que latex_gen.
+def _add_body(doc, d, L, color=None):
+    """Sections with the same order, visibility and titles as latex_gen.
 
-    El orden normalizado y las secciones ocultas se delegan en latex_gen
-    (normalizar_orden_secciones / seccion_oculta) y los titulos personalizados
-    en titulo_personalizado, con L[clave] como respaldo. El texto va en plano,
-    sin escapado LaTeX. ``color`` (RGBColor) tiñe los encabezados; None los
-    deja con el color por defecto.
+    The normalized order and the hidden sections are delegated to latex_gen
+    (normalize_section_order / is_section_hidden) and the custom titles to
+    custom_section_title, with L[key] as fallback. The text is plain,
+    without LaTeX escaping. ``color`` (RGBColor) tints the headings; None
+    leaves them with the default color.
 
-    Los bloques libres se intercalan tras su seccion ancla; las anclas
-    "inicio" y "final" abren y cierran el cuerpo. Una seccion vacia u oculta
-    sigue mostrando los bloques anclados a ella (ancla posicional).
+    Free blocks are interleaved after their anchor section; the "start" and
+    "end" anchors open and close the body. An empty or hidden section still
+    shows the blocks anchored to it (positional anchor).
     """
-    grupos = _agrupar_bloques(d)
-    _render_bloques(doc, grupos["inicio"], color)
+    groups = _group_blocks(d)
+    _render_blocks(doc, groups["start"], color)
 
-    for clave in latex_gen.normalizar_orden_secciones(d):
-        if not latex_gen.seccion_oculta(d, clave):
-            titulo = latex_gen.titulo_personalizado(d, clave) or L[clave]
-            if clave == "perfil":
-                if _texto(d.get("perfil")):
-                    _encabezado(doc, titulo, color)
-                    _parrafos(doc, d.get("perfil"))
-            elif clave == "educacion":
-                entradas = _entradas_con_contenido(d.get("educacion"))
-                if entradas:
-                    _encabezado(doc, titulo, color)
-                    for ent in entradas:
-                        _entrada_educacion(doc, ent, L)
-            elif clave == "proyectos":
-                entradas = _entradas_con_contenido(d.get("proyectos"))
-                if entradas:
-                    _encabezado(doc, titulo, color)
-                    for ent in entradas:
-                        _entrada_proyecto(doc, ent, L, False)
-            elif clave == "proyectosu":
-                entradas = _entradas_con_contenido(d.get("proyectosu"))
-                if entradas:
-                    _encabezado(doc, titulo, color)
-                    for ent in entradas:
-                        _entrada_proyecto(doc, ent, L, True)
-            elif clave == "pasantia":
-                entradas = _entradas_con_contenido(d.get("pasantia"))
-                if entradas:
-                    _encabezado(doc, titulo, color)
-                    for ent in entradas:
-                        _entrada_trabajo(doc, ent, L)
-            elif clave == "trabajo":
-                entradas = _entradas_con_contenido(d.get("trabajo"))
-                if entradas:
-                    _encabezado(doc, titulo, color)
-                    for ent in entradas:
-                        _entrada_trabajo(doc, ent, L)
-            elif clave == "habilidades":
-                _seccion_habilidades(doc, d, L, titulo, color)
-            elif clave == "idiomas":
-                _seccion_parejas(doc, d.get("idiomas"), L, clave, "idioma", "nivel", titulo, color)
-            elif clave == "referencias":
-                _seccion_parejas(doc, d.get("referencias"), L, clave, "nombre", "contacto", titulo, color)
-        # Bloque anclado a esta seccion: se emite aunque la seccion este oculta
-        # o vacia, para conservar el ancla posicional elegida.
-        _render_bloques(doc, grupos[clave], color)
-    _render_bloques(doc, grupos["final"], color)
+    for key in latex_gen.normalize_section_order(d):
+        if not latex_gen.is_section_hidden(d, key):
+            title = latex_gen.custom_section_title(d, key) or L[key]
+            if key == "summary":
+                if _text(d.get("summary")):
+                    _add_heading(doc, title, color)
+                    _add_paragraphs(doc, d.get("summary"))
+            elif key == "education":
+                entries = _entries_with_content(d.get("education"))
+                if entries:
+                    _add_heading(doc, title, color)
+                    for entry in entries:
+                        _add_education_entry(doc, entry, L)
+            elif key == "projects":
+                entries = _entries_with_content(d.get("projects"))
+                if entries:
+                    _add_heading(doc, title, color)
+                    for entry in entries:
+                        _add_project_entry(doc, entry, L, False)
+            elif key == "university_projects":
+                entries = _entries_with_content(d.get("university_projects"))
+                if entries:
+                    _add_heading(doc, title, color)
+                    for entry in entries:
+                        _add_project_entry(doc, entry, L, True)
+            elif key == "internships":
+                entries = _entries_with_content(d.get("internships"))
+                if entries:
+                    _add_heading(doc, title, color)
+                    for entry in entries:
+                        _add_work_entry(doc, entry, L)
+            elif key == "work":
+                entries = _entries_with_content(d.get("work"))
+                if entries:
+                    _add_heading(doc, title, color)
+                    for entry in entries:
+                        _add_work_entry(doc, entry, L)
+            elif key == "skills":
+                _add_skills_section(doc, d, L, title, color)
+            elif key == "languages":
+                _add_pairs_section(doc, d.get("languages"), L, key, "language", "level", title, color)
+            elif key == "references":
+                _add_pairs_section(doc, d.get("references"), L, key, "name", "contact", title, color)
+        # Block anchored to this section: it is emitted even if the section is
+        # hidden or empty, to preserve the chosen positional anchor.
+        _render_blocks(doc, groups[key], color)
+    _render_blocks(doc, groups["end"], color)
 
 
-def exportar(datos, prefs_dict, ruta):
-    """Exporta `datos` a un fichero DOCX en `ruta`.
+def export(data, prefs_dict, path):
+    """Export `data` to a DOCX file at `path`.
 
-    `prefs_dict` usa las mismas claves que prefs.load(): papel, margenes,
-    fuente y colores (primario y texto). Las columnas de las secciones
-    degradan a una sola columna.
+    `prefs_dict` uses the same keys as prefs.load(): paper, margins,
+    font_size and colors (primary and text). Section columns degrade to a
+    single column.
     """
-    datos = datos or {}
-    L = LANG.get(str(datos.get("idioma_cv", "zh")), LANG["zh"])
+    data = data or {}
+    L = LANG.get(str(data.get("cv_language", "zh")), LANG["zh"])
     doc = Document()
-    _configurar_documento(doc, prefs_dict or {})
-    # texto -> color base del estilo Normal; primario -> separadores y titulos.
-    color_texto = _color_prefs(prefs_dict, "texto")
-    if color_texto is not None:
-        doc.styles["Normal"].font.color.rgb = color_texto
-    _cabecera(doc, datos, L)
-    _cuerpo(doc, datos, L, _color_prefs(prefs_dict, "primario"))
-    doc.save(ruta)
+    _configure_document(doc, prefs_dict or {})
+    # text -> Normal style base color; primary -> separators and headings.
+    text_color = _pref_color(prefs_dict, "text")
+    if text_color is not None:
+        doc.styles["Normal"].font.color.rgb = text_color
+    _add_header(doc, data, L)
+    _add_body(doc, data, L, _pref_color(prefs_dict, "primary"))
+    doc.save(path)

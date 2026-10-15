@@ -2,9 +2,10 @@
 """Esquema de datos canonico y migracion de .cvjson antiguos (Fase 1).
 
 No requiere GUI, ni LaTeX, ni pywebview: solo importa ``latex_gen`` y
-``_migrar_datos`` de ``main`` (importar main no abre ninguna ventana).
+``migrate_data`` de ``main`` (importar main no abre ninguna ventana).
 """
 
+import copy
 import os
 import re
 import sys
@@ -15,47 +16,45 @@ import pytest  # noqa: E402
 
 import latex_gen  # noqa: E402
 import tex_datos  # noqa: E402
-from main import _migrar_datos  # noqa: E402
+from main import migrate_data  # noqa: E402
 
 CLAVES_ESPERADAS = {
-    "idioma_cv", "plantilla", "nombre", "profesion", "email", "telefono",
-    "direccion", "web", "nacimiento", "nacionalidad", "github", "linkedin",
-    "datos_extra", "foto", "foto_original", "foto_recorte", "foto_ancho_cm",
-    "foto_alto_cm", "institucion_egresado", "logo_egresado",
-    "logo_egresado_ancho_cm", "logo_egresado_alto_cm", "perfil",
-    "trabajo", "pasantia", "proyectos", "proyectosu", "educacion",
-    "habilidades", "idiomas", "referencias", "bloques", "columnas",
-    "titulos_seccion", "secciones_ocultas", "orden_secciones",
+    "cv_language", "template", "name", "profession", "email", "phone",
+    "address", "socials", "extra_fields", "photo", "photo_original",
+    "photo_crop", "photo_width_cm", "photo_height_cm", "school_name",
+    "school_logo", "school_logo_width_cm", "school_logo_height_cm", "summary",
+    "work", "internships", "projects", "university_projects", "education",
+    "skills", "languages", "references", "blocks", "columns",
+    "section_titles", "hidden_sections", "section_order",
 }
 
 CLAVES_TEXTO = (
-    "nombre", "profesion", "email", "telefono", "direccion", "web",
-    "nacimiento", "nacionalidad", "github", "linkedin",
-    "institucion_egresado", "logo_egresado", "perfil", "foto", "foto_original",
+    "name", "profession", "email", "phone", "address",
+    "school_name", "school_logo", "summary", "photo", "photo_original",
 )
 
 CLAVES_LISTA = (
-    "datos_extra", "trabajo", "pasantia", "proyectos", "proyectosu",
-    "educacion", "habilidades", "idiomas", "referencias", "bloques",
-    "secciones_ocultas", "orden_secciones",
+    "socials", "extra_fields", "work", "internships", "projects",
+    "university_projects", "education", "skills", "languages", "references",
+    "blocks", "hidden_sections", "section_order",
 )
 
 CLAVES_MEDIDA = (
-    "foto_ancho_cm", "foto_alto_cm",
-    "logo_egresado_ancho_cm", "logo_egresado_alto_cm",
+    "photo_width_cm", "photo_height_cm",
+    "school_logo_width_cm", "school_logo_height_cm",
 )
 
 
 def test_datos_vacios_tiene_las_claves_exactas():
-    d = latex_gen.datos_vacios()
+    d = latex_gen.empty_data()
     assert isinstance(d, dict)
     assert set(d) == CLAVES_ESPERADAS
 
 
 def test_datos_vacios_tipos_y_valores_por_defecto():
-    d = latex_gen.datos_vacios()
-    assert d["idioma_cv"] == "zh"
-    assert d["plantilla"] == "clasico"
+    d = latex_gen.empty_data()
+    assert d["cv_language"] == "zh"
+    assert d["template"] == "classic"
     for clave in CLAVES_TEXTO:
         assert isinstance(d[clave], str), clave
     for clave in CLAVES_LISTA:
@@ -63,34 +62,38 @@ def test_datos_vacios_tipos_y_valores_por_defecto():
         assert d[clave] == [], clave
     for clave in CLAVES_MEDIDA:
         assert isinstance(d[clave], float), clave
-    assert d["foto_recorte"] is None
-    assert d["titulos_seccion"] == {}
-    assert d["secciones_ocultas"] == []
-    assert d["orden_secciones"] == []
-    columnas = d["columnas"]
+    assert d["photo_crop"] is None
+    assert d["section_titles"] == {}
+    assert d["hidden_sections"] == []
+    assert d["section_order"] == []
+    columnas = d["columns"]
     assert isinstance(columnas, dict)
-    assert set(columnas) == {"trabajo", "pasantia", "proyectos", "proyectosu", "educacion"}
+    assert set(columnas) == {
+        "work", "internships", "projects", "university_projects", "education",
+    }
     assert all(isinstance(v, int) and v == 1 for v in columnas.values())
 
 
 def test_datos_vacios_devuelve_estructuras_nuevas():
-    a = latex_gen.datos_vacios()
-    b = latex_gen.datos_vacios()
+    a = latex_gen.empty_data()
+    b = latex_gen.empty_data()
     assert a == b
-    a["nombre"] = "cambiado"
-    a["datos_extra"].append({"etiqueta": "x", "valor": "y"})
-    a["bloques"].append({"tipo": "separador"})
-    a["columnas"]["trabajo"] = 3
-    a["titulos_seccion"]["perfil"] = "Sobre mí"
-    a["secciones_ocultas"].append("idiomas")
-    a["orden_secciones"].append("trabajo")
-    assert b["nombre"] == ""
-    assert b["datos_extra"] == []
-    assert b["bloques"] == []
-    assert b["columnas"]["trabajo"] == 1
-    assert b["titulos_seccion"] == {}
-    assert b["secciones_ocultas"] == []
-    assert b["orden_secciones"] == []
+    a["name"] = "cambiado"
+    a["socials"].append({"network": "github", "label": "", "value": "x"})
+    a["extra_fields"].append({"label": "x", "value": "y"})
+    a["blocks"].append({"type": "separator"})
+    a["columns"]["work"] = 3
+    a["section_titles"]["summary"] = "Sobre mí"
+    a["hidden_sections"].append("languages")
+    a["section_order"].append("work")
+    assert b["name"] == ""
+    assert b["socials"] == []
+    assert b["extra_fields"] == []
+    assert b["blocks"] == []
+    assert b["columns"]["work"] == 1
+    assert b["section_titles"] == {}
+    assert b["hidden_sections"] == []
+    assert b["section_order"] == []
 
 
 def test_migrar_experiencia_y_habilidades_antiguas():
@@ -106,30 +109,30 @@ def test_migrar_experiencia_y_habilidades_antiguas():
             {"nombre": "SQL", "nivel": "Alto"},
         ],
     }
-    salida = _migrar_datos(datos)
+    salida = migrate_data(datos)
     assert "experiencia" not in salida
-    assert salida["trabajo"] == [
-        {"tipo": "Trabajo", "puesto": "Dev"},
-        {"puesto": "Sin tipo"},
+    assert salida["work"] == [
+        {"tipo": "Trabajo", "position": "Dev"},
+        {"position": "Sin tipo"},
     ]
-    assert salida["pasantia"] == [
-        {"tipo": "Pasantía", "puesto": "Becario"},
-        {"tipo": "pasantia", "puesto": "Practicas"},
+    assert salida["internships"] == [
+        {"tipo": "Pasantía", "position": "Becario"},
+        {"tipo": "pasantia", "position": "Practicas"},
     ]
-    assert salida["habilidades"] == [
-        {"categoria": "Lenguajes", "valores": "Python"},
-        {"categoria": "SQL", "valores": "Alto"},
+    assert salida["skills"] == [
+        {"category": "Lenguajes", "values": "Python"},
+        {"category": "SQL", "values": "Alto"},
     ]
 
 
-def test_migrar_no_pisa_trabajo_o_pasantia_existentes():
+def test_migrar_no_pisa_work_o_internships_existentes():
     datos = {
         "experiencia": [{"tipo": "Trabajo", "puesto": "Antiguo"}],
         "trabajo": [{"puesto": "Actual"}],
         "habilidades": [],
     }
-    salida = _migrar_datos(datos)
-    assert salida["trabajo"] == [{"puesto": "Actual"}]
+    salida = migrate_data(datos)
+    assert salida["work"] == [{"position": "Actual"}]
     assert salida["experiencia"] == [{"tipo": "Trabajo", "puesto": "Antiguo"}]
 
 
@@ -144,23 +147,236 @@ def test_migrar_no_pisa_trabajo_o_pasantia_existentes():
     ],
 )
 def test_migrar_formas_mal_formadas_no_lanza(datos):
-    salida = _migrar_datos(datos)
+    salida = migrate_data(datos)
     assert isinstance(salida, dict)
 
 
 def test_migrar_no_dict_devuelve_la_entrada():
-    assert _migrar_datos(None) is None
-    assert _migrar_datos("texto") == "texto"
-    assert _migrar_datos(7) == 7
+    assert migrate_data(None) is None
+    assert migrate_data("texto") == "texto"
+    assert migrate_data(7) == 7
 
 
 # ---------------------------------------------------------------------------
-# Bloques libres: saneado via _migrar_datos (main._sanear_bloques)
+# Socials: esquema, saneado y migracion de los campos fijos antiguos
+# ---------------------------------------------------------------------------
+
+def test_social_networks_contrato():
+    assert latex_gen.SOCIAL_NETWORKS == (
+        "github", "linkedin", "x", "instagram", "facebook", "youtube",
+        "tiktok", "telegram", "wechat", "website", "other",
+    )
+
+
+def test_datos_vacios_no_tiene_los_campos_fijos_antiguos():
+    d = latex_gen.empty_data()
+    for clave in ("github", "linkedin", "website", "birth_date", "nationality"):
+        assert clave not in d, clave
+
+
+def test_migrar_campos_fijos_a_socials_y_extra_fields():
+    copia = {
+        "cv_language": "es",
+        "name": "Ana",
+        "github": "github.com/ana",
+        "linkedin": "linkedin.com/in/ana",
+        "website": "https://ana.dev",
+        "birth_date": "12/05/1994",
+        "nationality": "Española",
+    }
+    salida = migrate_data(dict(copia))
+    assert salida["socials"] == [
+        {"network": "github", "label": "", "value": "github.com/ana"},
+        {"network": "linkedin", "label": "", "value": "linkedin.com/in/ana"},
+        {"network": "website", "label": "", "value": "https://ana.dev"},
+    ]
+    assert salida["extra_fields"] == [
+        {"label": "Nacimiento", "value": "12/05/1994"},
+        {"label": "Nacionalidad", "value": "Española"},
+    ]
+    for clave in ("github", "linkedin", "website", "birth_date", "nationality"):
+        assert clave not in salida, clave
+    # El resto de datos no se toca.
+    assert salida["name"] == "Ana"
+    assert salida["cv_language"] == "es"
+
+
+def test_migrar_campos_fijos_espanoles_heredados():
+    salida = migrate_data({
+        "nacimiento": "1990",
+        "nacionalidad": "Chilena",
+        "web": "web.example",
+        "github": "github.com/heredero",
+    })
+    assert salida["socials"] == [
+        {"network": "github", "label": "", "value": "github.com/heredero"},
+        {"network": "website", "label": "", "value": "web.example"},
+    ]
+    assert salida["extra_fields"] == [
+        {"label": "出生年月", "value": "1990"},
+        {"label": "国籍", "value": "Chilena"},
+    ]
+    for clave in ("nacimiento", "nacionalidad", "web"):
+        assert clave not in salida, clave
+
+
+def test_migrar_etiqueta_de_nacimiento_segun_idioma():
+    por_idioma = {
+        "es": ("Nacimiento", "Nacionalidad"),
+        "en": ("Date of birth", "Nationality"),
+        "zh": ("出生年月", "国籍"),
+    }
+    for idioma, etiquetas in por_idioma.items():
+        salida = migrate_data({
+            "cv_language": idioma, "birth_date": "2000", "nationality": "X",
+        })
+        assert [x["label"] for x in salida["extra_fields"]] == list(etiquetas)
+    # Idioma desconocido o ausente: zh por defecto, es si falta la tabla.
+    assert migrate_data({"birth_date": "2000"})["extra_fields"] == [
+        {"label": "出生年月", "value": "2000"},
+    ]
+    assert migrate_data({"cv_language": "ru", "birth_date": "2000"})["extra_fields"] == [
+        {"label": "Nacimiento", "value": "2000"},
+    ]
+
+
+def test_migrar_socials_existentes_se_conservan_y_antiguos_se_anaden():
+    salida = migrate_data({
+        "socials": [{"network": "x", "label": "", "value": "x.com/ana"}],
+        "github": "github.com/ana",
+    })
+    assert salida["socials"] == [
+        {"network": "x", "label": "", "value": "x.com/ana"},
+        {"network": "github", "label": "", "value": "github.com/ana"},
+    ]
+
+
+def test_sanear_socials_contrato():
+    salida = migrate_data({"socials": [
+        {"network": "github", "label": "", "value": "github.com/a"},
+        {"network": "marte", "label": "Mi red", "value": "marte.example"},
+        {"network": "other", "label": "Blog", "value": "blog.io"},
+        {"network": "x", "value": "   "},
+        {"network": "linkedin"},
+        {"network": 7, "label": 9, "value": 0},
+        "no-dict",
+        3,
+    ]})
+    assert salida["socials"] == [
+        {"network": "github", "label": "", "value": "github.com/a"},
+        {"network": "other", "label": "Mi red", "value": "marte.example"},
+        {"network": "other", "label": "Blog", "value": "blog.io"},
+        {"network": "other", "label": "9", "value": "0"},
+    ]
+
+
+def test_migrar_socials_es_idempotente():
+    datos = {
+        "cv_language": "es",
+        "github": "github.com/ana",
+        "birth_date": "12/05/1994",
+        "socials": [{"network": "other", "label": "Blog", "value": "blog.io"}],
+    }
+    primera = migrate_data(datos)
+    copia = copy.deepcopy(primera)
+    segunda = migrate_data(copia)
+    assert segunda == primera
+    assert not ({"github", "linkedin", "website", "birth_date", "nationality"} & set(segunda))
+
+
+def test_migrar_socials_formas_raras_nunca_lanzan():
+    class Explosivo:
+        def __str__(self):
+            raise RuntimeError("boom")
+
+    casos = [
+        {"socials": None},
+        {"socials": "x"},
+        {"socials": 7},
+        {"socials": {"network": "github"}},
+        {"socials": [None, 3, "s", [], (), {}]},
+        {"socials": [{"network": Explosivo(), "value": "v"}]},
+        {"socials": [{"network": "github", "value": Explosivo()}]},
+        {"socials": [{"network": "github", "label": Explosivo(), "value": "v"}]},
+        {"github": Explosivo(), "linkedin": Explosivo(), "website": Explosivo()},
+        {"birth_date": Explosivo(), "nationality": Explosivo()},
+    ]
+    for datos in casos:
+        salida = migrate_data(datos)
+        assert isinstance(salida, dict)
+        assert isinstance(salida["socials"], list)
+
+
+def test_build_tex_cabecera_socials():
+    d = latex_gen.empty_data()
+    d["cv_language"] = "es"
+    d["name"] = "Ana"
+    d["socials"] = [
+        {"network": "github", "label": "Ignorado", "value": "github.com/ana"},
+        {"network": "linkedin", "label": "", "value": "linkedin.com/in/a"},
+        {"network": "x", "label": "", "value": "x.com/ana"},
+        {"network": "instagram", "label": "", "value": "@ana"},
+        {"network": "facebook", "label": "", "value": "fb.com/ana"},
+        {"network": "youtube", "label": "", "value": "yt.com/ana"},
+        {"network": "tiktok", "label": "", "value": "tiktok.com/@a"},
+        {"network": "telegram", "label": "", "value": "t.me/ana"},
+        {"network": "wechat", "label": "", "value": "ana_wx"},
+        {"network": "website", "label": "", "value": "ana.dev"},
+        {"network": "other", "label": "Mastodon", "value": "mastodon/@ana"},
+        {"network": "other", "label": "", "value": "solo.dev"},
+        {"network": "other", "label": "   ", "value": "blanco.dev"},
+        {"network": "github", "label": "x", "value": "   "},
+    ]
+    d["extra_fields"] = [{"label": "Nacimiento", "value": "12/05/1994"}]
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    for aguja in (
+        "\\textbf{GitHub:} \\texttt{github.com/ana}",
+        "\\textbf{LinkedIn:} \\texttt{linkedin.com/in/a}",
+        "\\textbf{X:} \\texttt{x.com/ana}",
+        "\\textbf{Instagram:} \\texttt{@ana}",
+        "\\textbf{Facebook:} \\texttt{fb.com/ana}",
+        "\\textbf{YouTube:} \\texttt{yt.com/ana}",
+        "\\textbf{TikTok:} \\texttt{tiktok.com/@a}",
+        "\\textbf{Telegram:} \\texttt{t.me/ana}",
+        "\\textbf{WeChat:} \\texttt{ana\\_wx}",
+        "\\textbf{Web:} \\texttt{ana.dev}",
+        "\\textbf{Mastodon:} \\texttt{mastodon/@ana}",
+        "\\textbf{Enlace:} \\texttt{solo.dev}",
+        "\\textbf{Enlace:} \\texttt{blanco.dev}",
+        "\\textbf{Nacimiento:} 12/05/1994",
+    ):
+        assert aguja in tex, aguja
+    # El label solo se usa con "other"; las entradas sin valor se omiten.
+    assert "Ignorado" not in tex
+    assert "\\texttt{   }" not in tex
+    # Los socials se renderizan antes que los datos adicionales.
+    assert tex.index("\\textbf{GitHub:}") < tex.index("\\textbf{Nacimiento:}")
+
+
+def test_build_tex_socials_idioma_del_documento():
+    d = latex_gen.empty_data()
+    d["cv_language"] = "zh"
+    d["socials"] = [
+        {"network": "website", "label": "", "value": "ana.cn"},
+        {"network": "other", "label": "", "value": "otro.cn"},
+    ]
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    assert "\\textbf{网站:} \\texttt{ana.cn}" in tex
+    assert "\\textbf{链接:} \\texttt{otro.cn}" in tex
+
+    d["cv_language"] = "en"
+    tex = latex_gen.build_tex(d, PREFS_PRUEBA)
+    assert "\\textbf{Website:} \\texttt{ana.cn}" in tex
+    assert "\\textbf{Link:} \\texttt{otro.cn}" in tex
+
+
+# ---------------------------------------------------------------------------
+# Bloques libres: saneado via migrate_data (main.sanitize_blocks)
 # ---------------------------------------------------------------------------
 
 def _bloques_saneados(bloques):
-    """Pasa por _migrar_datos (como al abrir un .cvjson) y devuelve los bloques."""
-    return _migrar_datos({"bloques": bloques})["bloques"]
+    """Pasa por migrate_data (como al abrir un .cvjson) y devuelve los bloques."""
+    return migrate_data({"blocks": bloques})["blocks"]
 
 
 @pytest.mark.parametrize(
@@ -187,20 +403,20 @@ def test_bloques_invalidos_o_inexistentes_no_lanzan(entrada):
 def test_bloques_no_lista_y_sin_tipo_se_descartan():
     assert _bloques_saneados("x") == []
     assert _bloques_saneados([None, 3, "s"]) == []
-    assert _bloques_saneados([{"tipo": "otro"}]) == []
+    assert _bloques_saneados([{"type": "other"}]) == []
     assert _bloques_saneados([{"tipo": "otro"}, None, {"sin_tipo": 1}]) == []
-    assert _migrar_datos({})["bloques"] == []
+    assert migrate_data({})["blocks"] == []
 
 
-def test_bloques_separador_estilo_invalido_o_ausente_cae_a_linea():
+def test_bloques_separador_estilo_invalido_o_ausente_cae_a_line():
     salida = _bloques_saneados([
         {"tipo": "separador", "estilo": "zzz"},
         {"tipo": "separador"},
         {"tipo": "separador", "estilo": None},
         {"tipo": "separador", "estilo": 7},
     ])
-    assert [b["estilo"] for b in salida] == ["linea"] * 4
-    assert all(b["tipo"] == "separador" for b in salida)
+    assert [b["style"] for b in salida] == ["line"] * 4
+    assert all(b["type"] == "separator" for b in salida)
 
 
 def test_bloques_seccion_titulo_y_contenido_se_convierten_a_texto():
@@ -208,20 +424,20 @@ def test_bloques_seccion_titulo_y_contenido_se_convierten_a_texto():
         {"tipo": "seccion", "titulo": 5, "contenido": None},
         {"tipo": "seccion", "titulo": None, "contenido": 0},
     ])
-    assert salida[0]["titulo"] == "5"
-    assert salida[0]["contenido"] == ""
-    assert salida[1]["titulo"] == ""
-    assert salida[1]["contenido"] == "0"
+    assert salida[0]["title"] == "5"
+    assert salida[0]["content"] == ""
+    assert salida[1]["title"] == ""
+    assert salida[1]["content"] == "0"
 
 
-def test_bloques_posicion_invalida_o_ausente_cae_a_final():
+def test_bloques_posicion_invalida_o_ausente_cae_al_final():
     salida = _bloques_saneados([
         {"tipo": "separador", "posicion": "marte"},
         {"tipo": "separador", "posicion": 3},
         {"tipo": "separador"},
         {"tipo": "separador", "posicion": "inicio"},
     ])
-    assert [b["posicion"] for b in salida] == ["final", "final", "final", "inicio"]
+    assert [b["position"] for b in salida] == ["end", "end", "end", "start"]
 
 
 def test_bloques_id_ausente_se_genera_y_duplicados_se_regeneran():
@@ -248,8 +464,8 @@ def test_bloques_solo_conservan_claves_canonicas():
         {"id": "b", "tipo": "seccion", "titulo": "T", "contenido": "C",
          "posicion": "final", "estilo": "linea", "extra": {}},
     ])
-    assert set(salida[0]) == {"id", "tipo", "estilo", "posicion"}
-    assert set(salida[1]) == {"id", "tipo", "titulo", "contenido", "posicion"}
+    assert set(salida[0]) == {"id", "type", "style", "position"}
+    assert set(salida[1]) == {"id", "type", "title", "content", "position"}
 
 
 def test_bloques_listado_se_sanean():
@@ -261,16 +477,16 @@ def test_bloques_listado_se_sanean():
          "entradas": [{"periodo": "2020", "descripcion": "D", "otra": 2}]},
     ])
     assert set(salida[0]) == {
-        "id", "tipo", "modo", "titulo", "columnas", "entradas", "posicion",
+        "id", "type", "mode", "title", "columns", "entries", "position",
     }
-    assert salida[0]["modo"] == "columnas"
-    assert salida[0]["columnas"] == 3
-    assert salida[0]["titulo"] == "5"
-    assert salida[0]["posicion"] == "final"
-    assert salida[0]["entradas"] == [{"titulo": "A", "detalle": "B"}]
-    assert salida[1]["modo"] == "periodo"
-    assert salida[1]["columnas"] == 2
-    assert salida[1]["entradas"] == [{"periodo": "2020", "descripcion": "D"}]
+    assert salida[0]["mode"] == "columns"
+    assert salida[0]["columns"] == 3
+    assert salida[0]["title"] == "5"
+    assert salida[0]["position"] == "end"
+    assert salida[0]["entries"] == [{"title": "A", "detail": "B"}]
+    assert salida[1]["mode"] == "period"
+    assert salida[1]["columns"] == 2
+    assert salida[1]["entries"] == [{"period": "2020", "description": "D"}]
 
 
 def test_bloques_listado_formas_raras_nunca_lanzan():
@@ -279,23 +495,23 @@ def test_bloques_listado_formas_raras_nunca_lanzan():
             raise RuntimeError("boom")
 
     casos = [
-        {"bloques": [{"tipo": "listado"}]},
-        {"bloques": [{"tipo": "listado", "modo": Explosivo()}]},
-        {"bloques": [{"tipo": "listado", "columnas": Explosivo(),
-                      "entradas": Explosivo()}]},
-        {"bloques": [{"tipo": "listado", "titulo": Explosivo(),
-                      "entradas": [None, 3, "x", {"titulo": Explosivo()}]}]},
+        {"blocks": [{"type": "list"}]},
+        {"blocks": [{"type": "list", "mode": Explosivo()}]},
+        {"blocks": [{"type": "list", "columns": Explosivo(),
+                     "entries": Explosivo()}]},
+        {"blocks": [{"type": "list", "title": Explosivo(),
+                     "entries": [None, 3, "x", {"title": Explosivo()}]}]},
     ]
     for datos in casos:
-        salida = _migrar_datos(datos)
-        assert isinstance(salida["bloques"], list)
+        salida = migrate_data(datos)
+        assert isinstance(salida["blocks"], list)
 
 
 def test_bloques_validos_se_conservan_intactos():
     validos = [
-        {"id": "s1", "tipo": "separador", "estilo": "espacio", "posicion": "inicio"},
-        {"id": "s2", "tipo": "seccion", "titulo": "Mi sección",
-         "contenido": "Uno\nDos", "posicion": "educacion"},
+        {"id": "s1", "type": "separator", "style": "space", "position": "start"},
+        {"id": "s2", "type": "section", "title": "Mi sección",
+         "content": "Uno\nDos", "position": "education"},
     ]
     assert _bloques_saneados(validos) == validos
 
@@ -306,22 +522,22 @@ def test_bloques_formas_raras_nunca_lanzan():
             raise RuntimeError("boom")
 
     casos = [
-        {"bloques": None},
-        {"bloques": "x"},
-        {"bloques": 7},
-        {"bloques": {"tipo": "seccion"}},
-        {"bloques": [None, 3, "s", [], (), {}]},
-        {"bloques": [{"tipo": "otro"}]},
-        {"bloques": [{"tipo": "seccion", "titulo": Explosivo()}]},
-        {"bloques": [{"tipo": "separador", "estilo": Explosivo()}]},
-        {"bloques": [{"tipo": "separador", "posicion": Explosivo()}]},
-        {"bloques": [{"tipo": "seccion", "contenido": {"a": 1}}]},
-        {"bloques": ["texto", {"tipo": object()}]},
+        {"blocks": None},
+        {"blocks": "x"},
+        {"blocks": 7},
+        {"blocks": {"type": "section"}},
+        {"blocks": [None, 3, "s", [], (), {}]},
+        {"blocks": [{"type": "other"}]},
+        {"blocks": [{"type": "section", "title": Explosivo()}]},
+        {"blocks": [{"type": "separator", "style": Explosivo()}]},
+        {"blocks": [{"type": "separator", "position": Explosivo()}]},
+        {"blocks": [{"type": "section", "content": {"a": 1}}]},
+        {"blocks": ["texto", {"type": object()}]},
     ]
     for datos in casos:
-        salida = _migrar_datos(datos)
+        salida = migrate_data(datos)
         assert isinstance(salida, dict)
-        assert isinstance(salida["bloques"], list)
+        assert isinstance(salida["blocks"], list)
 
 
 # ---------------------------------------------------------------------------
@@ -329,9 +545,9 @@ def test_bloques_formas_raras_nunca_lanzan():
 # ---------------------------------------------------------------------------
 
 PREFS_PRUEBA = {
-    "papel": "a4",
-    "margenes": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
-    "fuente": 11,
+    "paper": "a4",
+    "margins": {"top": 2.0, "bottom": 2.0, "left": 2.0, "right": 2.0},
+    "font_size": 11,
 }
 
 
@@ -346,35 +562,35 @@ class _Explosivo:
 
 
 def _sin_bloque_datos(tex):
-    inicio = tex.index(tex_datos.MARCA_INICIO)
-    fin = tex.index(tex_datos.MARCA_FIN, inicio)
+    inicio = tex.index(tex_datos.MARK_START)
+    fin = tex.index(tex_datos.MARK_END, inicio)
     fin = tex.index("\n", fin) + 1
     return tex[:inicio] + tex[fin:]
 
 
 def test_orden_secciones_defecto_exacto():
-    assert latex_gen.ORDEN_SECCIONES_DEFECTO == (
-        "perfil", "educacion", "proyectos", "proyectosu", "pasantia",
-        "trabajo", "habilidades", "idiomas", "referencias",
+    assert latex_gen.DEFAULT_SECTION_ORDER == (
+        "summary", "education", "projects", "university_projects", "internships",
+        "work", "skills", "languages", "references",
     )
 
 
 def test_normalizar_orden_secciones_contrato():
-    defecto = list(latex_gen.ORDEN_SECCIONES_DEFECTO)
-    assert latex_gen.normalizar_orden_secciones({}) == defecto
-    assert latex_gen.normalizar_orden_secciones({"orden_secciones": []}) == defecto
-    assert latex_gen.normalizar_orden_secciones(
-        {"orden_secciones": ["trabajo", "perfil"]}
+    defecto = list(latex_gen.DEFAULT_SECTION_ORDER)
+    assert latex_gen.normalize_section_order({}) == defecto
+    assert latex_gen.normalize_section_order({"section_order": []}) == defecto
+    assert latex_gen.normalize_section_order(
+        {"section_order": ["work", "summary"]}
     ) == [
-        "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
-        "pasantia", "habilidades", "idiomas", "referencias",
+        "work", "summary", "education", "projects", "university_projects",
+        "internships", "skills", "languages", "references",
     ]
     # Dedup conservando la primera aparicion y claves invalidas descartadas.
-    assert latex_gen.normalizar_orden_secciones(
-        {"orden_secciones": ["trabajo", "marte", "trabajo", "perfil", None, 7]}
+    assert latex_gen.normalize_section_order(
+        {"section_order": ["work", "marte", "work", "summary", None, 7]}
     ) == [
-        "trabajo", "perfil", "educacion", "proyectos", "proyectosu",
-        "pasantia", "habilidades", "idiomas", "referencias",
+        "work", "summary", "education", "projects", "university_projects",
+        "internships", "skills", "languages", "references",
     ]
 
 
@@ -385,32 +601,32 @@ def test_normalizar_orden_secciones_contrato():
         "x",
         7,
         [],
-        {"orden_secciones": None},
-        {"orden_secciones": "trabajo"},
-        {"orden_secciones": {"trabajo": 1}},
-        {"orden_secciones": [b"bytes"]},
-        {"orden_secciones": [_Explosivo()]},
+        {"section_order": None},
+        {"section_order": "work"},
+        {"section_order": {"work": 1}},
+        {"section_order": [b"bytes"]},
+        {"section_order": [_Explosivo()]},
     ],
 )
 def test_normalizar_orden_secciones_no_lanza(data):
-    resultado = latex_gen.normalizar_orden_secciones(data)
-    assert list(resultado) == list(latex_gen.ORDEN_SECCIONES_DEFECTO)
+    resultado = latex_gen.normalize_section_order(data)
+    assert list(resultado) == list(latex_gen.DEFAULT_SECTION_ORDER)
 
 
 def test_titulo_personalizado_contrato():
-    assert latex_gen.titulo_personalizado({}, "perfil") is None
-    assert latex_gen.titulo_personalizado({"titulos_seccion": {}}, "perfil") is None
-    assert latex_gen.titulo_personalizado(
-        {"titulos_seccion": {"perfil": "  Sobre mí  "}}, "perfil"
+    assert latex_gen.custom_section_title({}, "summary") is None
+    assert latex_gen.custom_section_title({"section_titles": {}}, "summary") is None
+    assert latex_gen.custom_section_title(
+        {"section_titles": {"summary": "  Sobre mí  "}}, "summary"
     ) == "Sobre mí"
-    assert latex_gen.titulo_personalizado(
-        {"titulos_seccion": {"perfil": 5}}, "perfil"
+    assert latex_gen.custom_section_title(
+        {"section_titles": {"summary": 5}}, "summary"
     ) == "5"
-    assert latex_gen.titulo_personalizado(
-        {"titulos_seccion": {"perfil": "   "}}, "perfil"
+    assert latex_gen.custom_section_title(
+        {"section_titles": {"summary": "   "}}, "summary"
     ) is None
-    assert latex_gen.titulo_personalizado(
-        {"titulos_seccion": {"perfil": None}}, "perfil"
+    assert latex_gen.custom_section_title(
+        {"section_titles": {"summary": None}}, "summary"
     ) is None
 
 
@@ -421,26 +637,26 @@ def test_titulo_personalizado_contrato():
         "x",
         7,
         [],
-        {"titulos_seccion": None},
-        {"titulos_seccion": "x"},
-        {"titulos_seccion": 7},
-        {"titulos_seccion": {"perfil": _Explosivo()}},
+        {"section_titles": None},
+        {"section_titles": "x"},
+        {"section_titles": 7},
+        {"section_titles": {"summary": _Explosivo()}},
     ],
 )
 def test_titulo_personalizado_no_lanza(data):
-    assert latex_gen.titulo_personalizado(data, "perfil") is None
+    assert latex_gen.custom_section_title(data, "summary") is None
 
 
 def test_seccion_oculta_contrato():
-    assert latex_gen.seccion_oculta({}, "perfil") is False
-    assert latex_gen.seccion_oculta(
-        {"secciones_ocultas": ["perfil"]}, "perfil"
+    assert latex_gen.is_section_hidden({}, "summary") is False
+    assert latex_gen.is_section_hidden(
+        {"hidden_sections": ["summary"]}, "summary"
     ) is True
-    assert latex_gen.seccion_oculta(
-        {"secciones_ocultas": ["idiomas"]}, "perfil"
+    assert latex_gen.is_section_hidden(
+        {"hidden_sections": ["languages"]}, "summary"
     ) is False
-    assert latex_gen.seccion_oculta(
-        {"secciones_ocultas": "perfil"}, "perfil"
+    assert latex_gen.is_section_hidden(
+        {"hidden_sections": "summary"}, "summary"
     ) is False
 
 
@@ -451,30 +667,30 @@ def test_seccion_oculta_contrato():
         "x",
         7,
         [],
-        {"secciones_ocultas": None},
-        {"secciones_ocultas": 7},
-        {"secciones_ocultas": {"perfil": True}},
-        {"secciones_ocultas": [_Explosivo()]},
+        {"hidden_sections": None},
+        {"hidden_sections": 7},
+        {"hidden_sections": {"summary": True}},
+        {"hidden_sections": [_Explosivo()]},
     ],
 )
 def test_seccion_oculta_no_lanza(data):
-    resultado = latex_gen.seccion_oculta(data, "perfil")
+    resultado = latex_gen.is_section_hidden(data, "summary")
     assert isinstance(resultado, bool)
     assert resultado is False
 
 
 def test_build_tex_orden_titulos_y_ocultas():
-    d = latex_gen.datos_vacios()
-    d["idioma_cv"] = "es"
-    d["perfil"] = "Perfil visible."
-    d["trabajo"] = [{"puesto": "Desarrolladora", "empresa": "Acme"}]
-    d["idiomas"] = [{"idioma": "Español", "nivel": "Nativo"}]
-    d["orden_secciones"] = ["trabajo", "perfil", "idiomas"]
-    d["secciones_ocultas"] = ["idiomas"]
-    d["titulos_seccion"] = {"trabajo": "I+D 100% & ~"}
-    d["bloques"] = [
-        {"id": "b1", "tipo": "separador", "estilo": "linea", "posicion": "idiomas"},
-        {"id": "b2", "tipo": "separador", "estilo": "banda", "posicion": "referencias"},
+    d = latex_gen.empty_data()
+    d["cv_language"] = "es"
+    d["summary"] = "Perfil visible."
+    d["work"] = [{"position": "Desarrolladora", "company": "Acme"}]
+    d["languages"] = [{"language": "Español", "level": "Nativo"}]
+    d["section_order"] = ["work", "summary", "languages"]
+    d["hidden_sections"] = ["languages"]
+    d["section_titles"] = {"work": "I+D 100% & ~"}
+    d["blocks"] = [
+        {"id": "b1", "type": "separator", "style": "line", "position": "languages"},
+        {"id": "b2", "type": "separator", "style": "band", "position": "references"},
     ]
     tex = latex_gen.build_tex(d, PREFS_PRUEBA)
     cuerpo = tex[tex.index("\\begin{document}"):]
@@ -487,66 +703,66 @@ def test_build_tex_orden_titulos_y_ocultas():
     assert "\\cvsection{Idiomas}" not in cuerpo
     assert "Español" not in cuerpo
     # ...pero su bloque anclado sigue renderizandose en esa posicion.
-    idx_linea = cuerpo.index("\\cvbloquelinea")
+    idx_linea = cuerpo.index("\\cvblockline")
     assert idx_perfil < idx_linea
-    assert "\\cvbloquebanda" in cuerpo
+    assert "\\cvblockband" in cuerpo
 
 
 @pytest.mark.parametrize(
     "basura",
     [
-        {"orden_secciones": "trabajo"},
-        {"orden_secciones": [None, 7, {"x": 1}, "perfil", "perfil"]},
-        {"titulos_seccion": ["no", "dict"]},
-        {"titulos_seccion": {"perfil": ""}},
-        {"secciones_ocultas": {"perfil": True}},
-        {"secciones_ocultas": None},
-        {"orden_secciones": None, "titulos_seccion": None, "secciones_ocultas": None},
+        {"section_order": "work"},
+        {"section_order": [None, 7, {"x": 1}, "summary", "summary"]},
+        {"section_titles": ["no", "dict"]},
+        {"section_titles": {"summary": ""}},
+        {"hidden_sections": {"summary": True}},
+        {"hidden_sections": None},
+        {"section_order": None, "section_titles": None, "hidden_sections": None},
     ],
 )
 def test_build_tex_tolera_basura_en_las_tres_claves(basura):
-    d = latex_gen.datos_vacios()
+    d = latex_gen.empty_data()
     d.update(basura)
     tex = latex_gen.build_tex(d, PREFS_PRUEBA)
     assert "{{" not in tex
-    assert tex_datos.extraer(tex) == d
+    assert tex_datos.extract(tex) == d
 
 
-@pytest.mark.parametrize("plantilla", latex_gen.PLANTILLAS)
+@pytest.mark.parametrize("plantilla", latex_gen.TEMPLATES)
 def test_build_tex_defaults_no_cambian_la_salida(plantilla):
-    d = latex_gen.datos_vacios()
-    d["plantilla"] = plantilla
-    d["idioma_cv"] = "es"
-    d["perfil"] = "Perfil breve."
-    d["trabajo"] = [{"puesto": "Dev", "empresa": "Acme"}]
-    d["habilidades"] = [{"categoria": "Lenguajes", "valores": "Python"}]
-    d["idiomas"] = [{"idioma": "Inglés", "nivel": "B2"}]
-    d["referencias"] = [{"nombre": "Ana", "contacto": "ana@example.com"}]
-    d["bloques"] = [
-        {"id": "b", "tipo": "separador", "estilo": "banda", "posicion": "trabajo"},
+    d = latex_gen.empty_data()
+    d["template"] = plantilla
+    d["cv_language"] = "es"
+    d["summary"] = "Perfil breve."
+    d["work"] = [{"position": "Dev", "company": "Acme"}]
+    d["skills"] = [{"category": "Lenguajes", "values": "Python"}]
+    d["languages"] = [{"language": "Inglés", "level": "B2"}]
+    d["references"] = [{"name": "Ana", "contact": "ana@example.com"}]
+    d["blocks"] = [
+        {"id": "b", "type": "separator", "style": "band", "position": "work"},
     ]
     sin_claves = {
         k: v for k, v in d.items()
-        if k not in ("titulos_seccion", "secciones_ocultas", "orden_secciones")
+        if k not in ("section_titles", "hidden_sections", "section_order")
     }
     tex_sin = _sin_bloque_datos(latex_gen.build_tex(sin_claves, PREFS_PRUEBA))
     tex_con = _sin_bloque_datos(latex_gen.build_tex(d, PREFS_PRUEBA))
     assert tex_con == tex_sin
 
 
-def test_build_tex_chino_respeta_titulos_y_ocultas():
-    d = latex_gen.datos_vacios()
-    d["plantilla"] = "chino"
-    d["trabajo"] = [{
-        "puesto": "工程师", "empresa": "公司", "desde": "2020", "hasta": "2024",
+def test_build_tex_chinese_respeta_titulos_y_ocultas():
+    d = latex_gen.empty_data()
+    d["template"] = "chinese"
+    d["work"] = [{
+        "position": "工程师", "company": "公司", "start": "2020", "end": "2024",
     }]
-    d["educacion"] = [{"tipo": "本科", "titulo": "计算机", "institucion": "大学"}]
-    d["orden_secciones"] = ["trabajo"]
-    d["secciones_ocultas"] = ["educacion"]
-    d["titulos_seccion"] = {"trabajo": "Trabajo & I+D"}
+    d["education"] = [{"degree_type": "bachelor", "degree": "计算机", "institution": "大学"}]
+    d["section_order"] = ["work"]
+    d["hidden_sections"] = ["education"]
+    d["section_titles"] = {"work": "Trabajo & I+D"}
     tex = latex_gen.build_tex(d, PREFS_PRUEBA)
     cuerpo = tex[tex.index("\\begin{document}"):]
     assert "\\cvsection{Trabajo \\& I+D}" in cuerpo
     assert "计算机" not in cuerpo
-    assert "\\cvcnlinea" in cuerpo
-    assert tex_datos.extraer(tex) == d
+    assert "\\cvcnline" in cuerpo
+    assert tex_datos.extract(tex) == d
