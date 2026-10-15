@@ -29,6 +29,7 @@ import tex_datos
 
 BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(BASE_DIR, "web")
+ICON_PATH = os.path.join(BASE_DIR, "assets", "CVLaTex.ico")
 ROUTES = {
     "/app.js": os.path.join(WEB_DIR, "app.js"),
     "/style.css": os.path.join(WEB_DIR, "style.css"),
@@ -1326,7 +1327,11 @@ def main():
     )
     api._w = win
     win.events.closing += api._on_closing
-    webview.start()
+    # Window/taskbar icon when the asset is present (dev tree or a build that
+    # bundles assets/); otherwise pass None and Windows falls back to the exe
+    # icon embedded by PyInstaller --icon. The guard also avoids handing GTK a
+    # missing path.
+    webview.start(icon=ICON_PATH if os.path.isfile(ICON_PATH) else None)
     server.shutdown()
 
 

@@ -123,5 +123,5 @@ Backend smoke check and LaTeX round-trip check (no GUI, no LaTeX):
 Build the one-file executable with PyInstaller; it produces `dist\CVLaTeX.exe`:
 
 ```powershell
-.venv\Scripts\pyinstaller.exe --noconfirm --onefile --windowed --name CVLaTeX --add-data "web;web" --add-data "templates;templates" main.py
+.venv\Scripts\pyinstaller.exe --noconfirm --onefile --windowed --name CVLaTeX --icon "assets\CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
 ```
