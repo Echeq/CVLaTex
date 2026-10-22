@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVLaTeX preview</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #2f3136; color: #eceff4;
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #pages {
+    box-sizing: border-box; height: 100%; overflow-y: scroll; overflow-x: auto;
+    padding: 8px;
+  }
+  #pages canvas {
+    display: block; margin: 0 auto 10px; background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  }
+  #message {
+    box-sizing: border-box; max-width: 46em; margin: 48px auto; padding: 18px 20px;
+    background: #3a3d42; border: 1px solid #55585e; border-radius: 8px;
+    color: #eceff4;
+  }
+  #message h1 { margin: 0 0 8px; font-size: 16px; }
+  #message p { margin: 0; color: #c7ccd4; }
+</style>
+</head>
+<body>
+<div id="message" hidden>
+  <h1>Preview unavailable</h1>
+  <p id="message-text"></p>
+</div>
+<div id="pages"></div>
+
+<script>
+  /* Registered before pdf.min.js loads so a failed script request is reported
+     to the app (which then shows the system-viewer fallback). */
+  (function () {
+    var reported = false;
+    window.__cvlatexPdfFail = function (err) {
+      var text = String(err && err.message ? err.message : err);
+      var message = document.getElementById("message");
+      var textEl = document.getElementById("message-text");
+      var pages = document.getElementById("pages");
+      if (textEl) textEl.textContent = text;
+      if (message) message.hidden = false;
+      if (pages) pages.hidden = true;
+      if (reported) return;
+      reported = true;
+      try {
+        parent.postMessage({ type: "cvlatex-pdf-error", message: text }, "*");
+      } catch (e) { /* the parent may already be gone */ }
+    };
+    window.addEventListener("error", function (event) {
+      var target = event && event.target;
+      var detail = event && (event.message || (event.error && event.error.message));
+      if (!detail && target && target.src) detail = "Could not load " + target.src;
+      window.__cvlatexPdfFail(detail || "Unknown error");
+    }, true);
+    window.addEventListener("unhandledrejection", function (event) {
+      window.__cvlatexPdfFail(event && event.reason ? event.reason : "Unknown error");
+    });
+  })();
+</script>
+<script src="pdf.min.js"></script>
+<script>
+  (function () {
+    "use strict";
+
+    var pages = document.getElementById("pages");
+    var fail = window.__cvlatexPdfFail;
+    var params = new URLSearchParams(window.location.search);
+    var file = params.get("file") || "";
+    var zoom = Number(params.get("zoom"));
+    var version = params.get("v") || "";
+
+    if ([75, 100, 125].indexOf(zoom) < 0) zoom = 100;
+
+    if (typeof pdfjsLib === "undefined") {
+      fail("PDF.js could not be loaded.");
+      return;
+    }
+    if (file.indexOf("/preview/") !== 0 || file.indexOf("..") >= 0) {
+      fail("Invalid PDF path.");
+      return;
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      new URL("pdf.worker.min.js", window.location.href).href;
+
+    var pdfUrl = file + (version ? "?v=" + encodeURIComponent(version) : "");
+    var dpr = window.devicePixelRatio || 1;
+    var doc = null;
+    var token = 0;
+    var resizeTimer = null;
+
+    function ready() {
+      try {
+        parent.postMessage({ type: "cvlatex-pdf-ready" }, "*");
+      } catch (e) { /* the parent may already be gone */ }
+    }
+
+    async function renderAll() {
+      if (!doc) return;
+      var myToken = ++token;
+      var width = hostWidth();
+      pages.textContent = "";
+
+      var first = await doc.getPage(1);
+      if (myToken !== token) return;
+
+      var firstViewport = first.getViewport({ scale: 1 });
+      var fit = width / firstViewport.width;
+
+      for (var number = 1; number <= doc.numPages; number++) {
+        if (myToken !== token) return;
+        var page = number === 1 ? first : await doc.getPage(number);
+        if (myToken !== token) return;
+
+        var viewport = page.getViewport({ scale: fit * (zoom / 100) * dpr });
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        canvas.style.width = Math.floor(viewport.width / dpr) + "px";
+        canvas.style.height = Math.floor(viewport.height / dpr) + "px";
+        pages.appendChild(canvas);
+
+        var context = canvas.getContext("2d", { alpha: false });
+        await page.render({ canvasContext: context, viewport: viewport }).promise;
+        if (myToken !== token) return;
+      }
+
+      if (myToken === token) ready();
+    }
+
+    function hostWidth() {
+      /* 8 px padding on each side keeps the fitted page clear of the edges. */
+      return Math.max(1, pages.clientWidth - 16);
+    }
+
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        renderAll().catch(fail);
+      }, 250);
+    });
+
+    pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false }).promise
+      .then(function (loaded) {
+        doc = loaded;
+        return renderAll();
+      })
+      .catch(fail);
+  })();
+</script>
+</body>
+</html>

@@ -42,12 +42,15 @@ const state = {
   prefs: null,
   filePath: null,
   latexOk: false,
+  needsSetup: false,
   mode: "form",
   tex: null,
   texManual: null,
   texEdited: false,
   dirty: false,
   compileId: 0,
+  compiling: false,
+  pendingCompile: false,
   timer: null,
   zoom: 100,
   undoStack: [],
@@ -56,6 +59,8 @@ const state = {
   statusSuffix: "",
   statusClass: "",
   preview: { state: "idle" },
+  pdfViewer: false,
+  pdfTimeout: null,
 };
 
 let emptyData = null;
@@ -74,6 +79,10 @@ const TEMPLATES_CV = [
   { value: "sidebar", labelKey: "template_sidebar" },
   { value: "sidebar-right", labelKey: "template_sidebar_right" },
   { value: "chinese", labelKey: "template_chinese" },
+  { value: "tabbed", labelKey: "template_tabbed" },
+  { value: "ribbon", labelKey: "template_ribbon" },
+  { value: "navy", labelKey: "template_navy" },
+  { value: "playful", labelKey: "template_playful" },
 ];
 
 const THEMES = ["light", "dark", "system"];
@@ -471,7 +480,7 @@ async function newCv() {
     updateMarks();
     markDirty(false);
     clearAutosave();
-    scheduleCompile();
+    compileAfterLoad();
     toast(t("toast_new"));
   });
 }
@@ -488,7 +497,7 @@ async function openCv() {
       updateMarks();
       markDirty(false);
       clearAutosave();
-      scheduleCompile();
+      compileAfterLoad();
       toast(t("toast_opened").replace("{path}", r.ruta));
     };
     if (hasContent()) {
@@ -582,7 +591,7 @@ async function importTex() {
       updateMarks();
       markDirty(false);
       clearAutosave();
-      scheduleCompile();
+      compileAfterLoad();
       toast(t("toast_tex_imported").replace("{path}", r.ruta));
     };
     if (hasContent()) {
@@ -597,20 +606,24 @@ async function importTex() {
 
 async function loadSample() {
   const apply = async () => {
-    const r = await api.load_sample(state.data.template);
+    const activeTemplate = state.data.template;
+    const r = await api.load_sample(state.data.cv_language);
     if (!r.ok) {
       toast((r.errores && r.errores[0]) || t("toast_sample_error"));
       return;
     }
     if (state.mode === "latex") exitLatexMode(false);
     state.data = r.datos;
+    state.data.template = TEMPLATES_CV.some((tpl) => tpl.value === activeTemplate)
+      ? activeTemplate
+      : "classic";
     state.filePath = null;
     clearHistory();
     renderForm();
     updateMarks();
     markDirty(false);
     clearAutosave();
-    scheduleCompile();
+    compileAfterLoad();
     toast(t("toast_sample_loaded"));
   };
   if (hasContent()) {
@@ -674,21 +687,66 @@ function toggleOption(option) {
 
 /* ---------------- compilation ---------------- */
 
+/* A burst of keystrokes must compile once, not once per key: the debounce is
+   long enough to outlast normal typing and the single-flight guard below keeps
+   a compile that is still running from spawning a queue of parallel ones. */
+const COMPILE_DEBOUNCE_MS = 700;
+
 function scheduleCompile() {
   if (!state.prefs || !state.prefs.auto_compile) return;
   clearTimeout(state.timer);
-  state.timer = setTimeout(compileNow, 400);
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    if (state.compiling) {
+      state.pendingCompile = true;
+      return;
+    }
+    compileNow();
+  }, COMPILE_DEBOUNCE_MS);
 }
 
+/* Explicit document replacement (new/open/import/sample) must refresh the
+   preview even when auto-compile is off: it is not an incremental edit. The
+   pending debounce is dropped so auto-compile on never compiles twice. An
+   in-flight compile for the replaced document must not run in parallel. */
+function compileAfterLoad() {
+  clearTimeout(state.timer);
+  if (state.compiling) {
+    state.pendingCompile = true;
+    return;
+  }
+  compileNow();
+}
+
+/* Latest-only queue: while a compile is in flight, any new request only marks
+   `pendingCompile`; `__onCompile` starts exactly one follow-up compile when the
+   current one finishes, so the last document replaces the intermediate ones. */
 async function compileNow() {
   if (!api || (state.mode === "latex" && state.texManual == null && !state.tex)) return;
+  if (state.compiling) {
+    state.pendingCompile = true;
+    return;
+  }
+  state.compiling = true;
   const id = ++state.compileId;
   state.preview = { state: "compiling" };
   renderPreviewStatus();
-  if (state.mode === "latex") {
-    await api.compile_tex(state.texManual !== null ? state.texManual : state.tex, id, state.data);
-  } else {
-    await api.compile(state.data, id);
+  try {
+    if (state.mode === "latex") {
+      await api.compile_tex(state.texManual !== null ? state.texManual : state.tex, id, state.data);
+    } else {
+      await api.compile(state.data, id);
+    }
+  } catch (e) {
+    state.compiling = false;
+    state.preview = { state: "error", errors: 0 };
+    renderPreviewStatus();
+    setStatus("compile_failed", "error");
+    console.error(e);
+    if (state.pendingCompile) {
+      state.pendingCompile = false;
+      compileNow();
+    }
   }
 }
 
@@ -703,12 +761,28 @@ function renderPreviewStatus() {
   else el.textContent = t("waiting");
 }
 
-/* Linux webviews cannot render PDFs inline: show the notice with the button
-   that opens the last compiled PDF with the system viewer. Hidden elsewhere. */
+/* Linux WebKitGTK cannot render PDFs inline, so there #pdf points at the
+   bundled PDF.js viewer. The notice with the system-viewer button stays hidden
+   unless PDF.js fails to load or render (message or watchdog). */
 function setupPreviewFallback(platform) {
+  state.pdfViewer = platform === "linux";
   const notice = $("#preview-notice");
-  if (!notice) return;
-  notice.hidden = platform !== "linux";
+  if (notice) notice.hidden = true;
+  window.addEventListener("message", (event) => {
+    const pdf = $("#pdf");
+    if (pdf && event.source && event.source !== pdf.contentWindow) return;
+    const data = event.data || {};
+    if (data.type === "cvlatex-pdf-ready") {
+      clearTimeout(state.pdfTimeout);
+      state.pdfTimeout = null;
+      if (notice) notice.hidden = true;
+    } else if (data.type === "cvlatex-pdf-error") {
+      clearTimeout(state.pdfTimeout);
+      state.pdfTimeout = null;
+      if (notice) notice.hidden = false;
+      toast(data.message || t("preview_linux_notice"));
+    }
+  });
 }
 
 async function openPreview() {
@@ -720,9 +794,19 @@ async function openPreview() {
 
 /* ---------------- preview zoom ---------------- */
 
-// The #zoom=<pct>&view=FitH fragment is interpreted by the PDF viewer. If the
-// embedded WebView2 viewer ignores it, the fallback is the page-sized PDF: the
-// zoom is only a visual setting and never affects the .tex nor the PDF.
+// Linux loads web/pdfjs/viewer.html (a local PDF.js build) in #pdf. Windows and
+// macOS keep the native viewer: the #zoom=<pct>&view=FitH fragment is
+// interpreted by it. If the embedded WebView2 viewer ignores it, the fallback
+// is the page-sized PDF: the zoom is only a visual setting and never affects
+// the .tex nor the PDF.
+function pdfPreviewUrl(version) {
+  if (state.pdfViewer) {
+    return "/pdfjs/viewer.html?file=%2Fpreview%2Fmain.pdf&v=" + version +
+      "&zoom=" + state.zoom;
+  }
+  return "/preview/main.pdf?v=" + version + "#zoom=" + state.zoom + "&view=FitH";
+}
+
 function applyZoom(pct) {
   const values = [75, 100, 125];
   const value = values.indexOf(Number(pct)) >= 0 ? Number(pct) : (state.zoom || 100);
@@ -732,30 +816,47 @@ function applyZoom(pct) {
     if (button) button.classList.toggle("active", v === value);
   });
   const pdf = $("#pdf");
-  if (pdf) pdf.src = "/preview/main.pdf?v=" + Date.now() + "#zoom=" + value + "&view=FitH";
+  if (!pdf) return;
+  if (state.pdfViewer) {
+    clearTimeout(state.pdfTimeout);
+    state.pdfTimeout = setTimeout(() => {
+      state.pdfTimeout = null;
+      const notice = $("#preview-notice");
+      if (notice) notice.hidden = false;
+    }, 12000);
+  }
+  pdf.src = pdfPreviewUrl(Date.now());
 }
 
 window.__onCompile = function (res) {
-  if (res.id !== state.compileId) return;
-  if (res.ok) {
-    $("#errors").hidden = true;
-    $("#engine-warning").hidden = true;
-    applyZoom(state.zoom);
-    state.preview = { state: "ok" };
-    renderPreviewStatus();
-    setStatus("");
-  } else {
-    state.preview = { state: "error", errors: res.errores.length };
-    renderPreviewStatus();
-    const box = $("#errors");
-    box.innerHTML = "<ul>" + res.errores.map((e) => "<li>" + escapeHtml(e) + "</li>").join("") + "</ul>";
-    box.hidden = false;
-    setStatus("compile_failed", "error");
+  state.compiling = false;
+  /* A stale result belongs to a document that is no longer on screen: never
+     let it overwrite the preview, but do run the one pending compile. */
+  if (res.id === state.compileId) {
+    if (res.ok) {
+      $("#errors").hidden = true;
+      $("#engine-warning").hidden = true;
+      applyZoom(state.zoom);
+      state.preview = { state: "ok" };
+      renderPreviewStatus();
+      setStatus("");
+    } else {
+      state.preview = { state: "error", errors: res.errores.length };
+      renderPreviewStatus();
+      const box = $("#errors");
+      box.innerHTML = "<ul>" + res.errores.map((e) => "<li>" + escapeHtml(e) + "</li>").join("") + "</ul>";
+      box.hidden = false;
+      setStatus("compile_failed", "error");
+    }
+    if (res.tex) state.tex = res.tex;
+    if (state.mode === "latex" && state.texManual === null && res.tex) {
+      const area = $("#latex-text");
+      if (area) area.value = res.tex;
+    }
   }
-  if (res.tex) state.tex = res.tex;
-  if (state.mode === "latex" && state.texManual === null && res.tex) {
-    const area = $("#latex-text");
-    if (area) area.value = res.tex;
+  if (state.pendingCompile) {
+    state.pendingCompile = false;
+    compileNow();
   }
 };
 
@@ -2581,11 +2682,24 @@ async function checkEnginePrefs() {
   state.latexOk = r.ok;
 }
 
-function onLanguageChange(event) {
+async function onLanguageChange(event) {
   setLang(event.target.value);
   applyI18n(document);
   document.title = t("app_title");
-  if (api) api.set_prefs("ui_language", event.target.value);
+  if (api) {
+    try {
+      // A new CV's document language follows the interface language, so the
+      // cached empty defaults must be refreshed here too. Only a pristine
+      // document adopts the new default; a document with content is kept.
+      const wasEmpty = !dataHasContent(state.data);
+      state.prefs = await api.set_prefs("ui_language", event.target.value);
+      const fresh = await api.empty_data();
+      emptyData = fresh;
+      if (wasEmpty) state.data = JSON.parse(JSON.stringify(fresh));
+    } catch (e) {
+      console.error(e);
+    }
+  }
   renderForm();
   updateMarks();
   refreshBlockLists();
@@ -2698,13 +2812,15 @@ function setupModals() {
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       $$(".modal").forEach((modal) => {
-        if (!modal.hidden) closeModal(modal);
+        if (!modal.hidden && modal.dataset.static !== "true") closeModal(modal);
       });
     }
   });
   $$(".modal").forEach((modal) => {
     modal.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal")) closeModal(e.target);
+      if (e.target.classList.contains("modal") && modal.dataset.static !== "true") {
+        closeModal(e.target);
+      }
     });
   });
 }
@@ -2843,6 +2959,55 @@ function applyResponsive() {
   applySplit(state.prefs && state.prefs.split);
 }
 
+/* ---------------- first-run language ---------------- */
+
+function showStartupLanguage() {
+  const select = $("#startup-language");
+  select.value = (state.prefs && state.prefs.ui_language) || "en";
+  $("#modal-language").hidden = false;
+  select.focus();
+}
+
+async function chooseStartupLanguage() {
+  const lang = $("#startup-language").value || "en";
+  setLang(lang);
+  applyI18n(document);
+  document.title = t("app_title");
+  if (api) {
+    try {
+      state.prefs = await api.set_prefs("ui_language", lang);
+      state.prefs = await api.set_prefs("ui_language_chosen", true);
+      /* The backend derives a new CV's document language from the interface
+         language, so an empty first-run document must adopt it now. A
+         recovered/edited document is left untouched. */
+      if (!dataHasContent(state.data)) {
+        emptyData = await api.empty_data();
+        state.data = JSON.parse(JSON.stringify(emptyData));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+  $("#modal-language").hidden = true;
+  renderForm();
+  updateMarks();
+  refreshBlockLists();
+  renderPreviewStatus();
+  renderStatus();
+  if (state.needsSetup) openWizard();
+  else compileNow();
+}
+
+function setupStartupLanguage() {
+  $("#language-continue").addEventListener("click", chooseStartupLanguage);
+  $("#startup-language").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      chooseStartupLanguage();
+    }
+  });
+}
+
 /* ---------------- startup ---------------- */
 
 async function startApp() {
@@ -2867,6 +3032,7 @@ async function startApp() {
     emptyData = await api.empty_data();
     state.data = JSON.parse(JSON.stringify(emptyData));
     state.latexOk = info.latex_ok;
+    state.needsSetup = !!info.needs_setup;
 
     let pendingAutosave = null;
     try {
@@ -2890,6 +3056,7 @@ async function startApp() {
     setupMargins();
     setupConfirm();
     setupModals();
+    setupStartupLanguage();
     setupCrop();
     setupBlocks();
     setupSplitter();
@@ -2898,7 +3065,8 @@ async function startApp() {
 
     if (pendingAutosave && dataHasContent(pendingAutosave)) offerRecovery(pendingAutosave);
     else if (pendingAutosave) clearAutosave();
-    if (info.needs_setup) openWizard();
+    if (info.needs_language) showStartupLanguage();
+    else if (state.needsSetup) openWizard();
     else compileNow();
   } catch (e) {
     setStatus("status_start_error", "error", (e && e.message ? e.message : e));

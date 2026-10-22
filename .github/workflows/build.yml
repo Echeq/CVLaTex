@@ -1,11 +1,14 @@
 # Build-only CI: compiles CVLaTeX on the three platforms and uploads the
-# bundles as artifacts. It never publishes a release.
+# platform-suffixed bundles (CVLaTeX_Windows.exe, CVLaTeX_Linux,
+# CVLaTeX_macOS.zip) as artifacts. It never publishes a release.
 #
 # Linux runtime note: the frozen bundle still needs the system WebKitGTK and
 # GObject-introspection packages on the TARGET machine (Debian/Ubuntu:
 # python3-gi, gir1.2-webkit2-4.1 and libwebkit2gtk-4.1-dev, or the Qt5/Qt6
 # equivalent), because PyInstaller cannot bundle the native webview engine.
-# The Linux job installs them only so the build environment is complete.
+# The Linux job installs them (plus python3-venv) so the build venv can import
+# gi and PyInstaller can bundle the GTK backend; build.sh recreates the venv
+# with --system-site-packages against /usr/bin/python3 to make that visible.
 
 name: build
 
@@ -21,14 +24,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: CVLaTeX-windows
-            path: CVLaTeX-windows.exe
+            artifact: CVLaTeX_Windows
+            path: dist/CVLaTeX_Windows.exe
           - os: ubuntu-latest
-            artifact: CVLaTeX-linux
-            path: CVLaTeX-linux
+            artifact: CVLaTeX_Linux
+            path: dist/CVLaTeX_Linux
           - os: macos-latest
-            artifact: CVLaTeX-macos
-            path: CVLaTeX-macos.zip
+            artifact: CVLaTeX_macOS
+            path: dist/CVLaTeX_macOS.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +44,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
+          sudo apt-get install -y python3-gi python3-venv gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
 
       - name: Install Python dependencies
         run: |
@@ -52,26 +55,20 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           pyinstaller --noconfirm --onefile --windowed --name CVLaTeX --icon "assets/CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
-          Copy-Item dist/CVLaTeX.exe CVLaTeX-windows.exe
+          Move-Item -Force dist/CVLaTeX.exe dist/CVLaTeX_Windows.exe
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
         run: |
           chmod +x build.sh
-          ./build.sh
-          cp dist/CVLaTeX CVLaTeX-linux
-          chmod +x CVLaTeX-linux
+          PYTHON=/usr/bin/python3 ./build.sh
+          chmod +x dist/CVLaTeX_Linux
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
         run: |
           chmod +x build.sh
           ./build.sh
-          if [ -d dist/CVLaTeX.app ]; then
-            cd dist && zip -r ../CVLaTeX-macos.zip CVLaTeX.app
-          else
-            zip CVLaTeX-macos.zip dist/CVLaTeX
-          fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

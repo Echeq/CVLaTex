@@ -5,9 +5,10 @@ Windows keeps %LOCALAPPDATA%\\CVLaTeX\\prefs.json; macOS uses
 directory spec ($XDG_DATA_HOME or ~/.local/share) + /CVLaTeX.
 
 Las claves son inglesas desde la migracion: paper, margins, font_size,
-auto_compile, breakpoint, latex_path, setup_dismissed, theme, colors, split y
-ui_language. load() migra una sola vez los ficheros escritos con las claves
-antiguas en espanol y guarda una copia prefs.json.bak que nunca se pisa.
+auto_compile, breakpoint, latex_path, setup_dismissed, theme, colors, split,
+ui_language y ui_language_chosen. load() migra una sola vez los ficheros
+escritos con las claves antiguas en espanol y guarda una copia prefs.json.bak
+que nunca se pisa.
 """
 
 import json
@@ -55,6 +56,7 @@ DEFAULTS = {
     "colors": {"primary": "", "secondary": "", "text": "", "gray": ""},
     "split": 50,
     "ui_language": "en",
+    "ui_language_chosen": False,
 }
 
 # Frozen migration: legacy Spanish prefs key -> new English key.

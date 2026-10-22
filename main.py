@@ -112,6 +112,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._serve_within(prefs.BUILD_DIR, path[len("/preview/"):])
         elif path.startswith("/media/"):
             self._serve_within(prefs.CACHE_DIR, path[len("/media/"):])
+        elif path.startswith("/pdfjs/"):
+            self._serve_within(os.path.join(WEB_DIR, "pdfjs"), path[len("/pdfjs/"):])
         elif path == "/favicon.ico":
             self._no_content()
         else:
@@ -129,9 +131,17 @@ class Api:
         self._last_result = None
 
     def _push(self, name, data):
+        # ensure_ascii=True is a hard requirement, not a cosmetic choice:
+        # pywebview's GTK backend passes len(script) (characters) to WebKit's
+        # evaluate_javascript(), which expects a byte length. Any raw non-ASCII
+        # character therefore truncates the script by (utf8_bytes - chars)
+        # bytes and WebKit rejects it with "SyntaxError: Unexpected EOF"; the
+        # push is then lost and the frontend's single-flight flag never clears.
+        # Escaping every non-ASCII character keeps the script pure ASCII, so
+        # len(script) == byte length and the JSON is decoded unchanged by JS.
         try:
             self._w.evaluate_js(
-                "window.%s(%s);" % (name, json.dumps(data, ensure_ascii=False))
+                "window.%s(%s);" % (name, json.dumps(data, ensure_ascii=True))
             )
         except Exception:
             pass
@@ -235,28 +245,39 @@ class Api:
     # --------------------------------------------------------------- data
 
     def init(self):
-        prefs.load()
+        current = prefs.load()
         latex_path = latex_engine.find_pdflatex()
         return {
-            "prefs": prefs.load(),
+            "prefs": current,
             "latex_ok": latex_path is not None,
-            "needs_setup": latex_path is None and not prefs.get("setup_dismissed"),
+            "needs_setup": latex_path is None and not current.get("setup_dismissed"),
+            "needs_language": not current.get("ui_language_chosen"),
             "platform": sys.platform,
         }
 
     def empty_data(self):
-        return latex_gen.empty_data()
+        """New CV data whose document language follows the interface language.
 
-    def load_sample(self, template=None):
+        `latex_gen.empty_data()` stays canonical (`zh`) for tests; the bridge
+        maps the stored UI language (es/en/zh, Russian falls back to English)
+        so a new CV does not default to the xelatex path by accident.
+        """
+        data = latex_gen.empty_data()
+        ui = str(prefs.get("ui_language") or "en").strip().lower()
+        data["cv_language"] = ui if ui in ("zh", "es", "en") else "en"
+        return data
+
+    def load_sample(self, cv_language=None):
         try:
             import ejemplo
 
-            name = str(template or "classic").strip().lower()
-            if name not in latex_gen.TEMPLATES:
-                name = "classic"
-            data = ejemplo.sample_data_zh() if name == "chinese" else ejemplo.sample_data()
-            data["template"] = name
-            return {"ok": True, "datos": data}
+            try:
+                lang = str(cv_language or "es").strip().lower()
+            except Exception:
+                lang = "es"
+            if lang not in ("zh", "es", "en"):
+                lang = "es"
+            return {"ok": True, "datos": ejemplo.sample_data(lang)}
         except Exception as e:
             return {"ok": False, "errores": [messages.t("internal_error").format(error=e)]}
 

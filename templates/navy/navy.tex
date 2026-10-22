@@ -1,0 +1,96 @@
+% CVLaTeX template: navy
+% Minimal navy design: bold navy headings over thin rules, three-column entry
+% lines (date / title / organization) and compact square bullets. No filled
+% bands: only hairline rules in the accent and secondary blue colors.
+\documentclass[{{font_size}}pt]{article}
+
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+
+% Template palette: navy accent, neutral gray and light blue.
+\definecolor{accent}{RGB}{20,45,85}
+\definecolor{gris}{RGB}{110,118,132}
+\definecolor{acento2}{RGB}{70,110,160}
+
+% Compact lists: small navy square markers and tight vertical spacing.
+\setlength{\leftmargini}{1.2em}
+\setlength{\labelsep}{0.5em}
+\makeatletter
+\def\@listI{%
+  \leftmargin\leftmargini
+  \parsep 0\p@ \@plus 0\p@
+  \topsep 2\p@ \@plus 1\p@
+  \itemsep 1\p@ \@plus 0\p@}
+\let\@listi\@listI
+\makeatother
+\renewcommand{\labelitemi}{\raisebox{0.05em}{\color{accent}\rule{2.6pt}{2.6pt}}}
+\renewcommand{\labelitemii}{\raisebox{0.05em}{\color{acento2}\rule{2pt}{2pt}}}
+
+% Section heading: bold navy title over a thin navy rule and a lighter
+% secondary hairline. Title and rules live in one vertical box, so they never
+% split across pages, and a long title simply wraps inside it.
+\newcommand{\cvsection}[1]{%
+  \par\vspace{0.8em}%
+  \noindent\vbox{%
+    \hsize\linewidth
+    \raggedright
+    \noindent{\color{accent}\bfseries\fontsize{13}{15}\selectfont #1}\par
+    \vspace{0.14em}%
+    {\color{accent}\hrule height 0.6pt}%
+    \vspace{1pt}%
+    {\color{acento2}\hrule height 0.3pt}%
+  }\par
+  \vspace{0.35em}%
+}
+
+% Free-block separators: thin rules only, no filled bands.
+\newcommand{\cvblockline}{%
+  \par\vspace{0.5em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \par\vspace{0.5em}%
+}
+\newcommand{\cvblockband}{%
+  \par\vspace{0.5em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \vspace{1.5pt}%
+  {\color{acento2}\hrule height 0.4pt}%
+  \par\vspace{0.5em}%
+}
+\newcommand{\cvblockspace}{%
+  \par\vspace{1.8em}%
+}
+
+% Three-column entry line: date | title | organization. The date stays left,
+% the title is centered and the organization is right aligned. An empty date
+% falls back to a two-column line, so project titles start at the left margin.
+\newcommand{\cvcnline}[3]{%
+  \par\noindent
+  \if\relax\detokenize{#1}\relax
+    \parbox[t]{0.66\linewidth}{\raggedright\bfseries #2}%
+    \hfill
+    \parbox[t]{0.30\linewidth}{\raggedleft\bfseries #3}%
+  \else
+    \parbox[t]{0.22\linewidth}{\raggedright\bfseries #1}%
+    \hfill
+    \parbox[t]{0.40\linewidth}{\centering\bfseries #2}%
+    \hfill
+    \parbox[t]{0.34\linewidth}{\raggedleft\bfseries #3}%
+  \fi
+  \par\vspace{0.05em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{header}}
+
+{{body}}
+
+\end{document}

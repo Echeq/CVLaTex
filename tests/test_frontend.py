@@ -58,8 +58,9 @@ FROZEN_ACTIONS = (
     "import-tex", "settings", "undo", "redo", "paper:a4", "paper:letter",
     "paper:legal", "margins:normal", "margins:narrow", "margins:custom",
     "font:10", "font:11", "font:12", "template:classic", "template:harvard",
-    "template:modern", "template:creative", "template:chinese", "load-sample",
-    "reset-all",
+    "template:modern", "template:creative", "template:chinese",
+    "template:tabbed", "template:ribbon", "template:navy", "template:playful",
+    "load-sample", "reset-all",
     "add:columns:1", "add:columns:2", "add:columns:3", "add:period",
     "add:block-line", "add:block-band", "add:block-space", "add:section",
     "manage-blocks", "recompile", "toggle:auto-compile", "toggle:latex",
@@ -88,12 +89,13 @@ FROZEN_IDS = (
     "preview-bar", "status-bar", "pdf", "toasts", "modal-confirm",
     "modal-settings", "modal-margins", "modal-custom-section",
     "modal-list-block", "modal-blocks", "modal-help", "modal-credits",
-    "modal-wizard", "modal-crop", "settings-colors",
+    "modal-wizard", "modal-language", "modal-crop", "settings-colors",
     "pf-color-primary", "pf-color-primary-wheel", "pf-color-primary-reset",
     "pf-color-secondary", "pf-color-secondary-wheel", "pf-color-secondary-reset",
     "pf-color-text", "pf-color-text-wheel", "pf-color-text-reset",
     "pf-color-gray", "pf-color-gray-wheel", "pf-color-gray-reset",
-    "ui-language", "install-cancel", "latex-panel", "latex-text",
+    "ui-language", "startup-language", "language-continue",
+    "install-cancel", "latex-panel", "latex-text",
     "confirm-message", "confirm-cancel", "confirm-accept", "confirm-exit",
     "preview-notice",
 )
@@ -102,7 +104,7 @@ FROZEN_IDS = (
 FROZEN_FUNCTIONS = (
     "parseHex", "readColorPrefs", "loadTemplateColors", "saveColorPrefs",
     "setupColorPrefs", "syncColorWheel", "markDirty", "scheduleCompile",
-    "compileNow", "applyZoom", "applySplit", "setupSplitter", "enterLatexMode",
+    "compileAfterLoad", "compileNow", "applyZoom", "applySplit", "setupSplitter", "enterLatexMode",
     "exitLatexMode", "renderForm", "renderDynamicList", "saveCurrentCv",
     "recordHistory", "undo", "redo", "mutateBlocks", "moveBlock",
     "createSeparatorBlock", "applyCollapse", "toggleCollapse", "normalizeImage",
@@ -239,12 +241,28 @@ def test_i18n_template_group_keys():
             "zh": "ATS 友好", "ru": "Совместимо с ATS",
         },
         "template_group_chinese": {
-            "es": "Estándar chino", "en": "Chinese Standard",
-            "zh": "中文标准", "ru": "Китайский стандарт",
+            "es": "Estilos chinos", "en": "Chinese styles",
+            "zh": "中文样式", "ru": "Китайские стили",
         },
         "template_group_normal": {
             "es": "CV normal", "en": "Normal CV",
             "zh": "普通简历", "ru": "Обычное резюме",
+        },
+        "template_tabbed": {
+            "es": "Pestañas negras", "en": "Black tabs",
+            "zh": "黑色标签", "ru": "Чёрные вкладки",
+        },
+        "template_ribbon": {
+            "es": "Cinta azul", "en": "Blue ribbon",
+            "zh": "蓝色飘带", "ru": "Синяя лента",
+        },
+        "template_navy": {
+            "es": "Azul marino minimalista", "en": "Navy minimal",
+            "zh": "藏青极简", "ru": "Тёмно-синий минимализм",
+        },
+        "template_playful": {
+            "es": "Creativo lúdico", "en": "Playful",
+            "zh": "创意活泼", "ru": "Игривый",
         },
         "template_sidebar": {
             "es": "Barra lateral (izquierda)", "en": "Sidebar (left)",
@@ -291,6 +309,20 @@ def test_index_has_ui_language_selector():
     values = re.findall(r'<option value="([a-z]{2})">', select.group(1))
     assert values == ["en", "es", "zh", "ru"]
     assert "Interface language" in HTML
+
+
+def test_index_has_startup_language_picker():
+    """First run asks for the UI language with English preselected."""
+    assert '<div class="modal" id="modal-language" data-static="true" hidden>' in HTML
+    select = re.search(r'<select id="startup-language">(.*?)</select>', HTML, re.S)
+    assert select, "startup language select not found"
+    body = select.group(1)
+    assert '<option value="en" selected>English</option>' in body
+    values = re.findall(r'<option value="([a-z]{2})"', body)
+    assert values == ["en", "es", "zh", "ru"]
+    assert 'id="language-continue"' in HTML
+    assert 'data-i18n="language_title"' in HTML
+    assert 'data-i18n="language_continue"' in HTML
 
 
 def test_index_uses_i18n_attributes():
@@ -423,11 +455,11 @@ def test_index_reset_all_after_load_sample():
 
 
 def test_index_template_submenu_groups():
-    """The seven templates are grouped under three labelled, non-clickable headings.
+    """The eleven templates are grouped under three labelled, non-clickable headings.
 
-    Order: ATS Friendly (classic, harvard), Chinese Standard (chinese) and
-    Normal CV (modern, creative, sidebar, sidebar-right); the groups are
-    separated with <hr>.
+    Order: ATS Friendly (classic, harvard), Chinese styles (chinese, tabbed,
+    ribbon, navy, playful) and Normal CV (modern, creative, sidebar,
+    sidebar-right); the groups are separated with <hr>.
     """
     edit_menu = HTML[HTML.index('data-i18n="menu_edit"'):HTML.index('data-i18n="menu_add"')]
     start = edit_menu.index('data-i18n="submenu_template"')
@@ -436,7 +468,7 @@ def test_index_template_submenu_groups():
     # not clickable and cannot trigger data-accion handlers.
     for key, label in (
         ("template_group_ats", "ATS Friendly"),
-        ("template_group_chinese", "Chinese Standard"),
+        ("template_group_chinese", "Chinese styles"),
         ("template_group_normal", "Normal CV"),
     ):
         assert '<div class="menu-heading" data-i18n="%s">%s</div>' % (key, label) in subdrop, key
@@ -448,32 +480,150 @@ def test_index_template_submenu_groups():
     chinese = subdrop[subdrop.index('data-i18n="template_group_chinese"'):
                       subdrop.index('data-i18n="template_group_normal"')]
     normal = subdrop[subdrop.index('data-i18n="template_group_normal"'):]
-    assert 'data-accion="template:classic"' in ats
-    assert 'data-accion="template:harvard"' in ats
-    assert 'data-accion="template:modern"' not in ats
-    assert 'data-accion="template:creative"' not in ats
-    assert 'data-accion="template:sidebar"' not in ats
-    assert 'data-accion="template:sidebar-right"' not in ats
-    assert 'data-accion="template:chinese"' not in ats
-    assert 'data-accion="template:chinese"' in chinese
-    assert 'data-accion="template:modern"' not in chinese
-    assert 'data-accion="template:sidebar"' not in chinese
-    assert 'data-accion="template:sidebar-right"' not in chinese
+    allowed = (
+        "classic", "harvard", "chinese", "tabbed", "ribbon", "navy", "playful",
+        "modern", "creative", "sidebar", "sidebar-right",
+    )
+    assert re.findall(r'data-accion="template:([a-z-]+)"', ats) == ["classic", "harvard"]
+    assert re.findall(r'data-accion="template:([a-z-]+)"', chinese) == [
+        "chinese", "tabbed", "ribbon", "navy", "playful",
+    ]
     assert re.findall(r'data-accion="template:([a-z-]+)"', normal) == [
         "modern", "creative", "sidebar", "sidebar-right",
     ]
+    # No template link crosses into another group.
+    new_anchors = ("tabbed", "ribbon", "navy", "playful")
+    for value in new_anchors:
+        assert 'data-accion="template:%s"' % value in chinese, value
+        assert 'data-accion="template:%s"' % value not in ats, value
+        assert 'data-accion="template:%s"' % value not in normal, value
+    for value in ("modern", "creative", "sidebar", "sidebar-right"):
+        assert 'data-accion="template:%s"' % value not in ats, value
+        assert 'data-accion="template:%s"' % value not in chinese, value
+    for value in ("classic", "harvard"):
+        assert 'data-accion="template:%s"' % value not in chinese, value
+        assert 'data-accion="template:%s"' % value not in normal, value
     # The groups are separated with the menu hr and every link keeps its mark.
     for before, after in (
         ('data-accion="template:harvard"', 'data-i18n="template_group_chinese"'),
-        ('data-accion="template:chinese"', 'data-i18n="template_group_normal"'),
+        ('data-accion="template:playful"', 'data-i18n="template_group_normal"'),
     ):
         assert "<hr>" in subdrop[subdrop.index(before):subdrop.index(after)], (before, after)
-    for value in ("classic", "harvard", "modern", "creative", "sidebar", "sidebar-right", "chinese"):
+    for value in allowed:
         assert 'data-marca="template-%s"' % value in subdrop, value
+    assert len(re.findall(r'data-marca="template-[a-z-]+"', subdrop)) == 11
     # Small muted label: not a clickable menu item.
     heading_css = _css_block(".menu-heading")
     assert "cursor: default" in heading_css
     assert "var(--text-soft)" in heading_css
+
+
+def test_app_template_list_and_sample_language():
+    """TEMPLATES_CV stays in sync with the menu and the sample keeps the language."""
+    for value in ("tabbed", "ribbon", "navy", "playful"):
+        pair = '{ value: "%s", labelKey: "template_%s" }' % (value, value)
+        assert pair in JS, value
+    # The sample CV follows the per-CV language, never the template.
+    body = _function_body("loadSample")
+    assert "api.load_sample(state.data.cv_language)" in body
+    assert "api.load_sample(state.data.template)" not in body
+    # The template chosen before loading the sample survives the replacement.
+    load_pos = body.index("state.data = r.datos")
+    restore_pos = body.index("state.data.template =")
+    assert load_pos < restore_pos
+    assert "activeTemplate" in body
+    assert "TEMPLATES_CV.some" in body
+
+
+def test_app_explicit_document_loads_compile_even_without_auto_compile():
+    """New/open/import/sample replace the document, so they compile once.
+
+    Only incremental edits (typing, template/prefs changes) may be skipped when
+    `auto_compile` is off; leaving the previous PDF on screen after an explicit
+    load looks like a broken preview.
+    """
+    helper = _function_body("compileAfterLoad")
+    assert "clearTimeout(state.timer);" in helper
+    assert "compileNow();" in helper
+    # Auto-compile on must not compile twice: the helper drops the debounce.
+    assert helper.index("clearTimeout(state.timer);") < helper.index("compileNow();")
+
+    for name in ("newCv", "openCv", "importTex", "loadSample"):
+        body = _function_body(name)
+        assert "compileAfterLoad();" in body, name
+        assert "scheduleCompile()" not in body, name
+
+    # The sample replacement runs before the compile.
+    sample = _function_body("loadSample")
+    assert sample.index("state.data = r.datos") < sample.index("compileAfterLoad();")
+
+    # Typing and preference edits keep the auto-compile gate.
+    schedule = _function_body("scheduleCompile")
+    assert "if (!state.prefs || !state.prefs.auto_compile) return;" in schedule
+    assert "COMPILE_DEBOUNCE_MS" in schedule
+    assert "400" not in schedule
+    assert "scheduleCompile();" in _function_body("markDirty")
+
+
+def test_app_compilation_is_single_flight_and_latest_only():
+    """A burst of edits coalesces and an in-flight compile gets one follow-up.
+
+    The old code started one backend thread per key (5-6 serialized xelatex
+    runs per burst). The debounce plus the single-flight guard must keep at
+    most one compile in flight and one latest pending, and a stale result must
+    never replace the preview.
+    """
+    assert re.search(r"^\s*compiling: false,", JS, re.M)
+    assert re.search(r"^\s*pendingCompile: false,", JS, re.M)
+
+    match = re.search(r"const COMPILE_DEBOUNCE_MS = ([0-9]+);", JS)
+    assert match, "COMPILE_DEBOUNCE_MS not found in web/app.js"
+    assert int(match.group(1)) == 700
+
+    schedule = _function_body("scheduleCompile")
+    assert "clearTimeout(state.timer);" in schedule
+    assert "state.timer = setTimeout(" in schedule
+    assert "COMPILE_DEBOUNCE_MS" in schedule
+    assert "400" not in schedule
+    # The timer callback queues instead of launching a parallel compile.
+    assert "if (state.compiling)" in schedule
+    assert "state.pendingCompile = true" in schedule
+    assert schedule.index("state.pendingCompile = true") < schedule.index("compileNow();")
+
+    # Single-flight: the guard sets pending, only the free path starts work.
+    now = _function_body("compileNow")
+    assert "state.compiling = true" in now
+    guard_pos = now.index("if (state.compiling)")
+    pending_pos = now.index("state.pendingCompile = true")
+    launch_pos = now.index("state.compiling = true")
+    assert guard_pos < pending_pos < launch_pos
+    assert now.count("state.compiling = true") == 1
+    assert "await api.compile(" in now
+
+    # Explicit loads bypass the debounce but never run in parallel either.
+    after = _function_body("compileAfterLoad")
+    assert "clearTimeout(state.timer);" in after
+    assert "if (state.compiling)" in after
+    assert "state.pendingCompile = true" in after
+    assert after.index("state.pendingCompile = true") < after.index("compileNow();")
+
+    # __onCompile releases the flight flag first, ignores stale previews and
+    # starts exactly one pending compile.
+    callbacks = re.search(
+        r"window\.__onCompile = function \(res\) \{(.*?)\n\};", JS, re.S
+    )
+    assert callbacks, "window.__onCompile not found in web/app.js"
+    on_compile = callbacks.group(1)
+    assert on_compile.index("state.compiling = false") < on_compile.index("if (res.id === state.compileId)")
+    assert "if (state.pendingCompile)" in on_compile
+    assert "state.pendingCompile = false;" in on_compile
+    assert on_compile.count("compileNow();") == 1
+
+    # Every explicit document replacement still compiles exactly once.
+    for name in ("newCv", "openCv", "importTex", "loadSample"):
+        body = _function_body(name)
+        assert "compileAfterLoad();" in body, name
+        assert "scheduleCompile()" not in body, name
 
 
 def test_index_static_text_is_english():
@@ -666,6 +816,44 @@ def test_app_data_has_content_and_autosave_recovery():
     assert "else if (pendingAutosave) clearAutosave();" in JS
 
 
+def test_app_gates_the_wizard_behind_the_language_picker():
+    """First run: language choice first, LaTeX wizard only afterwards."""
+    startup = _function_body("startApp")
+    assert "info.needs_language" in startup
+    assert "if (info.needs_language) showStartupLanguage();" in startup
+    assert "else if (state.needsSetup) openWizard();" in startup
+
+    choose = _function_body("chooseStartupLanguage")
+    assert 'set_prefs("ui_language"' in choose
+    assert 'set_prefs("ui_language_chosen"' in choose
+    assert "state.needsSetup" in choose
+    assert "openWizard()" in choose
+    # An untouched new document adopts the chosen interface language's CV
+    # language; a recovered/edited one is left alone.
+    assert "!dataHasContent(state.data)" in choose
+    assert "emptyData = await api.empty_data();" in choose
+    assert "state.data = JSON.parse(JSON.stringify(emptyData));" in choose
+
+    # The startup modal cannot be skipped with Escape or a backdrop click.
+    modals = _function_body("setupModals")
+    assert 'dataset.static !== "true"' in modals
+
+
+def test_app_settings_language_change_refreshes_empty_defaults():
+    """Runtime UI-language changes refresh new-CV defaults, never content."""
+    body = _function_body("onLanguageChange")
+    assert "try {" in body
+    assert "catch (e)" in body
+    assert "const wasEmpty = !dataHasContent(state.data);" in body
+    assert 'state.prefs = await api.set_prefs("ui_language", event.target.value);' in body
+    assert "const fresh = await api.empty_data();" in body
+    assert "emptyData = fresh;" in body
+    # The replacement is guarded: an edited/recovered document is untouched.
+    assert "if (wasEmpty) state.data = JSON.parse(JSON.stringify(fresh));" in body
+    assert body.index("const wasEmpty") < body.index("await api.set_prefs")
+    assert body.index("await api.empty_data()") < body.index("if (wasEmpty) state.data")
+
+
 def test_app_recovery_accept_marks_dirty_and_compiles():
     """Accepting the recovered CV refreshes the preview and re-arms the guard."""
     body = _function_body("offerRecovery")
@@ -741,19 +929,48 @@ def test_app_install_warning_tokens():
 # ---------------- Linux preview fallback ----------------
 
 def test_index_linux_preview_notice_tokens():
-    """Linux-only notice + system-viewer button, wired to api.open_preview()."""
+    """Linux notice + system-viewer button are the PDF.js fallback."""
     assert 'id="preview-notice"' in HTML
     assert 'data-accion="open-preview"' in HTML
     assert 'data-i18n="preview_linux_notice"' in HTML
     assert 'data-i18n="preview_linux_open"' in HTML
-    # Hidden by default and only Linux unhides it.
+    # Hidden by default; only a PDF.js error (or its watchdog) unhides it.
     notice = re.search(r'<div id="preview-notice"[^>]*>', HTML)
     assert notice and "hidden" in notice.group(0), "the notice must start hidden"
-    assert 'notice.hidden = platform !== "linux"' in _function_body("setupPreviewFallback")
+    fallback = _function_body("setupPreviewFallback")
+    assert 'state.pdfViewer = platform === "linux"' in fallback
+    assert "notice.hidden = true" in fallback
     assert "setupPreviewFallback(info.platform)" in JS
+    # Linux loads the bundled PDF.js viewer and waits for its handshake.
+    assert "/pdfjs/viewer.html" in JS
+    assert "cvlatex-pdf-ready" in JS
+    assert "cvlatex-pdf-error" in JS
+    # The system viewer opens a file:// URI through the backend (fallback only).
     assert "api.open_preview(" in _function_body("openPreview")
-    # The system viewer opens a file:// URI through the backend.
     assert "api.open_preview(" in JS
+
+
+def test_bundled_pdfjs_viewer_and_route():
+    """The viewer, its scripts and the local /pdfjs/ route are present."""
+    pdfjs_dir = os.path.join(ROOT, "web", "pdfjs")
+    for name in ("viewer.html", "pdf.min.js", "pdf.worker.min.js"):
+        assert os.path.isfile(os.path.join(pdfjs_dir, name)), name
+    assert os.path.getsize(os.path.join(pdfjs_dir, "pdf.min.js")) > 100000
+    assert os.path.getsize(os.path.join(pdfjs_dir, "pdf.worker.min.js")) > 100000
+
+    viewer = _read(os.path.join(pdfjs_dir, "viewer.html"))
+    assert "pdf.worker.min.js" in viewer
+    assert "cvlatex-pdf-ready" in viewer
+    assert "cvlatex-pdf-error" in viewer
+    assert "/preview/" in viewer
+    # 125% must stay reachable: block layout scrolls horizontally.
+    assert "overflow-x: hidden" not in viewer
+    assert "overflow-x: auto" in viewer
+    assert "margin: 0 auto 10px" in viewer
+
+    main_py = _read(os.path.join(ROOT, "main.py"))
+    assert 'path.startswith("/pdfjs/")' in main_py
+    assert 'os.path.join(WEB_DIR, "pdfjs")' in main_py
 
 
 def test_i18n_linux_preview_keys_in_four_languages():
@@ -762,7 +979,7 @@ def test_i18n_linux_preview_keys_in_four_languages():
         assert tables[lang].get("preview_linux_notice"), lang
         assert tables[lang].get("preview_linux_open"), lang
     assert tables["es"]["preview_linux_notice"] == (
-        "La previsualización integrada no está disponible en Linux; usa el botón "
+        "No se pudo cargar la previsualización integrada; usa el botón "
         "para abrir el PDF con el visor del sistema."
     )
 

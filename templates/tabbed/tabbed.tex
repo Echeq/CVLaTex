@@ -1,0 +1,208 @@
+% CVLaTeX template: tabbed
+% "Black tabs" Chinese academic design: heavy black page frame, black section
+% tabs with white bold text and a thin rule to the right margin, square bullets
+% and a bold three-column entry line. The frame is drawn in the page margin by
+% the kernel shipout hook, so every page of a multi-page CV keeps the border.
+\documentclass[{{font_size}}pt]{article}
+
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+% The frame replaces any page decoration: no page numbers over the border.
+\pagestyle{empty}
+
+% Palette: black primary, mid gray and dark gray secondary.
+\definecolor{accent}{RGB}{0,0,0}
+\definecolor{gris}{RGB}{120,120,120}
+\definecolor{acento2}{RGB}{60,60,60}
+
+% ---------------------------------------------------------------------------
+% Page frame: four heavy rules inset in the page margin. The inset is half of
+% the narrowest margin when the margins are small, so the frame can never
+% overlap the text block (with the default 2cm margins it sits at 0.62cm from
+% the paper edge).
+% ---------------------------------------------------------------------------
+\newlength{\cvframein}
+\newlength{\cvframethick}
+\newlength{\cvminmargin}
+\newlength{\cvtmpmargin}
+\newlength{\cvframewidth}
+\newlength{\cvframeheight}
+\newlength{\cvframeruletop}
+\newlength{\cvframerulebottom}
+\setlength{\cvframethick}{1.8pt}
+\setlength{\cvframein}{0.62cm}
+\setlength{\cvminmargin}{{{margin_top}}cm}
+\setlength{\cvtmpmargin}{{{margin_bottom}}cm}
+\ifdim\cvtmpmargin<\cvminmargin \setlength{\cvminmargin}{\cvtmpmargin}\fi
+\setlength{\cvtmpmargin}{{{margin_left}}cm}
+\ifdim\cvtmpmargin<\cvminmargin \setlength{\cvminmargin}{\cvtmpmargin}\fi
+\setlength{\cvtmpmargin}{{{margin_right}}cm}
+\ifdim\cvtmpmargin<\cvminmargin \setlength{\cvminmargin}{\cvtmpmargin}\fi
+\ifdim\cvminmargin<0pt \setlength{\cvminmargin}{0pt}\fi
+\ifdim\cvminmargin<1.24cm
+  \setlength{\cvframein}{\dimexpr\cvminmargin/2\relax}
+\fi
+% Frame geometry, computed once after geometry has set the paper size.
+\setlength{\cvframewidth}{\dimexpr\paperwidth-2\cvframein\relax}
+\setlength{\cvframeheight}{\dimexpr\paperheight-2\cvframein\relax}
+\setlength{\cvframeruletop}{\dimexpr\cvframein+\cvframethick\relax}
+\setlength{\cvframerulebottom}{\dimexpr\paperheight-\cvframein\relax}
+
+\AddToHook{shipout/background}{%
+  % Top rule.
+  \vbox to 0pt{%
+    \hbox to 0pt{%
+      \hspace*{\cvframein}%
+      {\color{accent}\rule[-\cvframeruletop]{\cvframewidth}{\cvframethick}}%
+      \hss}%
+    \vss}%
+  % Bottom rule.
+  \vbox to 0pt{%
+    \hbox to 0pt{%
+      \hspace*{\cvframein}%
+      {\color{accent}\rule[-\cvframerulebottom]{\cvframewidth}{\cvframethick}}%
+      \hss}%
+    \vss}%
+  % Left rule.
+  \vbox to 0pt{%
+    \hbox to 0pt{%
+      \hspace*{\cvframein}%
+      {\color{accent}\rule[-\cvframerulebottom]{\cvframethick}{\cvframeheight}}%
+      \hss}%
+    \vss}%
+  % Right rule.
+  \vbox to 0pt{%
+    \hbox to 0pt{%
+      \hspace*{\dimexpr\paperwidth-\cvframein-\cvframethick\relax}%
+      {\color{accent}\rule[-\cvframerulebottom]{\cvframethick}{\cvframeheight}}%
+      \hss}%
+    \vss}%
+}
+
+% ---------------------------------------------------------------------------
+% Section heading: black tab sized to the title, white bold label and a thin
+% dark-gray rule filling the rest of the line. When the title would leave no
+% room for that rule (long Spanish/English/Chinese titles), the tab becomes a
+% full-width plate with natural height and wraps inside, so nothing overflows.
+% ---------------------------------------------------------------------------
+\newlength{\cvtabtitle}
+\newlength{\cvtabrest}
+\newlength{\cvtabpad}
+\newlength{\cvtabgap}
+\newlength{\cvtabheight}
+\newlength{\cvtabrule}
+\setlength{\cvtabpad}{0.58em}
+\setlength{\cvtabgap}{0.35em}
+\setlength{\cvtabheight}{7.2mm}
+\setlength{\cvtabrule}{0.8pt}
+
+\newcommand{\cvsection}[1]{%
+  \par\vspace{0.9em}%
+  \noindent
+  \begingroup
+  \setlength{\fboxsep}{0pt}%
+  \settowidth{\cvtabtitle}{\bfseries\fontsize{13}{15}\selectfont #1}%
+  \setlength{\cvtabrest}{\dimexpr\linewidth-\cvtabtitle-2\cvtabpad-\cvtabgap\relax}%
+  \ifdim\cvtabrest<1.2em
+    % Long-title fallback: full-width plate, natural height, padded lines.
+    \colorbox{accent}{%
+      \parbox{\linewidth}{%
+        \raggedright
+        \leftskip=\cvtabpad
+        \rightskip=\cvtabpad plus 1fil\relax
+        \vspace*{0.22em}%
+        {\color{white}\bfseries\fontsize{13}{15}\selectfont #1}%
+        \par\vspace*{0.22em}%
+      }%
+    }%
+    \par\vspace{0.1em}%
+    {\color{acento2}\hrule height \cvtabrule}%
+  \else
+    \hbox to \linewidth{%
+      \colorbox{accent}{%
+        \parbox[b][\cvtabheight][c]{\dimexpr\cvtabtitle+2\cvtabpad\relax}{%
+          \hspace*{\cvtabpad}%
+          {\color{white}\bfseries\fontsize{13}{15}\selectfont #1}%
+        }%
+      }%
+      \hspace*{\cvtabgap}%
+      % The rule is raised by half the tab height so it leaves the tab at its
+      % vertical middle instead of running along the colorbox baseline.
+      \raisebox{0.5\cvtabheight}{%
+        \makebox[\cvtabrest][l]{\leaders\hrule height \cvtabrule\hfill}}%
+    }%
+  \fi
+  \endgroup
+  \par\vspace{0.42em}%
+}
+
+% ---------------------------------------------------------------------------
+% Free-block separators, coherent with the black tab.
+% ---------------------------------------------------------------------------
+\newcommand{\cvblockline}{%
+  \par\vspace{0.4em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \par\vspace{0.4em}%
+}
+\newcommand{\cvblockband}{%
+  \par\vspace{0.4em}%
+  {\color{accent}\hrule height 0.32em}%
+  \par\vspace{0.4em}%
+}
+\newcommand{\cvblockspace}{%
+  \par\vspace{2em}%
+}
+
+% ---------------------------------------------------------------------------
+% Square bullets and compact list spacing (core itemize).
+% ---------------------------------------------------------------------------
+\makeatletter
+\renewcommand{\@listI}{%
+  \leftmargin\leftmargini
+  \labelwidth\leftmargini\advance\labelwidth-\labelsep
+  \topsep 2\p@ \@plus1\p@ \@minus1\p@
+  \parsep 0\p@
+  \itemsep 1\p@ \@plus0.5\p@
+}
+\makeatother
+\setlength{\leftmargini}{1.2em}
+\setlength{\leftmarginii}{1.0em}
+\renewcommand{\labelitemi}{\raisebox{0.16em}{\color{accent}\rule{0.4em}{0.4em}}}
+\renewcommand{\labelitemii}{\raisebox{0.16em}{\color{acento2}\rule{0.3em}{0.3em}}}
+
+% ---------------------------------------------------------------------------
+% Three-column entry line: date left, title centered and organization right.
+% Fixed-width columns wrap long Latin/CJK text inside their own column instead
+% of pushing the line past the right margin.
+% ---------------------------------------------------------------------------
+\newcommand{\cvcnline}[3]{%
+  \par\noindent
+  \begin{minipage}[t]{0.24\linewidth}%
+    \raggedright\bfseries #1%
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[t]{0.46\linewidth}%
+    \centering\bfseries #2%
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[t]{0.26\linewidth}%
+    \raggedleft\bfseries #3%
+  \end{minipage}%
+  \par\vspace{0.1em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{header}}
+
+{{body}}
+
+\end{document}

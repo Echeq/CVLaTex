@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
+import ejemplo  # noqa: E402
 import latex_engine  # noqa: E402
 import latex_gen  # noqa: E402
 import main  # noqa: E402
@@ -359,6 +360,7 @@ def test_window_title_languages(prefs_tmp):
 
 def test_prefs_ui_language_defaults_to_english(prefs_tmp, monkeypatch):
     assert prefs.load()["ui_language"] == "en"
+    assert prefs.load()["ui_language_chosen"] is False
 
     # A legacy prefs file without ui_language gets the English default and
     # still migrates its old keys.
@@ -563,6 +565,99 @@ def test_collect_media_cache_hits_by_path_mtime_size(prefs_tmp):
 
 
 # ---------------------------------------------------------------------------
+# Sample CV loading (es / en / zh, es fallback)
+# ---------------------------------------------------------------------------
+
+SAMPLE_LANGUAGES = ("es", "en", "zh")
+SAMPLE_SECTIONS = (
+    "summary",
+    "education",
+    "projects",
+    "university_projects",
+    "internships",
+    "work",
+    "skills",
+    "languages",
+    "references",
+)
+SAMPLE_LIST_SECTIONS = tuple(
+    section for section in SAMPLE_SECTIONS if section != "summary"
+)
+
+
+class _UnbooleanSample:
+    """Truthiness blows up before the language can be read."""
+
+    def __bool__(self):
+        raise RuntimeError("boom on bool")
+
+
+class _UnstringableSample:
+    """Truthy, but converting it to text blows up."""
+
+    def __bool__(self):
+        return True
+
+    def __str__(self):
+        raise RuntimeError("boom on str")
+
+
+@pytest.mark.parametrize("lang", SAMPLE_LANGUAGES)
+def test_load_sample_returns_the_localized_sample(lang):
+    result = main.Api(None).load_sample(lang)
+
+    assert result["ok"] is True
+    data = result["datos"]
+    assert data["cv_language"] == lang
+    assert data["template"] == "classic"
+    for section in SAMPLE_SECTIONS:
+        assert data[section], section
+    assert isinstance(data["summary"], str)
+    assert data["summary"].strip()
+
+
+def test_load_sample_keeps_the_same_list_lengths_across_languages():
+    samples = {
+        lang: main.Api(None).load_sample(lang)["datos"] for lang in SAMPLE_LANGUAGES
+    }
+    lengths = {
+        lang: {
+            section: len(samples[lang][section]) for section in SAMPLE_LIST_SECTIONS
+        }
+        for lang in SAMPLE_LANGUAGES
+    }
+
+    assert lengths["es"] == lengths["en"] == lengths["zh"]
+    # Guard the comparison itself: the sample is not accidentally empty.
+    assert all(count > 0 for count in lengths["es"].values())
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "",
+        "   ",
+        "fr",
+        "de",
+        "zh-CN",
+        0,
+        123,
+        [],
+        {},
+        b"en",
+        _UnbooleanSample(),
+        _UnstringableSample(),
+    ],
+)
+def test_load_sample_falls_back_to_spanish(value):
+    result = main.Api(None).load_sample(value)
+
+    assert result["ok"] is True
+    assert result["datos"]["cv_language"] == "es"
+
+
+# ---------------------------------------------------------------------------
 # Frozen bridge surface, platform report and Linux preview fallback
 # ---------------------------------------------------------------------------
 
@@ -589,8 +684,52 @@ def test_api_exposes_exactly_the_frozen_methods():
 def test_init_reports_the_platform(prefs_tmp, monkeypatch):
     monkeypatch.setattr(latex_engine, "find_pdflatex", lambda *a, **k: None)
     info = main.Api(None).init()
-    assert set(info) == {"prefs", "latex_ok", "needs_setup", "platform"}
+    assert set(info) == {
+        "prefs", "latex_ok", "needs_setup", "needs_language", "platform",
+    }
     assert info["platform"] == sys.platform
+    # No prefs file has been written yet: the language picker is due.
+    assert info["needs_language"] is True
+
+
+def test_init_needs_language_until_the_user_chooses(prefs_tmp, monkeypatch):
+    monkeypatch.setattr(latex_engine, "find_pdflatex", lambda *a, **k: None)
+    api = main.Api(None)
+    assert api.init()["needs_language"] is True
+
+    # Saving a language alone is not a completed first-run choice.
+    prefs.set("ui_language", "es")
+    assert api.init()["needs_language"] is True
+
+    prefs.set("ui_language_chosen", True)
+    assert api.init()["needs_language"] is False
+
+
+@pytest.mark.parametrize(
+    "ui_language,expected",
+    [
+        ("es", "es"),
+        ("en", "en"),
+        ("zh", "zh"),
+        # Russian has no document language: a new CV falls back to English.
+        ("ru", "en"),
+        ("fr", "en"),
+        ("", "en"),
+    ],
+)
+def test_empty_data_document_language_follows_the_ui_language(
+    prefs_tmp, ui_language, expected
+):
+    """New CVs default to the interface language, not the canonical zh.
+
+    The canonical `latex_gen.empty_data()` stays Chinese (the schema tests and
+    saved documents rely on it); only the bridge maps the UI language, so a
+    Spanish/English user starts on the pdflatex path instead of xelatex.
+    """
+    prefs.set("ui_language", ui_language)
+
+    assert main.Api(None).empty_data()["cv_language"] == expected
+    assert latex_gen.empty_data()["cv_language"] == "zh"
 
 
 def test_open_preview_opens_the_last_compiled_pdf(prefs_tmp, monkeypatch):
@@ -616,3 +755,69 @@ def test_open_preview_opens_the_last_compiled_pdf(prefs_tmp, monkeypatch):
         "errores": [messages.t("preview_not_available")],
     }
     assert len(opened) == 1
+
+
+# ---------------------------------------------------------------------------
+# Compile push encoding
+# ---------------------------------------------------------------------------
+
+class _ScriptWindow:
+    """Window stub that records the JavaScript passed to evaluate_js."""
+
+    def __init__(self):
+        self.scripts = []
+
+    def evaluate_js(self, script):
+        self.scripts.append(script)
+
+
+def _pushed_payload(script, name):
+    prefix = "window.%s(" % name
+    assert script.startswith(prefix), script[:40]
+    assert script.endswith(");"), script[-10:]
+    return json.loads(script[len(prefix):-2])
+
+
+def test_compile_push_script_is_pure_ascii_for_every_template_and_language(prefs_tmp):
+    """The __onCompile payload must be ASCII, never raw Unicode.
+
+    pywebview's GTK backend calls WebKit with `length=len(script)` (characters)
+    while WebKit expects a byte length. Raw accents/Chinese truncate the script
+    and it dies with "SyntaxError: Unexpected EOF", so __onCompile never runs
+    and state.compiling stays true forever (Load sample then queues a pending
+    compile that never starts). The Chinese-style renderer adds an em dash to
+    every degree line, which made the English sample cross that truncation
+    boundary: with raw Unicode, all five CHINESE_STYLE_TEMPLATES failed while
+    classic/harvard/modern/creative/sidebar still happened to parse.
+    """
+    window = _ScriptWindow()
+    api = main.Api(window)
+    p = prefs.load()
+
+    templates = tuple(latex_gen.CHINESE_STYLE_TEMPLATES) + ("classic",)
+    for lang in ("en", "es", "zh"):
+        for template in templates:
+            data = ejemplo.sample_data(lang)
+            data["template"] = template
+            tex = latex_gen.build_tex(data, p)
+            api._push(
+                "__onCompile",
+                {"ok": True, "pdf": None, "errores": [], "tex": tex, "id": 1},
+            )
+            script = window.scripts[-1]
+            assert script.isascii(), (template, lang)
+            assert "\\u" in script, (template, lang)  # non-ASCII is escaped
+            assert _pushed_payload(script, "__onCompile")["tex"] == tex
+
+
+def test_push_escapes_non_ascii_install_messages(prefs_tmp):
+    """Non-ASCII bridge strings (warnings, localized messages) survive too."""
+    window = _ScriptWindow()
+    api = main.Api(window)
+    message = "Instalación completada: 中文 ✓"
+
+    api._push("__onInstallProgress", {"warning": message, "hecho": 1, "total": 2})
+
+    script = window.scripts[-1]
+    assert script.isascii()
+    assert _pushed_payload(script, "__onInstallProgress")["warning"] == message

@@ -1,0 +1,121 @@
+% CVLaTeX template: playful
+% Friendly resume: round purple badges with coral diamond markers, bold
+% section titles over a two-tone rule and compact diamond bullets.
+% The round badge is a core-LaTeX approximation of the design icon: a scaled
+% math bullet draws the filled disc and a rotated rule draws the inner diamond
+% (no TikZ, no fontawesome).
+
+\documentclass[{{font_size}}pt]{article}
+
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+
+% Friendly design: a sans family throughout (core LaTeX, no extra package).
+\renewcommand{\familydefault}{\sfdefault}
+
+% Template palette: purple, neutral gray and a coral highlight.
+\definecolor{accent}{RGB}{112,48,160}
+\definecolor{gris}{RGB}{110,110,120}
+\definecolor{acento2}{RGB}{230,120,80}
+
+% Compact filled diamond bullets: a rotated core-LaTeX rule, so the marker is
+% solid like the reference instead of the hollow math \diamond. No enumitem,
+% no amssymb and no fontawesome involved.
+\renewcommand{\labelitemi}{%
+  \raisebox{0.10em}{\textcolor{acento2}{\rotatebox[origin=c]{45}{\rule{0.32em}{0.32em}}}}%
+}
+\renewcommand{\labelitemii}{%
+  \raisebox{0.10em}{\textcolor{accent}{\rotatebox[origin=c]{45}{\rule{0.24em}{0.24em}}}}%
+}
+\setlength{\leftmargini}{1.45em}
+\setlength{\leftmarginii}{1.2em}
+\setlength{\labelsep}{0.45em}
+
+% Links and contact values arrive as \texttt: tint them with the accent
+% color while leaving the generated body and the header helpers untouched.
+\let\cvtexttt\texttt
+\renewcommand{\texttt}[1]{\textcolor{accent}{\cvtexttt{#1}}}
+
+% Round section badge: filled purple disc plus a small coral diamond.
+\newlength{\cvbadgewidth}
+\newcommand{\cvbadge}{%
+  \leavevmode
+  \begingroup
+  \setlength{\fboxsep}{0pt}%
+  \setbox0=\hbox{\scalebox{2.55}{$\color{accent}\bullet$}}%
+  \setlength{\cvbadgewidth}{\wd0}%
+  \setbox2=\hbox to \cvbadgewidth{%
+    \hss\raisebox{0.29em}{\color{acento2}\rotatebox[origin=c]{45}{\rule{0.30em}{0.30em}}}\hss}%
+  \box0\rlap{\kern-\cvbadgewidth\box2}%
+  \endgroup
+}
+
+% Section heading: badge, bold title and a purple rule over a coral hairline.
+% The hanging indent keeps wrapped long titles aligned past the badge.
+\newcommand{\cvsection}[1]{%
+  \par\vspace{0.95em}%
+  \noindent
+  \begingroup
+  \fontsize{13.5}{16}\selectfont
+  \hangindent=1.8em \hangafter=1
+  \cvbadge\hspace{0.5em}{\color{accent}\bfseries #1}%
+  \par\nobreak
+  \vspace{0.28em}%
+  {\color{accent}\hrule height 1.2pt}%
+  \vspace{0.08em}%
+  {\color{acento2}\hrule height 0.5pt}%
+  \par
+  \endgroup
+  \vspace{0.42em}%
+}
+
+% Free-block separators echoing the section underline.
+\newcommand{\cvblockline}{%
+  \par\vspace{0.5em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \par\vspace{0.5em}%
+}
+\newcommand{\cvblockband}{%
+  \par\vspace{0.4em}%
+  {\color{accent}\hrule height 2pt}%
+  \vspace{0.12em}%
+  {\color{acento2}\hrule height 0.5pt}%
+  \par\vspace{0.45em}%
+}
+\newcommand{\cvblockspace}{%
+  \par\vspace{2em}%
+}
+
+% Three-column entry line: date, title and organization. Minipages keep CJK
+% and long Latin values from colliding instead of relying on a single \hfill.
+\newcommand{\cvcnline}[3]{%
+  \par\noindent
+  \begin{minipage}[t]{0.20\linewidth}%
+    \raggedright{\footnotesize\color{gris}\bfseries #1}%
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[t]{0.40\linewidth}%
+    \raggedright{\bfseries\color{accent} #2}%
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[t]{0.37\linewidth}%
+    \raggedleft{\footnotesize\bfseries\color{gris} #3}%
+  \end{minipage}%
+  \par\vspace{0.12em}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{header}}
+
+{{body}}
+
+\end{document}

@@ -6,7 +6,7 @@ import tex_datos
 
 BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
-TEMPLATES = ("classic", "harvard", "modern", "creative", "chinese", "sidebar", "sidebar-right")
+TEMPLATES = ("classic", "harvard", "modern", "creative", "chinese", "sidebar", "sidebar-right", "tabbed", "ribbon", "navy", "playful")
 TEMPLATE_FILES = {
     "classic": "classic/plantilla.tex",
     "harvard": "harvard/harvard.tex",
@@ -15,7 +15,14 @@ TEMPLATE_FILES = {
     "chinese": "chinese/chino.tex",
     "sidebar": "sidebar/sidebar.tex",
     "sidebar-right": "sidebar-right/sidebar-right.tex",
+    "tabbed": "tabbed/tabbed.tex",
+    "ribbon": "ribbon/ribbon.tex",
+    "navy": "navy/navy.tex",
+    "playful": "playful/playful.tex",
 }
+# Templates that reuse the three-column Chinese renderers (date/title/org)
+# and the shared \cvcnline macro.
+CHINESE_STYLE_TEMPLATES = ("chinese", "tabbed", "ribbon", "navy", "playful")
 
 _SPECIALS = re.compile(r"([\\{}$&#_%~^])")
 _LATEX_ESCAPES = {
@@ -626,6 +633,288 @@ def _header_chinese(d, L, parts):
     return row + "\\vspace{0.6em}\n{\\color{accent}\\hrule height 1.0pt}\n"
 
 
+def _contact_lines(contact):
+    """Lines of the block produced by ``_contacts`` ([] when it is empty).
+
+    ``_contacts`` joins the entries with ``\\\\`` inside a ``{\\small ... \\par}``
+    group; the new headers need the individual lines to place them in columns
+    or behind a badge. Only that wrapper is stripped here, so every entry is
+    carried over verbatim and the socials keep their exact labels.
+    """
+    if not contact or not contact.strip():
+        return []
+    body = contact.strip()
+    prefix = "{\\small"
+    if body.startswith(prefix):
+        body = body[len(prefix):].lstrip("\n")
+    if body.endswith("\\par}"):
+        body = body[:-len("\\par}")].rstrip()
+    return [line for line in body.split(" \\\\\n") if line.strip()]
+
+
+def _contact_plain_width(line):
+    """Approximate visible width of a contact line in 10pt em units.
+
+    CJK glyphs are roughly twice as wide as the Latin average, so they weigh
+    two units. Commands and grouping braces are not visible and are dropped.
+    """
+    text = re.sub(r"\\[A-Za-z]+\*?", "", line)
+    text = text.replace("{", "").replace("}", "")
+    return sum(2 if ord(char) > 0x2E80 else 1 for char in text)
+
+
+def _contact_columns(contact):
+    """Two balanced columns, or one column when long strings would break.
+
+    Two 0.48 columns of the header's 0.7 text block hold about 30 Latin
+    characters per line at 10pt, so anything longer (URLs, emails, long
+    institution names) keeps the clean single-column block from ``_contacts``.
+    """
+    lines = _contact_lines(contact)
+    if len(lines) < 2:
+        return contact
+    if max(_contact_plain_width(line) for line in lines) > 30:
+        return contact
+    columns = ([], [])
+    for index, line in enumerate(lines):
+        columns[index % 2].append(line)
+
+    def column(items):
+        return (
+            "\\begin{minipage}[t]{0.48\\linewidth}\n"
+            "\\raggedright\\small\n"
+            + "\\\\\n".join(items)
+            + "\n\\end{minipage}"
+        )
+
+    return column(columns[0]) + "%\n\\hfill\n" + column(columns[1]) + "\n"
+
+
+def _badge_contacts(contact):
+    """Contact lines prefixed with a small accent/acento2 diamond badge."""
+    lines = _contact_lines(contact)
+    if not lines:
+        return ""
+    badge = (
+        "\\raisebox{-0.08em}{\\makebox[1.2em][c]{"
+        "\\colorbox{accent}{\\color{acento2}\\rotatebox{45}{\\rule{0.34em}{0.34em}}}"
+        "}}"
+    )
+    return (
+        "{\\setlength{\\fboxsep}{1pt}\\small\n"
+        + "\\\\\n".join(f"{badge}\\hspace{{0.5em}}{line}" for line in lines)
+        + "\n\\par}"
+    )
+
+
+def _header_tabbed(d, L, parts):
+    """Black-tab header: huge LANG title, name and two balanced contact columns.
+
+    The photo/logo row keeps the content inside the text block; the heavy page
+    frame belongs to the template. An empty ``parts`` list gives the left
+    column the full width, so the header still looks intentional.
+    """
+    name = esc(d.get("name", "")).strip()
+    contact = _contacts(d, L)
+    # The huge LANG title stands on its own: the old 0.5em square was sized at
+    # 11pt and sat on the baseline, reading as a stray period before the title
+    # (the reference design has no marker).
+    title = (
+        "\\noindent"
+        f"{{\\fontsize{{26}}{{30}}\\selectfont\\bfseries\\color{{accent}} {L['title']}}}\\par\n"
+    )
+    left = []
+    if name:
+        left.append(f"{{\\LARGE\\bfseries {name}}}\\par\n")
+    if contact:
+        left.append("\\vspace{0.45em}\n")
+        left.append(_contact_columns(contact) + "\n")
+    if parts:
+        row = (
+            "\\noindent\n"
+            "\\begin{minipage}[t]{0.7\\textwidth}\n"
+            "\\raggedright\n"
+            + "".join(left)
+            + "\\end{minipage}%\n"
+            "\\hfill\n"
+            "\\begin{minipage}[t]{0.26\\textwidth}\n"
+            "\\raggedleft\n"
+            "\\vspace{0.25em}\n"
+            + "".join(parts)
+            + "\\end{minipage}\n"
+        )
+    else:
+        row = "\\noindent\n" + "".join(left)
+    return (
+        title
+        + "\\vspace{0.2em}\n"
+        + row
+        + "\\vspace{0.55em}\n"
+        + "{\\color{accent}\\hrule height 2.2pt}\n"
+        + "\\vspace{0.12em}\n"
+        + "{\\color{acento2}\\hrule height 0.6pt}\n"
+    )
+
+
+def _header_ribbon(d, L, parts):
+    """Blue ribbon band with the LANG title as subtitle and a gold rule.
+
+    The band is a zero-padding ``\\colorbox`` over the full text block, so a
+    template band drawn behind the header lines up with it; the contacts stay
+    on white below the gold ``acento2`` rule. Empty ``parts`` stretches the
+    band's text column to the full width.
+    """
+    name = esc(d.get("name", "")).strip()
+    contact = _contacts(d, L)
+    band_left = (
+        "\\vspace{0.45em}\n"
+        f"{{\\color{{white}}\\small\\bfseries {L['title']}}}\\par\n"
+        "\\vspace{0.15em}\n"
+    )
+    if name:
+        band_left += (
+            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
+            "\\color{white}\\fontsize{24}{28}\\selectfont\\bfseries "
+            + name
+            + "\\par}\n"
+        )
+    band_left += "\\vspace{0.45em}\n"
+    if parts:
+        # The band wraps a full-\linewidth minipage, so it always matches the
+        # gold rule and the text block. The inner columns keep a 0.04 gap;
+        # [c] keeps the title/name optically centred against a tall photo
+        # (a [t] variant pushed all the leftover blue below the text instead).
+        band = (
+            "\\noindent\\begingroup\\setlength{\\fboxsep}{0pt}%\n"
+            "\\colorbox{accent}{%\n"
+            "\\begin{minipage}{\\linewidth}\n"
+            "\\begin{minipage}[c]{0.7\\linewidth}\n"
+            "\\raggedright\n"
+            + band_left
+            + "\\end{minipage}%\n"
+            "\\hfill\n"
+            "\\begin{minipage}[c]{0.26\\linewidth}\n"
+            "\\raggedleft\n"
+            + "".join(parts)
+            + "\\end{minipage}%\n"
+            "\\end{minipage}%\n"
+            "}\n"
+            "\\endgroup\\par\n"
+        )
+    else:
+        band = (
+            "\\noindent\\begingroup\\setlength{\\fboxsep}{0pt}%\n"
+            "\\colorbox{accent}{%\n"
+            "\\begin{minipage}[c]{\\linewidth}\n"
+            "\\raggedright\n"
+            + band_left
+            + "\\end{minipage}%\n"
+            "}\n"
+            "\\endgroup\\par\n"
+        )
+    out = band + "\\vspace{0.2em}\n{\\color{acento2}\\hrule height 2.4pt}\n"
+    if contact:
+        out += "\\vspace{0.5em}\n" + contact + "\n"
+    return out
+
+
+def _header_navy(d, L, parts):
+    """Navy minimal header: small LANG title above a large name and thin rules."""
+    name = esc(d.get("name", "")).strip()
+    contact = _contacts(d, L)
+    left = [
+        f"{{\\small\\bfseries\\color{{accent}} {L['title']}}}\\par\n",
+        "\\vspace{0.12em}\n",
+    ]
+    if name:
+        left.append(
+            # Ragged right (set by the surrounding block) plus disabled
+            # hyphenation: a long zh name must wrap at spaces, never as
+            # "FER-/NÁNDEZ". \par must stay inside the group so the paragraph
+            # is broken with those penalties still active.
+            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
+            "\\fontsize{24}{27}\\selectfont\\bfseries\\color{accent} "
+            + name
+            + "\\par}\n"
+        )
+        left.append("\\vspace{0.3em}\n")
+    if contact:
+        left.append(contact + "\n")
+    if parts:
+        row = (
+            "\\noindent\n"
+            "\\begin{minipage}[t]{0.72\\textwidth}\n"
+            "\\raggedright\n"
+            + "".join(left)
+            + "\\end{minipage}%\n"
+            "\\hfill\n"
+            "\\begin{minipage}[t]{0.26\\textwidth}\n"
+            "\\raggedleft\n"
+            "\\vspace{0.15em}\n"
+            + "".join(parts)
+            + "\\end{minipage}\n"
+        )
+    else:
+        # \raggedright also in the full-width branch: justified text stretched
+        # the zh name's first line (underfull hbox) instead of wrapping it.
+        row = "\\noindent{\\raggedright\n" + "".join(left) + "\\par}\n"
+    return (
+        row
+        + "\\vspace{0.45em}\n"
+        + "{\\color{accent}\\hrule height 0.6pt}\n"
+        + "\\vspace{0.12em}\n"
+        + "{\\color{acento2}\\hrule height 0.3pt}\n"
+    )
+
+
+def _header_playful(d, L, parts):
+    """Playful header: small LANG title, large name and badged contact lines."""
+    name = esc(d.get("name", "")).strip()
+    contact = _badge_contacts(_contacts(d, L))
+    left = [
+        f"{{\\small\\bfseries\\color{{accent}} {L['title']}}}\\par\n",
+        "\\vspace{0.18em}\n",
+    ]
+    if name:
+        left.append(
+            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
+            "\\fontsize{26}{30}\\selectfont\\bfseries\\color{accent} "
+            + name
+            + "\\par}\n"
+        )
+        left.append("\\vspace{0.45em}\n")
+    if contact:
+        left.append(contact + "\n")
+    if parts:
+        # 0.72 instead of 0.7: the full zh name fits on its own line at 26pt
+        # before the Latin transliteration wraps, so the name does not need a
+        # third line in the narrow column.
+        row = (
+            "\\noindent\n"
+            "\\begin{minipage}[t]{0.72\\textwidth}\n"
+            "\\raggedright\n"
+            + "".join(left)
+            + "\\end{minipage}%\n"
+            "\\hfill\n"
+            "\\begin{minipage}[t]{0.26\\textwidth}\n"
+            "\\raggedleft\n"
+            "\\vspace{0.25em}\n"
+            + "".join(parts)
+            + "\\end{minipage}\n"
+        )
+    else:
+        # \raggedright in the full-width branch: justification stretched the
+        # zh name's first line and pushed LUCÍA to the far right.
+        row = "\\noindent{\\raggedright\n" + "".join(left) + "\\par}\n"
+    return (
+        row
+        + "\\vspace{0.5em}\n"
+        + "{\\color{accent}\\hrule height 1.2pt}\n"
+        + "\\vspace{0.12em}\n"
+        + "{\\color{acento2}\\hrule height 0.5pt}\n"
+    )
+
+
 def _header_sidebar(d, L, parts):
     """Main column header of the sidebar template: name, profession and rule.
 
@@ -724,6 +1013,14 @@ def _header(d, L, template_name="classic"):
         return _header_creative(d, L, parts)
     if template_name == "chinese":
         return _header_chinese(d, L, parts)
+    if template_name == "tabbed":
+        return _header_tabbed(d, L, parts)
+    if template_name == "ribbon":
+        return _header_ribbon(d, L, parts)
+    if template_name == "navy":
+        return _header_navy(d, L, parts)
+    if template_name == "playful":
+        return _header_playful(d, L, parts)
     if template_name in ("sidebar", "sidebar-right"):
         return _header_sidebar(d, L, parts)
     return _header_classic(d, L, parts)
@@ -1262,7 +1559,7 @@ def build_tex(data, p):
     # even if it is empty or hidden, so their anchor keeps the chosen position.
     groups = _group_blocks(data)
     body = _render_blocks(groups["start"])
-    render = _chinese_render_section if template_id == "chinese" else _render_section
+    render = _chinese_render_section if template_id in CHINESE_STYLE_TEMPLATES else _render_section
     for key in normalize_section_order(data):
         if not is_section_hidden(data, key):
             title = custom_section_title(data, key)

@@ -64,8 +64,12 @@
             <a data-accion="template:classic"><span class="mark" data-marca="template-classic"></span><span data-i18n="template_classic">Classic</span></a>
             <a data-accion="template:harvard"><span class="mark" data-marca="template-harvard"></span><span data-i18n="template_harvard">Harvard (academic)</span></a>
             <hr>
-            <div class="menu-heading" data-i18n="template_group_chinese">Chinese Standard</div>
+            <div class="menu-heading" data-i18n="template_group_chinese">Chinese styles</div>
             <a data-accion="template:chinese"><span class="mark" data-marca="template-chinese"></span><span data-i18n="template_chinese">Chinese (standard)</span></a>
+            <a data-accion="template:tabbed"><span class="mark" data-marca="template-tabbed"></span><span data-i18n="template_tabbed">Black tabs</span></a>
+            <a data-accion="template:ribbon"><span class="mark" data-marca="template-ribbon"></span><span data-i18n="template_ribbon">Blue ribbon</span></a>
+            <a data-accion="template:navy"><span class="mark" data-marca="template-navy"></span><span data-i18n="template_navy">Navy minimal</span></a>
+            <a data-accion="template:playful"><span class="mark" data-marca="template-playful"></span><span data-i18n="template_playful">Playful</span></a>
             <hr>
             <div class="menu-heading" data-i18n="template_group_normal">Normal CV</div>
             <a data-accion="template:modern"><span class="mark" data-marca="template-modern"></span><span data-i18n="template_modern">Modern</span></a>
@@ -162,7 +166,7 @@
       <button class="small primary" data-accion="setup-engine" data-i18n="setup_engine">Set up engine</button>
     </div>
     <div id="preview-notice" hidden>
-      <span data-i18n="preview_linux_notice">The integrated preview is not available on Linux; use the button to open the PDF with your system viewer.</span>
+      <span data-i18n="preview_linux_notice">The integrated preview could not be loaded; use the button to open the PDF with your system viewer.</span>
       <button class="small primary" id="open-preview-button" data-accion="open-preview"
               data-i18n="preview_linux_open">Open PDF with the system viewer</button>
     </div>
@@ -172,6 +176,25 @@
 </main>
 
 <footer id="status-bar"><span id="status" aria-live="polite"></span></footer>
+
+<div class="modal" id="modal-language" data-static="true" hidden>
+  <div class="modal-box small">
+    <h2 data-i18n="language_title">Choose your language</h2>
+    <p data-i18n="language_text">Select the interface language. You can change it later in Settings.</p>
+    <div class="field-row">
+      <label for="startup-language" data-i18n="ui_language_label">Interface language</label>
+      <select id="startup-language">
+        <option value="en" selected>English</option>
+        <option value="es">Español</option>
+        <option value="zh">中文</option>
+        <option value="ru">Русский</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button id="language-continue" class="primary" data-i18n="language_continue">Continue</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal" id="modal-wizard" hidden>
   <div class="modal-box">

@@ -1,8 +1,12 @@
 """Sample CVs for CVLaTeX.
 
 Return dicts with the same shape as ``latex_gen.empty_data()`` filled with
-realistic content (in Spanish or Chinese) and without images, so the user
-sees how to complete each form section.
+realistic content in the language of the CV (Spanish, English or Chinese),
+and without images, so the user sees how to complete each form section.
+
+The three samples tell the same career story: identical dates, links, email
+addresses, phone number, grades and entry counts. Only the prose, the labels
+and the institution names are localized.
 """
 
 import copy
@@ -10,48 +14,251 @@ import copy
 import latex_gen
 
 
-def sample_data():
-    """Return a sample CV ready to load into the form."""
+_LANGUAGES = ("zh", "es", "en")
+
+# Header data shared by every language.
+_EMAIL = "lucia.fernandez@example.com"
+_PHONE = "+34 612 345 678"
+_SOCIALS = (
+    {"network": "github", "label": "", "value": "github.com/luciafg"},
+    {"network": "linkedin", "label": "", "value": "linkedin.com/in/lucia-fernandez"},
+    {"network": "website", "label": "", "value": "https://luciafernandez.dev"},
+)
+
+# Same institutions in the three samples; Chinese localizes their names.
+_UNIVERSITIES = {
+    "es": ("Universidad Politécnica de Madrid", "Universidad de Valladolid"),
+    "en": ("Universidad Politécnica de Madrid", "Universidad de Valladolid"),
+    "zh": ("马德里理工大学", "巴利亚多利德大学"),
+}
+
+_TEXT = {
+    "es": {
+        "name": "Lucía Fernández García",
+        "profession": "Desarrolladora de software backend",
+        "address": "Calle Mayor 24, 3.º B, 28013 Madrid",
+        "birth_label": "Nacimiento",
+        "birth_value": "12/05/1996",
+        "nationality_label": "Nacionalidad",
+        "nationality_value": "Española",
+        "summary": (
+            "Desarrolladora backend con seis años de experiencia en Python y Java. "
+            "Especializada en APIs, microservicios y despliegues en la nube."
+        ),
+        "work_position": "Desarrolladora Backend Senior",
+        "work_end": "Actualidad",
+        "work_achievements": (
+            "Diseñé la API de pagos con FastAPI para más de dos millones de "
+            "transacciones al mes.\n"
+            "Mentoricé a tres desarrolladores junior y promoví las pruebas "
+            "automatizadas."
+        ),
+        "internship1_position": "Becaria de Desarrollo",
+        "internship1_achievements": (
+            "Automaticé los informes semanales con scripts de Python, ahorrando "
+            "seis horas de trabajo."
+        ),
+        "internship2_position": "Becaria de Análisis de Datos",
+        "internship2_achievements": (
+            "Limpié y analicé 200.000 registros de usuarios con Python y Pandas "
+            "para el informe semanal de operaciones.\n"
+            "Construí un panel de indicadores que redujo a la mitad el tiempo de "
+            "preparación del informe mensual."
+        ),
+        "project1_name": "Rutas Sostenibles",
+        "project1_description": (
+            "Aplicación web que calcula rutas de transporte público con menor "
+            "huella de carbono.\n"
+            "Backend en Flask con datos abiertos GTFS y panel de estadísticas."
+        ),
+        "project1_result": "Primer premio del jurado entre 42 equipos",
+        "project2_name": "Panel de Métricas Abiertas",
+        "project2_description": (
+            "Panel web que visualiza datos abiertos del Ayuntamiento de Madrid.\n"
+            "Backend en FastAPI y PostgreSQL con actualización diaria de los datos."
+        ),
+        "project2_result": (
+            "Más de 300 estrellas en GitHub y adoptado por tres organizaciones "
+            "locales"
+        ),
+        "university_project_name": "Sistema de gestión de biblioteca",
+        "university_project_course": "Ingeniería del Software",
+        "university_project_description": (
+            "Aplicación de escritorio para préstamos, reservas y catálogo, con "
+            "base de datos PostgreSQL."
+        ),
+        "university_project_result": "Matrícula de honor",
+        "degree_master": "Máster en Ingeniería Informática",
+        "degree_bachelor": "Grado en Ingeniería del Software",
+        "skill_languages": "Lenguajes",
+        "skill_tools": "Herramientas",
+        "language1": "Español",
+        "language1_level": "Nativo",
+        "language2": "Inglés",
+        "language2_level": "C1 — Avanzado",
+    },
+    "en": {
+        "name": "Lucía Fernández García",
+        "profession": "Backend software developer",
+        "address": "Calle Mayor 24, 3.º B, 28013 Madrid, Spain",
+        "birth_label": "Date of birth",
+        "birth_value": "12/05/1996",
+        "nationality_label": "Nationality",
+        "nationality_value": "Spanish",
+        "summary": (
+            "Backend developer with six years of experience in Python and Java, "
+            "specializing in APIs, microservices and cloud deployments."
+        ),
+        "work_position": "Senior Backend Developer",
+        "work_end": "Present",
+        "work_achievements": (
+            "Designed the payments API with FastAPI, handling more than two "
+            "million transactions a month.\n"
+            "Mentored three junior developers and championed automated testing."
+        ),
+        "internship1_position": "Software Development Intern",
+        "internship1_achievements": (
+            "Automated the weekly reports with Python scripts, saving six hours "
+            "of work each week."
+        ),
+        "internship2_position": "Data Analysis Intern",
+        "internship2_achievements": (
+            "Cleaned and analysed 200,000 user records with Python and Pandas "
+            "for the weekly operations report.\n"
+            "Built a dashboard that halved the time needed to prepare the "
+            "monthly report."
+        ),
+        "project1_name": "Sustainable Routes",
+        "project1_description": (
+            "Web app that calculates public transport routes with the lowest "
+            "carbon footprint.\n"
+            "Flask backend using open GTFS data, plus a statistics dashboard."
+        ),
+        "project1_result": "First prize from the jury among 42 teams",
+        "project2_name": "Open Metrics Dashboard",
+        "project2_description": (
+            "Web dashboard that visualises open data from the City of Madrid.\n"
+            "FastAPI and PostgreSQL backend with daily data refreshes."
+        ),
+        "project2_result": (
+            "Over 300 stars on GitHub and adopted by three local organisations"
+        ),
+        "university_project_name": "Library Management System",
+        "university_project_course": "Software Engineering",
+        "university_project_description": (
+            "Desktop application for loans, reservations and cataloguing, backed "
+            "by a PostgreSQL database."
+        ),
+        "university_project_result": "Honours distinction",
+        "degree_master": "Master's in Computer Engineering",
+        "degree_bachelor": "Bachelor's in Software Engineering",
+        "skill_languages": "Languages",
+        "skill_tools": "Tools",
+        "language1": "Spanish",
+        "language1_level": "Native",
+        "language2": "English",
+        "language2_level": "C1 — Advanced",
+    },
+    "zh": {
+        "name": "露西亚·费尔南德斯·加西亚 LUCÍA FERNÁNDEZ GARCÍA",
+        "profession": "后端软件开发工程师",
+        "address": "西班牙马德里 Calle Mayor 24, 3.º B, 28013",
+        "birth_label": "出生年月",
+        "birth_value": "1996年5月12日",
+        "nationality_label": "国籍",
+        "nationality_value": "西班牙",
+        "summary": (
+            "拥有六年 Python 与 Java 开发经验的后端工程师，专注于 API、微服务"
+            "与云端部署。"
+        ),
+        "work_position": "高级后端开发工程师",
+        "work_end": "至今",
+        "work_achievements": (
+            "使用 FastAPI 设计支付 API，每月处理超过两百万笔交易。\n"
+            "指导三名初级开发者，并推动自动化测试落地。"
+        ),
+        "internship1_position": "软件开发实习生",
+        "internship1_achievements": (
+            "使用 Python 脚本自动生成周报，每周节省六小时工作量。"
+        ),
+        "internship2_position": "数据分析实习生",
+        "internship2_achievements": (
+            "使用 Python 与 Pandas 清洗并分析 20 万条用户记录，为每周运营"
+            "报告提供数据支持。\n"
+            "搭建指标看板，将月度报告的准备时间缩短一半。"
+        ),
+        "project1_name": "可持续出行路线",
+        "project1_description": (
+            "计算碳排放最低的公共交通路线的 Web 应用。\n"
+            "后端采用 Flask，接入 GTFS 开放数据，并提供统计面板。"
+        ),
+        "project1_result": "在 42 支队伍中获评委会一等奖",
+        "project2_name": "开放指标看板",
+        "project2_description": (
+            "展示马德里市政府开放数据的 Web 指标看板。\n"
+            "后端采用 FastAPI 与 PostgreSQL，数据每日更新。"
+        ),
+        "project2_result": "GitHub 获 300 余颗星，并被三家本地机构采用",
+        "university_project_name": "图书馆管理系统",
+        "university_project_course": "软件工程",
+        "university_project_description": (
+            "用于图书借阅、预约与编目管理的桌面应用，底层使用 PostgreSQL "
+            "数据库。"
+        ),
+        "university_project_result": "荣誉成绩（Matrícula de honor）",
+        "degree_master": "计算机工程硕士",
+        "degree_bachelor": "软件工程学士",
+        "skill_languages": "编程语言",
+        "skill_tools": "工具",
+        "language1": "西班牙语",
+        "language1_level": "母语",
+        "language2": "英语",
+        "language2_level": "C1 — 高级",
+    },
+}
+
+
+def _normalize_language(cv_language):
+    """Return ``zh``, ``es`` or ``en``; fall back to ``es`` and never raise."""
+    try:
+        lang = str(cv_language or "es").strip().lower()
+    except Exception:
+        return "es"
+    return lang if lang in _LANGUAGES else "es"
+
+
+def _build_sample(lang):
+    """Build the canonical career story with the text of ``lang``."""
+    text = _TEXT[lang]
+    university, bachelor_university = _UNIVERSITIES[lang]
+
     d = copy.deepcopy(latex_gen.empty_data())
 
-    d["cv_language"] = "es"
+    d["cv_language"] = lang
     d["template"] = "classic"
-    d["name"] = "Lucía Fernández García"
-    d["profession"] = "Desarrolladora de software backend"
-    d["email"] = "lucia.fernandez@example.com"
-    d["phone"] = "+34 612 345 678"
-    d["address"] = "Calle Mayor 24, 3.º B, 28013 Madrid"
-    d["socials"] = [
-        {"network": "github", "label": "", "value": "github.com/luciafg"},
-        {"network": "linkedin", "label": "", "value": "linkedin.com/in/lucia-fernandez"},
-        {"network": "website", "label": "", "value": "https://luciafernandez.dev"},
-    ]
-    d["school_name"] = "Universidad Politécnica de Madrid"
-    d["school_logo"] = ""
+    d["name"] = text["name"]
+    d["profession"] = text["profession"]
+    d["email"] = _EMAIL
+    d["phone"] = _PHONE
+    d["address"] = text["address"]
+    d["socials"] = copy.deepcopy(list(_SOCIALS))
+    d["school_name"] = university
 
     d["extra_fields"] = [
-        {"label": "Nacimiento", "value": "12/05/1996"},
-        {"label": "Nacionalidad", "value": "Española"},
+        {"label": text["birth_label"], "value": text["birth_value"]},
+        {"label": text["nationality_label"], "value": text["nationality_value"]},
     ]
 
-    d["summary"] = (
-        "Desarrolladora backend con seis años de experiencia en Python y Java. "
-        "Especializada en APIs, microservicios y despliegues en la nube."
-    )
+    d["summary"] = text["summary"]
 
     d["work"] = [
         {
             "work_mode": "hybrid",
-            "position": "Desarrolladora Backend Senior",
+            "position": text["work_position"],
             "company": "Fintech Nova",
             "start": "2022",
-            "end": "Actualidad",
-            "achievements": (
-                "Diseñé la API de pagos con FastAPI para más de dos millones de "
-                "transacciones al mes.\n"
-                "Mentoricé a tres desarrolladores junior y promoví las pruebas "
-                "automatizadas."
-            ),
+            "end": text["work_end"],
+            "achievements": text["work_achievements"],
             "logo": "",
         },
     ]
@@ -59,81 +266,90 @@ def sample_data():
     d["internships"] = [
         {
             "work_mode": "onsite",
-            "position": "Becaria de Desarrollo",
+            "position": text["internship1_position"],
             "company": "Telecom Ibérica",
             "start": "2018",
             "end": "2019",
-            "achievements": (
-                "Automaticé los informes semanales con scripts de Python, ahorrando "
-                "seis horas de trabajo."
-            ),
+            "achievements": text["internship1_achievements"],
             "logo": "",
-        }
+        },
+        {
+            "work_mode": "onsite",
+            "position": text["internship2_position"],
+            "company": "DataLab Valladolid",
+            "start": "2017",
+            "end": "2018",
+            "achievements": text["internship2_achievements"],
+            "logo": "",
+        },
     ]
 
     d["projects"] = [
         {
-            "name": "Rutas Sostenibles",
+            "name": text["project1_name"],
             "organization": "Hackathon Climate 2023",
             "start": "2023",
             "end": "2023",
-            "description": (
-                "Aplicación web que calcula rutas de transporte público con menor "
-                "huella de carbono.\n"
-                "Backend en Flask con datos abiertos GTFS y panel de estadísticas."
-            ),
-            "result": "Primer premio del jurado entre 42 equipos",
+            "description": text["project1_description"],
+            "result": text["project1_result"],
             "link": "github.com/luciafg/rutas-sostenibles",
             "logo": "",
-        }
+        },
+        {
+            "name": text["project2_name"],
+            "organization": "Open Data Madrid",
+            "start": "2021",
+            "end": "2021",
+            "description": text["project2_description"],
+            "result": text["project2_result"],
+            "link": "github.com/luciafg/panel-metricas",
+            "logo": "",
+        },
     ]
 
     d["university_projects"] = [
         {
-            "name": "Sistema de gestión de biblioteca",
-            "course": "Ingeniería del Software",
-            "organization": "Universidad Politécnica de Madrid",
+            "name": text["university_project_name"],
+            "course": text["university_project_course"],
+            "organization": university,
             "start": "2018",
             "end": "2018",
-            "description": (
-                "Aplicación de escritorio para préstamos, reservas y catálogo, con "
-                "base de datos PostgreSQL."
-            ),
-            "result": "Matrícula de honor",
+            "description": text["university_project_description"],
+            "result": text["university_project_result"],
             "link": "",
             "logo": "",
-        }
+        },
     ]
 
     d["education"] = [
         {
             "degree_type": "master",
-            "degree": "Máster en Ingeniería Informática",
-            "institution": "Universidad Politécnica de Madrid",
+            "degree": text["degree_master"],
+            "institution": university,
             "start": "2018",
             "end": "2020",
-            "grade": "9,2 / 10",
+            "grade": "9.2 / 10",
             "logo": "",
         },
         {
             "degree_type": "bachelor",
-            "degree": "Grado en Ingeniería del Software",
-            "institution": "Universidad de Valladolid",
+            "degree": text["degree_bachelor"],
+            "institution": bachelor_university,
             "start": "2014",
             "end": "2018",
-            "grade": "8,5 / 10",
+            "grade": "8.5 / 10",
             "logo": "",
         },
     ]
 
     d["skills"] = [
-        {"category": "Lenguajes", "values": "Python, Java, SQL"},
-        {"category": "Herramientas", "values": "Docker, Git, PostgreSQL"},
+        {"category": text["skill_languages"], "values": "Python, Java, SQL"},
+        {"category": text["skill_tools"], "values": "Docker, Git, PostgreSQL"},
     ]
 
     d["languages"] = [
-        {"language": "Español", "level": "Nativo"},
-        {"language": "Inglés", "level": "C1 — Advanced"},
+        {"language": text["language1"], "level": text["language1_level"]},
+        {"language": text["language2"], "level": text["language2_level"]},
     ]
 
     d["references"] = [
@@ -143,152 +359,16 @@ def sample_data():
     return d
 
 
+def sample_data(cv_language="es"):
+    """Return the sample CV in ``cv_language`` (``zh``, ``es`` or ``en``)."""
+    return _build_sample(_normalize_language(cv_language))
+
+
 def sample_data_zh():
-    """Return a sample CV in Chinese (fiction) and without images.
+    """Return the Chinese sample CV (same career story as the Spanish one)."""
+    return sample_data("zh")
 
-    It is meant for the "chinese" template: the languages are integrated as one
-    more skills category and the remaining sections follow the same schema as
-    ``sample_data()``.
-    """
-    d = copy.deepcopy(latex_gen.empty_data())
 
-    d["cv_language"] = "zh"
-    d["template"] = "chinese"
-    d["name"] = "王小明 WANG Xiaoming"
-    d["profession"] = "软件开发实习生 / Software Development Intern"
-    d["email"] = "wangxiaoming@example.com"
-    d["phone"] = "13800000000"
-    d["socials"] = [
-        {"network": "github", "label": "", "value": "https://github.com/example-wxm"},
-        {"network": "linkedin", "label": "", "value": "https://linkedin.com/in/example-wxm"},
-    ]
-    d["school_name"] = "复旦大学"
-    d["school_logo"] = ""
-    d["extra_fields"] = [
-        {"label": "出生年月", "value": "2003年5月"},
-        {"label": "国籍", "value": "中国"},
-    ]
-
-    d["education"] = [
-        {
-            "degree_type": "bachelor",
-            "degree": "软件工程",
-            "institution": "复旦大学",
-            "start": "2021",
-            "end": "2025",
-            "grade": "3.8 / 4.0",
-            "logo": "",
-        },
-        {
-            "degree_type": "high_school",
-            "degree": "理科实验班",
-            "institution": "上海中学",
-            "start": "2018",
-            "end": "2021",
-            "grade": "",
-            "logo": "",
-        },
-    ]
-
-    d["projects"] = [
-        {
-            "name": "智能课程表助手",
-            "organization": "复旦大学计算机学院创新实践项目",
-            "start": "2023",
-            "end": "2024",
-            "description": (
-                "一款帮助学生自动整理课程、作业与考试安排的小程序，支持从教务"
-                "系统导入课表。\n"
-                "使用 Vue 3 与 FastAPI 搭建前后端，基于规则引擎识别课程冲突并"
-                "给出调课建议。"
-            ),
-            "result": "获校级创新实践项目一等奖",
-            "link": "https://github.com/example-wxm/course-planner",
-            "logo": "",
-        },
-        {
-            "name": "校园二手交易平台",
-            "organization": "复旦大学开源技术社团",
-            "start": "2023",
-            "end": "2023",
-            "description": (
-                "面向校内同学的二手物品发布与交易网站，包含商品检索、站内消息"
-                "和信用评价功能。\n"
-                "使用 Spring Boot 与 MySQL 实现后端接口，部署在校园云服务器上"
-                "供同学试用。\n"
-                "编写接口文档并组织社团内的代码评审，项目在 GitHub 上收获 60 "
-                "余颗星。"
-            ),
-            "result": "累计发布商品 800 余件，注册用户 500 余人",
-            "link": "https://github.com/example-wxm/campus-market",
-            "logo": "",
-        },
-    ]
-
-    d["university_projects"] = [
-        {
-            "name": "迷宫寻路算法可视化",
-            "course": "数据结构与算法",
-            "organization": "复旦大学计算机科学技术学院",
-            "start": "2022",
-            "end": "2022",
-            "description": (
-                "基于 Python 与 Pygame 实现广度优先、深度优先和 A* 三种寻路"
-                "算法的可视化对比。\n"
-                "支持随机地图生成与逐步演示，帮助同学直观理解不同算法的效率"
-                "差异。"
-            ),
-            "result": "课程设计成绩优秀（95 分）",
-            "link": "https://github.com/example-wxm/maze-visualizer",
-            "logo": "",
-        },
-    ]
-
-    d["internships"] = [
-        {
-            "work_mode": "onsite",
-            "position": "软件开发实习生",
-            "company": "上海云帆科技有限公司",
-            "start": "2024",
-            "end": "2024",
-            "achievements": (
-                "参与公司 SaaS 产品的前端模块开发，使用 Vue 3 与 TypeScript "
-                "完成十余个页面组件。\n"
-                "为核心模块补充自动化测试，将测试覆盖率从 62% 提升到 85%。\n"
-                "整理开发文档并参与每周代码评审，获得导师「交付可靠、代码"
-                "规范」的评价。"
-            ),
-            "logo": "",
-        },
-        {
-            "work_mode": "remote",
-            "position": "数据分析实习生",
-            "company": "北京星河数据工作室",
-            "start": "2023",
-            "end": "2023",
-            "achievements": (
-                "使用 Python 与 Pandas 清洗 20 万条用户行为数据，输出周度运营"
-                "分析报告。\n"
-                "搭建简易指标看板，帮助团队把周报制作时间缩短一半。\n"
-                "与产品经理协作梳理埋点需求，提出 3 项数据采集优化建议并被"
-                "采纳。"
-            ),
-            "logo": "",
-        },
-    ]
-
-    d["work"] = []
-    d["summary"] = ""
-
-    d["skills"] = [
-        {"category": "编程语言", "values": "Python, Java, C++, JavaScript, SQL"},
-        {"category": "框架与工具", "values": "Vue 3, Spring Boot, Git, Docker, Linux"},
-        {"category": "数据分析", "values": "Pandas, NumPy, MySQL, ECharts"},
-        {"category": "证书与获奖", "values": "CET-6（560 分）, 全国大学生数学建模竞赛省二等奖"},
-        {"category": "语言", "values": "中文（母语）, 英语（CET-6）, 西班牙语（基础）"},
-    ]
-
-    d["languages"] = []
-    d["references"] = []
-
-    return d
+def sample_data_en():
+    """Return the English sample CV (same career story as the Spanish one)."""
+    return sample_data("en")
