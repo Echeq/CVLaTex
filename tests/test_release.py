@@ -164,19 +164,44 @@ def test_build_workflow_runs_tests_and_ignores_tags():
 
 def test_readme_documents_release_assets():
     readme = _read(README)
+    assert "## Download" in readme
     assert "## Releases" in readme
+    assert "## Installation" in readme
+    assert "v%s is the first public pre-release" % VERSION in readme
+
+    base = "https://github.com/Echeq/CVLaTex/releases/download/v%s/" % VERSION
     for asset in (
-        "CVLaTeX-v%s-windows-x64.exe" % VERSION,
-        "CVLaTeX-v%s-linux-x86_64" % VERSION,
+        "CVLaTeX-v%s-windows-x64.zip" % VERSION,
         "CVLaTeX-v%s-macos-arm64.zip" % VERSION,
+        "CVLaTeX-v%s-linux-x86_64.tar.gz" % VERSION,
+        "SHA256SUMS.txt",
     ):
         assert asset in readme, asset
+        assert base + asset in readme, base + asset
+
+    for heading in ("### Windows", "### macOS", "### Linux", "### From source"):
+        assert heading in readme, heading
+    for phrase in (
+        "No Python or LaTeX installation is required",
+        "More info",
+        "Run anyway",
+        "Apple Silicon (arm64) only",
+        "Intel Macs are not supported",
+        "sudo apt install python3-gi gir1.2-webkit2-4.1",
+        "sudo pacman -S python-gobject webkit2gtk-4.1",
+        "tar -xzf CVLaTeX-v%s-linux-x86_64.tar.gz" % VERSION,
+        "chmod +x CVLaTeX-v%s-linux-x86_64" % VERSION,
+        "libwebkit2gtk-4.1-dev",
+    ):
+        assert phrase in readme, phrase
+
     for link in (
         "[CHANGELOG.md](CHANGELOG.md)",
         "[SECURITY.md](SECURITY.md)",
         "[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)",
     ):
         assert link in readme, link
-    assert "SHA256SUMS.txt" in readme
+    assert "sha256sum -c SHA256SUMS.txt" in readme
+    assert "Get-FileHash" in readme
     assert "unsigned" in readme.lower()
     assert "WebKitGTK 4.1" in readme

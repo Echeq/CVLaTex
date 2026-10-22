@@ -4,6 +4,19 @@
 
 > Cross-platform desktop editor (Windows, Linux, macOS) for building a CV in a form, rendering it with LaTeX templates and compiling it to PDF with a live preview. It also exports Word (.docx) and LaTeX (.tex), and saves or loads projects as `.cvjson`.
 
+## Download
+
+These are the recommended downloads for most users: self-contained builds that need **no Python and no LaTeX installation**. The app can install TinyTeX on first run when you want PDF preview and export.
+
+| Platform | Download |
+| --- | --- |
+| Windows x64 | [CVLaTeX-v0.1.0-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-windows-x64.zip) |
+| macOS Apple Silicon (arm64) | [CVLaTeX-v0.1.0-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-macos-arm64.zip) |
+| Linux x86_64 | [CVLaTeX-v0.1.0-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-linux-x86_64.tar.gz) |
+| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/SHA256SUMS.txt) |
+
+All four files are attached to the [v0.1.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0). The macOS build is Apple Silicon only; Intel Macs are not supported in v0.1.0.
+
 ## Requirements
 
 - Windows 10/11 with the WebView2 runtime (preinstalled on current Windows), macOS with the built-in WKWebView, or Linux with WebKitGTK 4.1 plus GObject introspection (`python3-gi`, `gir1.2-webkit2-4.1`; the WebKitGTK 4.1 runtime library is pulled in by these packages on Debian/Ubuntu). Building a bundle additionally needs the `libwebkit2gtk-4.1-dev` package, because PyInstaller must import `gi` and the GTK backend; running from source or from the bundle does not require `-dev`.
@@ -12,19 +25,37 @@
 
 ## Installation
 
-Two ways to get CVLaTeX: a standalone bundle or a source checkout.
+For most users: download the archive above, extract it, and run the app. No Python or LaTeX installation is required; the app can install TinyTeX on first run.
 
-### Standalone bundle
+### Windows
 
-CI builds one PyInstaller bundle per platform and uploads them as artifacts of the `build` workflow (`Actions → build`); tagged versions are published with checksums by the `release` workflow (see [Releases](#releases)). No Python installation is needed on the target machine.
+1. Download and extract the `.zip`.
+2. Run `CVLaTeX-v0.1.0-windows-x64.exe`.
+3. Windows SmartScreen will warn because the build is unsigned: click **More info → Run anyway**.
+4. WebView2 is required and normally preinstalled on Windows 10/11; if missing, install the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+5. On first run, let the app install TinyTeX if you want PDF preview/export.
 
-| Platform | Bundle |
-| --- | --- |
-| Windows | `dist/CVLaTeX_Windows.exe` |
-| Linux | `dist/CVLaTeX_Linux` |
-| macOS | `dist/CVLaTeX_macOS.zip` (unzip to `CVLaTeX.app`) |
+### macOS
 
-On Linux, install the runtime packages from [Requirements](#requirements) first and keep the executable bit. To build a bundle locally, see [Build](docs/DEVELOPMENT.md#build).
+1. Download and unzip; drag `CVLaTeX.app` to Applications (optional).
+2. Open it. If Gatekeeper blocks it, right-click the app → **Open**, or use **System Settings → Privacy & Security → Open Anyway**.
+3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.1.0.
+4. Let the app install TinyTeX if you want PDF preview/export.
+
+### Linux
+
+1. Install the runtime packages: Debian/Ubuntu `sudo apt install python3-gi gir1.2-webkit2-4.1`; Arch `sudo pacman -S python-gobject webkit2gtk-4.1`.
+2. Extract and run:
+
+   ```bash
+   tar -xzf CVLaTeX-v0.1.0-linux-x86_64.tar.gz
+   cd CVLaTeX-v0.1.0-linux-x86_64
+   chmod +x CVLaTeX-v0.1.0-linux-x86_64
+   ./CVLaTeX-v0.1.0-linux-x86_64
+   ```
+
+3. `libwebkit2gtk-4.1-dev` is build-only and not needed to run.
+4. Let the app install TinyTeX if you want PDF preview/export.
 
 ### From source
 
@@ -59,24 +90,21 @@ On Linux the `--system-site-packages` flag is required so the venv sees the dist
 
 ## Releases
 
-The first pre-release is **v0.1.0**. Versions in the `0.*` series are published
-as GitHub pre-releases. Each release contains the three native bundles built by
-[`.github/workflows/release.yml`](.github/workflows/release.yml) and a
-`SHA256SUMS.txt` manifest with the SHA-256 checksum of every asset.
+**v0.1.0 is the first public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.1.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0). Versions in the `0.*` series are published as GitHub pre-releases.
 
 | Platform | Architecture | Asset |
 | --- | --- | --- |
-| Windows | x64 | `CVLaTeX-v0.1.0-windows-x64.exe` |
-| Linux | x86_64 | `CVLaTeX-v0.1.0-linux-x86_64` |
-| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.1.0-macos-arm64.zip` |
+| Windows | x64 | `CVLaTeX-v0.1.0-windows-x64.zip` (contains `CVLaTeX-v0.1.0-windows-x64.exe`) |
+| Linux | x86_64 | `CVLaTeX-v0.1.0-linux-x86_64.tar.gz` (contains `CVLaTeX-v0.1.0-linux-x86_64`) |
+| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.1.0-macos-arm64.zip` (contains `CVLaTeX.app`) |
+| All platforms | — | `SHA256SUMS.txt` |
 
 GitHub's `macos-latest` runner currently builds natively on Apple Silicon, so
-the v0.1.0 macOS asset is named `CVLaTeX-v0.1.0-macos-arm64.zip`. The workflow
-takes the suffix from `runner.arch`; if the runner label moves to Intel it will
-publish `CVLaTeX-v0.1.0-macos-x86_64.zip` without a workflow change. No
-universal macOS binary is produced.
+the v0.1.0 macOS asset is named `CVLaTeX-v0.1.0-macos-arm64.zip`. No universal
+macOS binary and no Intel macOS build are produced for v0.1.0.
 
-Verify a download with the checksum manifest:
+Verify a download with the checksum manifest (Linux/macOS, with the downloaded
+files and `SHA256SUMS.txt` in the current directory):
 
 ```bash
 sha256sum -c SHA256SUMS.txt
@@ -86,16 +114,15 @@ On Windows, compare `Get-FileHash -Algorithm SHA256 <file>` with the matching
 line in `SHA256SUMS.txt`.
 
 **Unsigned builds:** the Windows and macOS bundles are not code-signed or
-notarized. Windows SmartScreen may warn about the `.exe`, and macOS Gatekeeper
-may block the `.app` on first launch (open it from Finder with right-click →
-Open, or allow it in System Settings → Privacy & Security). Verify the SHA-256
-checksum and build provenance before running a bundle.
+notarized. Windows SmartScreen may warn about the executable, and macOS
+Gatekeeper may block the `.app` on first launch (open it from Finder with
+right-click → Open, or allow it in System Settings → Privacy & Security).
+Verify the SHA-256 checksum and build provenance before running a bundle.
 
 **Linux runtime:** the bundle needs WebKitGTK 4.1 and GObject introspection from
 your distribution — on Debian/Ubuntu `python3-gi` and
 `gir1.2-webkit2-4.1` (the build-only `libwebkit2gtk-4.1-dev` is needed only
-when building), on Arch `python-gobject` and `webkit2gtk-4.1`. Keep the executable bit
-(`chmod +x CVLaTeX-v0.1.0-linux-x86_64`).
+when building), on Arch `python-gobject` and `webkit2gtk-4.1`.
 
 Release notes live in [CHANGELOG.md](CHANGELOG.md), the security policy in
 [SECURITY.md](SECURITY.md) and the third-party licenses in
@@ -178,7 +205,7 @@ On first run, after the interface-language picker, the setup wizard offers to do
 - **Missing LaTeX package**: the errors shown under the preview name the problem; install the package with your TeX distribution's manager or re-run the TinyTeX installer.
 - **A `.tex` file is rejected on import**: only files generated or exported by CVLaTeX can be imported, because they carry the embedded data block. Foreign LaTeX files are not parsed heuristically.
 - **Saving from the embedded PDF viewer does nothing**: downloads are enabled in the WebView so the viewer's save button opens the native dialog; if it still fails, use `File → Export → PDF…`.
-- **The PyInstaller build cannot replace `dist\CVLaTeX_Windows.exe`**: close the running app first; Windows locks the executable while it runs.
+- **Building on Windows cannot replace the executable**: close the running app first; Windows locks the executable while it runs.
 - **A bundle built on one OS does not run on another**: bundles are per-platform; build natively or use the CI artifacts.
 
 ## Development
