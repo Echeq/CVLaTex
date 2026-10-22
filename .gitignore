@@ -5,23 +5,61 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # PyInstaller artifacts (the exe is published as a release asset, not committed)
 build/
 dist/
 CVLaTeX.spec
 
-# Log files
+# Runtime caches and logs
+cache/
 *.log
+
+# OS and editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+*.orig
+*.rej
+*.bak
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Tooling binaries (local downloads, never part of the app)
+*.exe
+opencode.exe
+
+# Personal CV output
+*.cvjson
+*.pdf
+*.docx
 
 # Local opencode tooling (agent pipeline, not part of the app)
 .opencode/
 opencode.json
 AGENTS.md
 
+# Local Playwright MCP browser artifacts
+.playwright-mcp/
+
 # Internal refactoring notes
 docs/audit.md
 docs/refactor-map.md
+
+# Personal template samples (kept on disk, never versioned)
+templates/picture samples/
 
 # Personal reference file (kept on disk, never versioned)
 templates/chinese/Elvis Chen CV.docx
