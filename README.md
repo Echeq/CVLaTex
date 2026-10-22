@@ -1,11 +1,13 @@
 # CVLaTeX
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > Cross-platform desktop editor (Windows, Linux, macOS) for building a CV in a form, rendering it with LaTeX templates and compiling it to PDF with a live preview. It also exports Word (.docx) and LaTeX (.tex), and saves or loads projects as `.cvjson`.
 
 ## Requirements
 
-- Windows 10/11 with the WebView2 runtime (preinstalled on current Windows), macOS with the built-in WKWebView, or Linux with WebKitGTK (WebKit2GTK 4.1) or Qt WebEngine plus the GObject-introspection packages (`python3-gi`, `gir1.2-webkit2-4.1`; on Debian/Ubuntu also `libwebkit2gtk-4.1-dev` for source builds).
-- To run from source: Python 3.12 with pip, plus the packages in `requirements.txt`.
+- Windows 10/11 with the WebView2 runtime (preinstalled on current Windows), macOS with the built-in WKWebView, or Linux with WebKitGTK 4.1 plus the GObject-introspection packages (`python3-gi`, `gir1.2-webkit2-4.1`; on Debian/Ubuntu also `libwebkit2gtk-4.1-dev`). On Linux these system packages are needed both to run the app and to build the bundle, because PyInstaller must import `gi` to bundle the GTK backend.
+- To run from source: Python 3.12 with pip, plus the packages in `requirements.txt`. The standalone bundles need no Python installation.
 - A LaTeX engine is optional. Preview and PDF export need one, but the app can download and install TinyTeX itself on all three platforms; Word (.docx) and LaTeX (.tex) export never need a LaTeX installation.
 
 ## Installation
@@ -14,9 +16,28 @@ Two ways to get CVLaTeX: a standalone bundle or a source checkout.
 
 ### Standalone bundle
 
-Build the self-contained bundle once ([Development](#development)); it bundles the frontend and the templates and needs no Python installation. Run `dist\CVLaTeX.exe` on Windows, `dist/CVLaTeX` or `dist/CVLaTeX.app` on Linux/macOS. On Linux, install the runtime packages from [Requirements](#requirements) first and keep the executable bit.
+CI builds one PyInstaller bundle per platform and uploads them as artifacts of the `build` workflow (`Actions → build`); no Python installation is needed on the target machine.
+
+| Platform | Bundle |
+| --- | --- |
+| Windows | `dist/CVLaTeX_Windows.exe` |
+| Linux | `dist/CVLaTeX_Linux` |
+| macOS | `dist/CVLaTeX_macOS.zip` (unzip to `CVLaTeX.app`) |
+
+On Linux, install the runtime packages from [Requirements](#requirements) first and keep the executable bit. To build a bundle locally, see [Build](docs/DEVELOPMENT.md#build).
 
 ### From source
+
+Linux:
+
+```bash
+sudo apt-get install python3-gi gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python main.py
+```
+
+macOS:
 
 ```bash
 python3 -m venv .venv
@@ -24,28 +45,37 @@ python3 -m venv .venv
 .venv/bin/python main.py
 ```
 
-On Windows use `.venv\Scripts\pip` and `.venv\Scripts\python.exe` instead. On Linux, `main.py` needs the WebKitGTK/gir runtime from [Requirements](#requirements).
+Windows (PowerShell):
 
-To skip the manual setup, `build.sh` creates the venv, installs the requirements and produces the bundle in one step:
-
-```bash
-./build.sh
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python.exe main.py
 ```
+
+On Linux the `--system-site-packages` flag is required so the venv sees the distro PyGObject/WebKitGTK packages; on macOS it is unnecessary. Full setup, test and build instructions are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Usage
 
-The form is on the left and the compiled preview on the right; changes are recompiled automatically while typing (configurable in Settings). Linux webviews cannot render PDFs inline: there the preview bar shows **Open PDF with the system viewer**, which opens the last compiled PDF with the desktop viewer (`xdg-open`).
+The form is on the left and the compiled preview on the right; changes are recompiled automatically while typing (configurable in Settings). On Windows and macOS the preview is the webview's native PDF viewer. On Linux, where WebKitGTK cannot render PDFs inline, it is drawn by the PDF.js build vendored in `web/pdfjs/` and served locally at `/pdfjs/`. If PDF.js fails to load or render, the notice above the preview offers **Open PDF with the system viewer**, which opens the last compiled PDF with the desktop's default viewer.
 
 ### Templates
 
-`Edit → CV template` offers Classic, Harvard (academic), Modern, Creative, Sidebar (left), Sidebar (right) and Chinese (standard). The Sidebar layout paints a full-height accent bar on the left of every page holding the photo, school logo, contacts, social networks and extra details, while the main column keeps the name/profession header and the professional sections; its left margin is fixed (about 7 cm) and ignores the left margin setting so the bar keeps its width. Sidebar (right) mirrors the same layout with the bar on the right of every page, with the right margin fixed (about 7 cm) and ignoring the right margin setting so the bar keeps its width. The Chinese template renders with a per-OS CJK font fallback (Microsoft YaHei, PingFang SC, Noto Sans CJK SC, WenQuanYi Zen Hei, Source Han Sans SC) and switches compilation to XeLaTeX automatically.
+`Edit → CV template` groups the 11 templates into ATS Friendly (Classic, Harvard (academic)), Chinese styles (Chinese (standard), Black tabs, Blue ribbon, Navy minimal, Playful) and Normal CV (Modern, Creative, Sidebar (left), Sidebar (right)).
+
+The Sidebar layout paints a full-height accent bar on the left of every page holding the photo, school logo, contacts, social networks and extra details, while the main column keeps the name/profession header and the professional sections; its left margin is fixed (about 7 cm) and ignores the left margin setting so the bar keeps its width. Sidebar (right) mirrors the same layout with the bar on the right of every page, with the right margin fixed (about 7 cm) and ignoring the right margin setting.
+
+Chinese (standard) renders with a per-OS CJK font fallback (Microsoft YaHei, PingFang SC, Noto Sans CJK SC, WenQuanYi Zen Hei, Source Han Sans SC) and switches compilation to XeLaTeX automatically. Black tabs wraps every page in a heavy frame with black section tabs, Blue ribbon uses a slanted blue header band and a gold accent, Navy minimal keeps navy rules and dense three-column academic entries, and Playful combines a large name, badge-style headings, diamond bullets and purple links.
 
 ### Form and sections
 
-- Personal details plus a Social networks card: use the add button, pick a network (GitHub, LinkedIn, X, Instagram, Facebook, YouTube, TikTok, Telegram, WeChat, Website or Other, which also takes a custom name) and type the URL/username; each entry can be removed.
+- Personal details plus a Social networks card: pick a network (GitHub, LinkedIn, X, Instagram, Facebook, YouTube, TikTok, Telegram, WeChat, Website or Other, which also takes a custom name), type the URL/username, and remove entries you no longer need.
 - Extra details holds custom label/value pairs shown in the CV header; the old birth date and nationality fields now live here.
-- Body sections: Profile, Education, Projects, University projects, Internships, Work, Skills, Languages, References. Each section header lets you rename the section inline, hide/show it and move it up or down; the five entry-list sections support 1–3 columns.
-- `Edit → Load sample CV` fills the form with an example (a Chinese one while the Chinese template is selected) so you can see how to complete every field.
+- Body sections: Profile, Education, Projects, University projects, Internships, Work, Skills, Languages, References. Each section header lets you rename it inline, hide/show it and move it up or down; the five entry-list sections support 1–3 columns.
+
+### Sample CV
+
+`Edit → Load sample CV` fills the form in the current `CV label language` (Spanish, English or Chinese), independent of the selected template. The same career story is translated for the three languages and the active template is kept, so you can see how to complete every field.
 
 ### Blocks
 
@@ -53,7 +83,7 @@ The `Add` menu inserts free blocks interleaved with the standard sections:
 
 - `Columns` (1–3) and `Period + description` list templates.
 - `Separator line`, `Color band` and `Blank space`.
-- `Custom section` with a title and one bullet per line.
+- `Custom section` with a title and multi-line content.
 
 Each block is anchored to the start, after a section, or to the end, and can be moved. `Add → Manage blocks…` edits, moves and deletes existing blocks. A block anchored to a hidden section keeps its position. In the Word export, block columns degrade to a single column.
 
@@ -63,8 +93,8 @@ Each block is anchored to the start, after a section, or to the end, and can be 
 
 ### UI language and document language
 
-- UI language: `File → Settings → Interface language` offers English (default), Español, 中文 and Русский. It is stored in the preferences and applied instantly, including the window title.
-- Document language: the per-CV `CV label language` field (Chinese, Spanish, English; Chinese by default; no Russian option). It selects the labels, fonts and engine used to render the CV and is independent from the UI language.
+- **UI language** applies to the interface. On first launch CVLaTeX asks for it (English preselected) before the LaTeX setup wizard; the choice is stored in the preferences and applied instantly, including the window title. `File → Settings → Interface language` offers English (default), Español, 中文 and Русский and can change it later.
+- **Document language** is the per-CV `CV label language` field (Spanish, English or Chinese; no Russian option). It selects the labels, fonts and engine used to render the CV. A new CV defaults to the UI language (English when the UI is Russian); the value is then saved with the document, so saved CVs keep their language and do not follow later UI changes.
 
 ### Export, import and save
 
@@ -91,49 +121,43 @@ PDF preview and export need a LaTeX engine. `pdflatex` is resolved in this order
 2. TinyTeX installed by the app in the app data directory (`tinytex/`).
 3. `pdflatex` on the `PATH` (MiKTeX, TeX Live, MacTeX).
 
-On first run the setup wizard offers to download and install TinyTeX automatically on Windows, Linux and macOS. The release asset is used exactly as published: when the release provides a SHA-256 checksum it is verified and a mismatch aborts the install; when no checksum asset is available (as in the pinned tinytex-releases version) the install proceeds after a warning that integrity could not be verified. The installation can be cancelled while in progress. Chinese text or a `fontspec` preamble switches to `xelatex` automatically. Word export requires no engine.
+On first run, after the interface-language picker, the setup wizard offers to download and install TinyTeX automatically on Windows, Linux and macOS. The release asset is used exactly as published: when the release provides a SHA-256 checksum it is verified and a mismatch aborts the install; when no checksum asset is available (as in the pinned tinytex-releases version) the install proceeds after a warning that integrity could not be verified. The installation can be cancelled while in progress. Chinese text or a `fontspec` preamble switches to `xelatex` automatically. Word export requires no engine.
 
 ## Troubleshooting
 
-- **"No LaTeX engine is configured"**: install TinyTeX from the setup wizard, or set the `pdflatex` path in `Settings → LaTeX engine`. Preview and PDF export stay disabled until an engine is found.
-- **Linux: the integrated preview is empty**: Linux webviews cannot display PDFs inline; use **Open PDF with the system viewer** in the preview bar, which opens the last compiled PDF with `xdg-open`.
+- **"No LaTeX engine found" or the "No LaTeX engine is configured" warning**: install TinyTeX from the setup wizard, or set the `pdflatex` path in `Settings → LaTeX engine`. Preview and PDF export stay disabled until an engine is found.
+- **Linux: the integrated preview is empty**: the preview is rendered with the bundled PDF.js, so a blank preview usually means `web/pdfjs/` was not bundled (the build includes it via `--add-data`) or PDF.js failed to load. The notice then offers **Open PDF with the system viewer**, which opens the last compiled PDF with the desktop's default viewer as a fallback.
 - **Linux: the app does not start / no webview**: install the WebKitGTK/gir packages from [Requirements](#requirements) (`python3-gi`, `gir1.2-webkit2-4.1`, `libwebkit2gtk-4.1-dev`).
+- **Linux bundle exits with `You must have either QT or GTK...` or `No module named 'gi'`**: the build machine's venv could not see the distro PyGObject, so the bundle shipped without the GTK backend. Install the system packages from [Requirements](#requirements) and rebuild with `./build.sh`; it recreates the venv with `--system-site-packages` so PyInstaller can import `gi`.
 - **Missing LaTeX package**: the errors shown under the preview name the problem; install the package with your TeX distribution's manager or re-run the TinyTeX installer.
-- **A `.tex` file is rejected on import**: only files generated or exported by CVLaTeX can be imported, because they carry the embedded data block. Older CVLaTeX files without it must be regenerated with the current version; foreign LaTeX files are not parsed heuristically.
+- **A `.tex` file is rejected on import**: only files generated or exported by CVLaTeX can be imported, because they carry the embedded data block. Foreign LaTeX files are not parsed heuristically.
 - **Saving from the embedded PDF viewer does nothing**: downloads are enabled in the WebView so the viewer's save button opens the native dialog; if it still fails, use `File → Export → PDF…`.
-- **The PyInstaller build cannot replace `dist\CVLaTeX.exe`**: close the running app first; Windows locks the executable while it runs.
+- **The PyInstaller build cannot replace `dist\CVLaTeX_Windows.exe`**: close the running app first; Windows locks the executable while it runs.
 - **A bundle built on one OS does not run on another**: bundles are per-platform; build natively or use the CI artifacts.
 
 ## Development
 
-Install the test dependencies and run the suite (539 tests pass):
+Install the test dependencies and run the suite (712 tests pass on the current tree):
 
 ```bash
-.venv/Scripts/pip install -r requirements-dev.txt
-.venv/Scripts/python.exe -m pytest tests -q      # 539 passed
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests -q      # 712 passed
 ```
 
-The PDF compile tests are skipped (not failed) when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):
+The PDF compile tests are skipped, not failed, when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):
 
 ```bash
 node --check web/app.js
 node --check web/i18n.js
 ```
 
-Backend smoke check and LaTeX round-trip check (no GUI, no LaTeX):
+Build the platform bundle with `./build.sh` on Linux/macOS or `build.bat` on Windows. The outputs are `dist/CVLaTeX_Linux`, `dist/CVLaTeX_macOS.zip` (with the unzipped `dist/CVLaTeX.app`) and `dist/CVLaTeX_Windows.exe`.
 
-```bash
-.venv/Scripts/python.exe -c "import latex_gen, prefs; print(latex_gen.build_tex(latex_gen.empty_data(), prefs.load())[:120])"
-.venv/Scripts/python.exe -c "import latex_gen, prefs, tex_datos; d=latex_gen.empty_data(); t=tex_datos.embed(latex_gen.build_tex(d, prefs.load()), d); assert tex_datos.extract(t)==d; print('round-trip OK')"
-```
+Setup for all platforms, architecture, testing strategy and the guides for adding templates or data fields are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-Build the one-file bundle with PyInstaller. `build.sh` wraps the Linux/macOS steps (venv, requirements, `.icns` generation via `sips`/`iconutil` on macOS); on Windows:
+## Contributing
 
-```powershell
-.venv\Scripts\pyinstaller.exe --noconfirm --onefile --windowed --name CVLaTeX --icon "assets\CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
-```
-
-Builds are per-platform, so `.github/workflows/build.yml` runs a Windows/Ubuntu/macOS matrix and uploads `CVLaTeX-windows.exe`, `CVLaTeX-linux` and `CVLaTeX-macos.zip` as artifacts (build only, no release publishing).
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup.
 
 ## License
 
