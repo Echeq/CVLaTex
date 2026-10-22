@@ -47,6 +47,12 @@ with no account and no server.
   edits produces one compile, and requests made while a compile is running
   collapse into a single follow-up instead of queueing in parallel.
 
+### Changed
+
+- Sidebar and Sidebar (right) draw the accent bar and reserve the 7 cm margin
+  only on the first page; later pages use the configured margins and the full
+  text width.
+
 ### Fixed
 
 - Non-ASCII text in async bridge pushes no longer truncates or drops the

@@ -941,11 +941,12 @@ def _sidebar(d, L):
 
     White text over the accent bar. The whole block is a zero-height overlay
     shifted into the bar (inner x=0.8cm, width 4.6cm): the "sidebar" variant
-    shifts -6.2cm from the body's left edge (template's 7cm left margin), the
-    "sidebar-right" variant shifts textwidth+1.6cm, which lands at
-    paperwidth-5.4cm with the template's fixed 7cm right margin. A 1em gap
-    separates the image block from the contacts when both are present. The main
-    column keeps starting at the top of the text block either way.
+    shifts -6.2cm from the body's left edge (template's 7cm first-page left
+    margin), the "sidebar-right" variant shifts textwidth+1.6cm, which lands at
+    paperwidth-5.4cm with the template's fixed 7cm first-page right margin. A
+    1em gap separates the image block from the contacts when both are present.
+    The overlay is emitted once at the start of the body, so it only lands on
+    page 1; the templates switch to the configured margins on pages 2+.
     Returns "" when there is neither an image nor a contact (never a marker).
     """
     right = str(d.get("template", "") or "").strip().lower() == "sidebar-right"

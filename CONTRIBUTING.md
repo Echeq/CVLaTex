@@ -5,7 +5,7 @@ Thanks for helping. Bug reports, documentation fixes, translations, templates an
 ## Before you start
 
 - Set up the project with [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Linux needs the venv created with `--system-site-packages` so PyGObject/WebKitGTK is visible.
-- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q` (726 tests pass on the current tree; PDF compile tests skip when no LaTeX engine is installed).
+- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q` (728 tests pass on the current tree; PDF compile tests skip when no LaTeX engine is installed).
 - For anything larger than a small fix, open an issue first so the approach can be discussed.
 
 ## Scope

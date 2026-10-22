@@ -109,7 +109,7 @@ The form is on the left and the compiled preview on the right; changes are recom
 
 `Edit → CV template` groups the 11 templates into ATS Friendly (Classic, Harvard (academic)), Chinese styles (Chinese (standard), Black tabs, Blue ribbon, Navy minimal, Playful) and Normal CV (Modern, Creative, Sidebar (left), Sidebar (right)).
 
-The Sidebar layout paints a full-height accent bar on the left of every page holding the photo, school logo, contacts, social networks and extra details, while the main column keeps the name/profession header and the professional sections; its left margin is fixed (about 7 cm) and ignores the left margin setting so the bar keeps its width. Sidebar (right) mirrors the same layout with the bar on the right of every page, with the right margin fixed (about 7 cm) and ignoring the right margin setting.
+The Sidebar layout paints a full-height accent bar on the left of the first page only, holding the photo, school logo, contacts, social networks and extra details, while the main column keeps the name/profession header and the professional sections; the first page reserves about 7 cm on the left for the bar (ignoring the left margin setting) and pages 2+ use the configured margins and the full text width. Sidebar (right) mirrors the same layout with the bar on the right of the first page only, reserving about 7 cm on the right (ignoring the right margin setting) and using the configured margins and full text width afterwards. TeX fixes line breaks before pagination, so a single paragraph that straddles the page 1/2 break keeps its first-page line width; breaks between sections or entries reflow normally.
 
 Chinese (standard) renders with a per-OS CJK font fallback (Microsoft YaHei, PingFang SC, Noto Sans CJK SC, WenQuanYi Zen Hei, Source Han Sans SC) and switches compilation to XeLaTeX automatically. Black tabs wraps every page in a heavy frame with black section tabs, Blue ribbon uses a slanted blue header band and a gold accent, Navy minimal keeps navy rules and dense three-column academic entries, and Playful combines a large name, badge-style headings, diamond bullets and purple links.
 
@@ -183,11 +183,11 @@ On first run, after the interface-language picker, the setup wizard offers to do
 
 ## Development
 
-Install the test dependencies and run the suite (726 tests pass on the current tree):
+Install the test dependencies and run the suite (728 tests pass on the current tree):
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests -q      # 726 passed
+.venv/bin/python -m pytest tests -q      # 728 passed
 ```
 
 The PDF compile tests are skipped, not failed, when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):

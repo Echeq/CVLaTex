@@ -1,12 +1,14 @@
 % Sidebar-right template - CVLaTeX
 % Right full-height accent bar with the photo, the school logo and the
-% contacts; the main column holds the name/profession header and the body.
+% contacts on the first page only; the main column holds the name/profession
+% header and the body, and pages 2+ use the configured margins and full width.
 \documentclass[{{font_size}}pt]{article}
 
 \usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right=7cm]{geometry}
 {{font_engine}}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage{afterpage}
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{4pt}
@@ -38,20 +40,43 @@
   \par\vspace{2em}%
 }
 
-% Right bar on every page: 6.2cm wide and as tall as the paper. The kernel
-% shipout/background hook places its overlay at the lower left corner of the
-% paper with unitlength 1pt, so the mirrored rule is shifted to
+% Right bar on the first shipped page only: 6.2cm wide and as tall as the
+% paper. The kernel increments \ReadonlyShipoutCounter before the shipout
+% hooks run, so the first page sees 1 and every later page sees 2, 3, ...
+% The shipout/background hook places its overlay at the lower left corner of
+% the paper with unitlength 1pt, so the mirrored rule is shifted to
 % x = paperwidth - 6.2cm before drawing.
 \AddToHook{shipout/background}{%
+  \ifnum\ReadonlyShipoutCounter=1\relax
   \vbox to 0pt{%
     \hbox to 0pt{%
       \hspace*{\dimexpr\paperwidth-6.2cm\relax}%
       {\color{accent}\rule[-\paperheight]{6.2cm}{\paperheight}}%
       \hss}%
     \vss}%
+  \fi
 }
 
 \begin{document}
+
+% The 7cm bar margin is for page 1 only. Restore the configured margins for
+% pages 2+ (full text width) as soon as page 1 is shipped. \newgeometry
+% assignments are local, so \globaldefs=1 makes them survive the group in which
+% afterpage runs its code; \globaldefs=0 remains inside that group right after
+% \newgeometry, so nothing later can leak global assignments.
+% TeX fixes line breaks before it fixes page breaks, so a paragraph that
+% straddles the page 1/2 cut keeps the 7cm measure on page 2; breaks between
+% sections or entries reflow at the configured width.
+\afterpage{%
+  \globaldefs=1
+  \newgeometry{%
+    top={{margin_top}}cm,
+    bottom={{margin_bottom}}cm,
+    left={{margin_left}}cm,
+    right={{margin_right}}cm
+  }%
+  \globaldefs=0
+}
 
 \sloppy
 

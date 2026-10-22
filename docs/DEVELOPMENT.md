@@ -67,7 +67,7 @@ The full suite (no GUI, no browser, no network):
 .venv/bin/python -m pytest tests -q
 ```
 
-The current tree reports **726 passed**. That count assumes a LaTeX engine is available: the PDF compile tests use `pytest.mark.skipif` and are skipped, not failed, when `pdflatex`/`xelatex` are missing, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
+The current tree reports **728 passed**. That count assumes a LaTeX engine is available: the PDF compile tests use `pytest.mark.skipif` and are skipped, not failed, when `pdflatex`/`xelatex` are missing, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
 
 Run one module or one test:
 
