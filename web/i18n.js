@@ -217,6 +217,8 @@ const I18N = {
     credits_slogan: " — Currículums estandarizados, profesionales y sin complicaciones.",
     credits_developed: "Desarrollado por:",
     credits_github: "GitHub:",
+    credits_linkedin: "LinkedIn:",
+    credits_version: "Versión:",
     credits_story: "CVLaTeX nació para que cualquier universitario pueda crear su CV gratis y de forma portable, sin cuentas, suscripciones ni microtransacciones: un editor cómodo que genera un CV en formato estándar y lo compila a un PDF profesional, todo en tu propio equipo.",
     credits_tinytex: "Gracias a TinyTeX por la distribución LaTeX portable.",
     // Confirm dialog
@@ -570,6 +572,8 @@ const I18N = {
     credits_slogan: " — Standardized, professional CVs without the hassle.",
     credits_developed: "Developed by:",
     credits_github: "GitHub:",
+    credits_linkedin: "LinkedIn:",
+    credits_version: "Version:",
     credits_story: "CVLaTeX was born so that any university student can build their CV for free and portably, with no accounts, subscriptions or microtransactions: a comfortable editor that produces a standard-format CV and compiles it to a professional PDF, all on your own machine.",
     credits_tinytex: "Thanks to TinyTeX for the portable LaTeX distribution.",
     // Confirm dialog
@@ -923,6 +927,8 @@ const I18N = {
     credits_slogan: " — 标准化、专业的简历，简单省心。",
     credits_developed: "开发者：",
     credits_github: "GitHub：",
+    credits_linkedin: "LinkedIn:",
+    credits_version: "版本：",
     credits_story: "CVLaTeX 的初衷是让每位大学生都能免费、便携地制作简历，没有账号、订阅或微交易：一个顺手的编辑器，生成标准格式的简历并编译为专业 PDF，一切都在你自己的电脑上完成。",
     credits_tinytex: "感谢 TinyTeX 提供的便携式 LaTeX 发行版。",
     // Confirm dialog
@@ -1276,6 +1282,8 @@ const I18N = {
     credits_slogan: " — Стандартные профессиональные резюме без лишних сложностей.",
     credits_developed: "Разработчик:",
     credits_github: "GitHub:",
+    credits_linkedin: "LinkedIn:",
+    credits_version: "Версия:",
     credits_story: "CVLaTeX создан для того, чтобы любой студент мог бесплатно и портативно сделать своё резюме — без аккаунтов, подписок и микротранзакций: удобный редактор, который формирует резюме стандартного формата и компилирует его в профессиональный PDF прямо на вашем компьютере.",
     credits_tinytex: "Спасибо TinyTeX за портативную дистрибуцию LaTeX.",
     // Confirm dialog

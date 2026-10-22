@@ -114,6 +114,22 @@ def test_samples_share_dates_links_emails_and_entry_counts():
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
+def test_sample_uses_the_project_identity(lang):
+    """Every language carries the same name and handles, and no website social."""
+    data = ejemplo.sample_data(lang)
+
+    assert data["name"] == "CHEN QIU ELVIS ENRIQUE"
+    socials = {
+        social.get("network"): social.get("value") for social in data["socials"]
+    }
+    assert socials["github"] == "github.com/ECHEQ"
+    assert socials["linkedin"] == "linkedin.com/in/ECHEQ"
+    assert "website" not in socials
+    for project in data["projects"]:
+        assert project["link"].startswith("github.com/ECHEQ/")
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
 def test_sample_has_no_images(lang):
     data = ejemplo.sample_data(lang)
 

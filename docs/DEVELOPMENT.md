@@ -5,11 +5,11 @@ How to set up, test, build and extend CVLaTeX. The user-facing guide is [README]
 ## Prerequisites
 
 - Python 3.12 and pip. CI builds with Python 3.12; newer versions generally work but are not covered by CI.
-- Python packages: `requirements.txt` (`pywebview`, `python-docx`, and `pyinstaller` for builds); `requirements-dev.txt` adds `pytest`.
+- Python packages: `requirements.txt` (`pywebview`, `python-docx`, and `pyinstaller` for builds); `requirements-dev.txt` adds `pytest`. Both files pin the tested versions with `==` so a local run and CI install the same releases.
 - The webview engine for your OS:
   - **Windows 10/11:** WebView2 runtime (preinstalled on current Windows).
   - **macOS:** the built-in WKWebView.
-  - **Linux:** WebKitGTK 4.1 and GObject introspection: `python3-gi`, `gir1.2-webkit2-4.1` and `libwebkit2gtk-4.1-dev` on Debian/Ubuntu (`python-gobject` and `webkit2gtk-4.1` on Arch). These packages are also required at build time because PyInstaller must import `gi`.
+  - **Linux:** WebKitGTK 4.1 and GObject introspection at runtime: `python3-gi` and `gir1.2-webkit2-4.1` on Debian/Ubuntu (`python-gobject` and `webkit2gtk-4.1` on Arch); the WebKitGTK 4.1 runtime library is pulled in by these packages. Building a bundle additionally requires `libwebkit2gtk-4.1-dev` on Debian/Ubuntu, because PyInstaller must import `gi` and the GTK backend.
 - Optional: Node.js for `node --check`, and a LaTeX engine (`pdflatex`/`xelatex`, or the TinyTeX installer in the app) for the PDF compile tests.
 
 ## Setup
@@ -20,10 +20,12 @@ Create the virtual environment at `.venv` so the commands in this document and t
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev python3-venv
+sudo apt-get install -y python3-gi gir1.2-webkit2-4.1 python3-venv
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 ```
+
+Add `libwebkit2gtk-4.1-dev` only when you build a bundle; it is a build-time dependency, not a runtime one.
 
 The `--system-site-packages` flag is mandatory: PyGObject lives in the distribution's site-packages, and a plain venv hides it. Without it `main.py` fails with `You must have either QT or GTK...`, and a bundle built from that venv fails the same way on the target machine. `build.sh` detects a venv that cannot import `gi` and recreates it with the flag.
 
@@ -65,7 +67,7 @@ The full suite (no GUI, no browser, no network):
 .venv/bin/python -m pytest tests -q
 ```
 
-The current tree reports **712 passed**. That count assumes a LaTeX engine is available: the PDF compile tests use `pytest.mark.skipif` and are skipped, not failed, when `pdflatex`/`xelatex` are missing, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
+The current tree reports **726 passed**. That count assumes a LaTeX engine is available: the PDF compile tests use `pytest.mark.skipif` and are skipped, not failed, when `pdflatex`/`xelatex` are missing, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
 
 Run one module or one test:
 
@@ -149,11 +151,15 @@ tex_datos.py                  embedded base64 data block for .tex
 prefs.py                      per-OS app data directory and preferences
 messages.py                   backend user-facing strings (es/en/zh/ru)
 ejemplo.py                    localized sample CV (es/en/zh)
+version.py                    release version (single source of truth)
 templates/<name>/<file>.tex   one LaTeX template per layout
 web/                          index.html, app.js, i18n.js, style.css, pdfjs/
 tests/                        pytest suite (no GUI, no browser)
 build.sh / build.bat          PyInstaller builds
-.github/workflows/build.yml   build-only CI matrix
+CHANGELOG.md / SECURITY.md    release notes and security policy
+THIRD_PARTY_NOTICES.md        third-party licenses and provenance
+.github/workflows/build.yml   CI: tests + build matrix (no publishing)
+.github/workflows/release.yml tag-driven test, build and GitHub Release
 ```
 
 ## Adding a template
@@ -216,6 +222,41 @@ The Linux bundle must include `web/pdfjs/` through `--add-data "web:web"`; a mis
 
 ## CI and release notes
 
-`.github/workflows/build.yml` runs on pushes, pull requests and manual dispatch with Python 3.12. It builds on Windows, Ubuntu and macOS, uploads `CVLaTeX_Windows.exe`, `CVLaTeX_Linux` and `CVLaTeX_macOS.zip` as artifacts, and never publishes a GitHub release. It runs no tests.
+`.github/workflows/build.yml` runs on branch pushes, pull requests and manual dispatch with Python 3.12. Its `test` job installs `requirements.txt` + `requirements-dev.txt` and runs `pytest tests -q` on Ubuntu; the `build` job depends on it and builds on Windows, Ubuntu and macOS, uploading `CVLaTeX_Windows.exe`, `CVLaTeX_Linux` and `CVLaTeX_macOS.zip` as artifacts. It never publishes a GitHub release. The `push` trigger is restricted to branches, so a `v*` tag only starts the release workflow.
 
-The Linux job installs `python3-gi`, `python3-venv`, `gir1.2-webkit2-4.1` and `libwebkit2gtk-4.1-dev` before calling `PYTHON=/usr/bin/python3 ./build.sh`, so the build venv can import `gi`. Builds are per-platform: a bundle produced on one OS does not run on another.
+The Linux build job installs `python3-gi`, `python3-venv`, `gir1.2-webkit2-4.1` and `libwebkit2gtk-4.1-dev` before calling `PYTHON=/usr/bin/python3 ./build.sh`, so the build venv can import `gi`. Builds are per-platform: a bundle produced on one OS does not run on another.
+
+`.github/workflows/release.yml` is triggered by `v*` tags, declares `permissions: contents: write` and runs `test` → `build` → `publish`. Publish verifies that the tag equals `version.__version__`, renames the artifacts to `CVLaTeX-v${VERSION}-windows-x64.exe`, `CVLaTeX-v${VERSION}-linux-x86_64` and `CVLaTeX-v${VERSION}-macos-<arch>.zip`, writes `SHA256SUMS.txt` and calls `gh release create "$GITHUB_REF_NAME" ... --generate-notes`, with `--prerelease` for `0.*`. It uses the workflow `GITHUB_TOKEN`; no PAT or workflow-scoped token is required.
+
+`macos-latest` is an Apple Silicon (`arm64`) runner at the time of writing, so the first release is expected to publish `CVLaTeX-v0.1.0-macos-arm64.zip`. The build step maps `runner.arch` (`X64`/`ARM64`) to the suffix, so an Intel runner would publish `macos-x86_64` without a workflow change. There is no universal binary.
+
+## Releasing
+
+CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from tags; only maintainers cut releases.
+
+1. Bump the version in three places: `version.py` (`__version__`), the literal `vX.Y.Z` in the `#modal-credits` block of `web/index.html`, and the dated `## [X.Y.Z] - YYYY-MM-DD` section of `CHANGELOG.md`. Update the asset names in `README.md` and any test count in the docs if the suite changed.
+2. Run the checks on a clean tree:
+
+   ```bash
+   node --check web/app.js
+   node --check web/i18n.js
+   .venv/bin/python -m pytest tests -q
+   ```
+
+3. Commit the release on `main`, create an annotated tag and push both:
+
+   ```bash
+   git tag -a vX.Y.Z -m "CVLaTeX vX.Y.Z"
+   git push origin main --follow-tags
+   ```
+
+4. The tag starts `.github/workflows/release.yml`. Wait for the `test` and three-platform `build` jobs, then the `publish` job; it verifies the tag against `version.py`, normalizes the asset names, generates `SHA256SUMS.txt` and creates the GitHub Release (pre-release for `0.*`).
+5. Verify the published release:
+
+   ```bash
+   gh release view vX.Y.Z
+   gh release download vX.Y.Z --dir /tmp/cvlatex-vX.Y.Z
+   cd /tmp/cvlatex-vX.Y.Z && sha256sum -c SHA256SUMS.txt
+   ```
+
+6. Do not move, delete or force-push a published tag. If `publish` fails after creating an incomplete release, delete that release (`gh release delete vX.Y.Z --yes`, **without** `--cleanup-tag`) and re-run the workflow (`gh run rerun <run-id>`); the tag stays in place. Never tag a commit whose test job is red.

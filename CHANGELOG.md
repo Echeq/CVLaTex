@@ -1,0 +1,72 @@
+# Changelog
+
+All notable changes to CVLaTeX are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-22
+
+First public pre-release. CVLaTeX is a cross-platform desktop CV editor for
+Windows, Linux and macOS: a local form, LaTeX templates and a compiled preview,
+with no account and no server.
+
+### Added
+
+- Desktop editor built on Python, pywebview and a local HTTP server, with a
+  form on the left and a live PDF preview on the right.
+- 11 LaTeX templates: Classic, Harvard, Modern, Creative, Chinese (standard),
+  Sidebar (left), Sidebar (right), Black tabs, Blue ribbon, Navy minimal and
+  Playful, grouped as ATS Friendly, Chinese styles and Normal CV.
+- Localized sample CVs in Spanish, English and Chinese that tell the same
+  career story, independent of the selected template.
+- PDF preview through the native webview on Windows and macOS, and through the
+  vendored PDF.js 3.11.174 viewer on Linux; a system-viewer fallback is offered
+  when PDF.js cannot render.
+- PDF export with `pdflatex`/`xelatex`; Word (`.docx`) export with python-docx
+  and LaTeX (`.tex`) export with an embedded data block, both without a LaTeX
+  engine.
+- LaTeX import from CVLaTeX-generated `.tex` files; foreign files are rejected
+  instead of parsed heuristically.
+- `.cvjson` v3 project files with embedded photo and logos; v1/v2 files are
+  migrated after writing a `.v2.bak` backup.
+- Autosave with recovery on the next start, and a close guard with Save / Exit
+  without saving / Cancel when the document has unsaved changes.
+- First-run UI language picker (Spanish, English, Chinese, Russian) before the
+  LaTeX setup wizard, and a separate per-CV document language.
+- TinyTeX download and installation from the setup wizard, cancelable and
+  checksum-verified when the release publishes a checksum.
+- Free blocks (columns, period + description, separator line, color band,
+  blank space, custom section) interleaved with the standard sections.
+- Document color palette (primary, secondary, text, gray) affecting PDF, Word
+  and `.tex` output.
+- Photo and logo normalization, with a crop editor and re-editable crop.
+- Debounced automatic compilation and a latest-only compile queue: a burst of
+  edits produces one compile, and requests made while a compile is running
+  collapse into a single follow-up instead of queueing in parallel.
+
+### Fixed
+
+- Non-ASCII text in async bridge pushes no longer truncates or drops the
+  script in the WebKitGTK backend (`ensure_ascii=True` is kept on every push).
+- Linux PDF preview fallback when PDF.js fails to load or render.
+
+### Known limitations
+
+- The Windows and macOS bundles are **unsigned and not notarized**. Windows
+  SmartScreen and macOS Gatekeeper may warn or block the first launch; verify
+  the SHA-256 checksum before deciding to run them.
+- The Linux bundle needs WebKitGTK 4.1 and GObject introspection from the
+  distribution (`python3-gi`, `gir1.2-webkit2-4.1` on Debian/Ubuntu; the
+  `-dev` package is additionally required to build). Keep the executable bit.
+- PDF compile tests skip, rather than fail, when no `pdflatex`/`xelatex` engine
+  is installed; Word and `.tex` export and the schema/round-trip tests always
+  run.
+- Distribution is archive-based: a `.exe` on Windows, a bare executable on
+  Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer,
+  package repository, auto-updater or universal macOS binary.
+
+[Unreleased]: https://github.com/Echeq/CVLaTex/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0

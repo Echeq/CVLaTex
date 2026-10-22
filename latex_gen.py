@@ -904,7 +904,7 @@ def _header_playful(d, L, parts):
         )
     else:
         # \raggedright in the full-width branch: justification stretched the
-        # zh name's first line and pushed LUCÍA to the far right.
+        # zh name's first line and pushed the Latin transliteration to the far right.
         row = "\\noindent{\\raggedright\n" + "".join(left) + "\\par}\n"
     return (
         row

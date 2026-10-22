@@ -16,6 +16,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import version  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HTML_PATH = os.path.join(ROOT, "web", "index.html")
 JS_PATH = os.path.join(ROOT, "web", "app.js")
@@ -204,7 +206,7 @@ def test_i18n_socials_keys():
 
 
 def test_i18n_credits_keys():
-    """The credits slogan, GitHub label and story live in the four tables."""
+    """The credits slogan, GitHub/LinkedIn labels and story live in the four tables."""
     tables = {lang: _i18n_pairs(lang) for lang in ("es", "en", "zh", "ru")}
     expected = {
         "credits_slogan": {
@@ -215,6 +217,12 @@ def test_i18n_credits_keys():
         },
         "credits_github": {
             "es": "GitHub:", "en": "GitHub:", "zh": "GitHub：", "ru": "GitHub:",
+        },
+        "credits_linkedin": {
+            "es": "LinkedIn:", "en": "LinkedIn:", "zh": "LinkedIn:", "ru": "LinkedIn:",
+        },
+        "credits_version": {
+            "es": "Versión:", "en": "Version:", "zh": "版本：", "ru": "Версия:",
         },
         "credits_story": {
             "es": "CVLaTeX nació para que cualquier universitario pueda crear su CV gratis y de forma portable, sin cuentas, suscripciones ni microtransacciones: un editor cómodo que genera un CV en formato estándar y lo compila a un PDF profesional, todo en tu propio equipo.",
@@ -368,21 +376,27 @@ def test_index_uses_i18n_attributes():
 
 
 def test_index_credits_modal_content():
-    """Credits: slogan, literal author, GitHub link and story; placeholders gone."""
+    """Credits: slogan, literal author, GitHub/LinkedIn/version lines and story; placeholders gone."""
     modal = HTML[HTML.index('id="modal-credits"'):HTML.index('id="modal-confirm"')]
     assert 'data-i18n="credits_slogan"' in modal
     assert 'data-i18n="credits_developed"' in modal
-    assert '<span class="credits-name">Elvis Enrique Chen Qiu</span>' in modal
+    assert '<span class="credits-name">CHEN QIU ELVIS ENRIQUE</span>' in modal
     # The GitHub handle is an anchor: pywebview's Windows WebView2 backend
     # turns a target="_blank" NewWindowRequested into a system-browser open
     # (OPEN_EXTERNAL_LINKS_IN_BROWSER), never an in-app navigation.
     assert '<a href="https://github.com/ECHEQ" rel="noopener" target="_blank">ECHEQ</a>' in modal
+    assert 'data-i18n="credits_linkedin"' in modal
+    assert '<a href="https://www.linkedin.com/in/ECHEQ" rel="noopener" target="_blank">ECHEQ</a>' in modal
+    assert 'data-i18n="credits_version"' in modal
+    assert "v%s" % version.__version__ in modal
     assert 'data-i18n="credits_tinytex"' in modal
-    # The story sits after the GitHub line and before the TinyTeX thanks.
+    # The story sits after the GitHub/LinkedIn/version lines and before the TinyTeX thanks.
     github_pos = modal.index('data-i18n="credits_github"')
+    linkedin_pos = modal.index('data-i18n="credits_linkedin"')
+    version_pos = modal.index('data-i18n="credits_version"')
     story_pos = modal.index('data-i18n="credits_story"')
     tinytex_pos = modal.index('data-i18n="credits_tinytex"')
-    assert github_pos < story_pos < tinytex_pos
+    assert github_pos < linkedin_pos < version_pos < story_pos < tinytex_pos
     # The old placeholder keys are gone from the HTML too.
     assert "credits_about" not in HTML and "credits_author" not in HTML
     # The anchor stays visible in both themes.

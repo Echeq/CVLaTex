@@ -6,7 +6,7 @@
 
 ## Requirements
 
-- Windows 10/11 with the WebView2 runtime (preinstalled on current Windows), macOS with the built-in WKWebView, or Linux with WebKitGTK 4.1 plus the GObject-introspection packages (`python3-gi`, `gir1.2-webkit2-4.1`; on Debian/Ubuntu also `libwebkit2gtk-4.1-dev`). On Linux these system packages are needed both to run the app and to build the bundle, because PyInstaller must import `gi` to bundle the GTK backend.
+- Windows 10/11 with the WebView2 runtime (preinstalled on current Windows), macOS with the built-in WKWebView, or Linux with WebKitGTK 4.1 plus GObject introspection (`python3-gi`, `gir1.2-webkit2-4.1`; the WebKitGTK 4.1 runtime library is pulled in by these packages on Debian/Ubuntu). Building a bundle additionally needs the `libwebkit2gtk-4.1-dev` package, because PyInstaller must import `gi` and the GTK backend; running from source or from the bundle does not require `-dev`.
 - To run from source: Python 3.12 with pip, plus the packages in `requirements.txt`. The standalone bundles need no Python installation.
 - A LaTeX engine is optional. Preview and PDF export need one, but the app can download and install TinyTeX itself on all three platforms; Word (.docx) and LaTeX (.tex) export never need a LaTeX installation.
 
@@ -16,7 +16,7 @@ Two ways to get CVLaTeX: a standalone bundle or a source checkout.
 
 ### Standalone bundle
 
-CI builds one PyInstaller bundle per platform and uploads them as artifacts of the `build` workflow (`Actions → build`); no Python installation is needed on the target machine.
+CI builds one PyInstaller bundle per platform and uploads them as artifacts of the `build` workflow (`Actions → build`); tagged versions are published with checksums by the `release` workflow (see [Releases](#releases)). No Python installation is needed on the target machine.
 
 | Platform | Bundle |
 | --- | --- |
@@ -31,11 +31,13 @@ On Linux, install the runtime packages from [Requirements](#requirements) first 
 Linux:
 
 ```bash
-sudo apt-get install python3-gi gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
+sudo apt-get install python3-gi gir1.2-webkit2-4.1 python3-venv
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python main.py
 ```
+
+Add `libwebkit2gtk-4.1-dev` only when building a bundle with `./build.sh`; it is not needed to run from source.
 
 macOS:
 
@@ -54,6 +56,50 @@ python -m venv .venv
 ```
 
 On Linux the `--system-site-packages` flag is required so the venv sees the distro PyGObject/WebKitGTK packages; on macOS it is unnecessary. Full setup, test and build instructions are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## Releases
+
+The first pre-release is **v0.1.0**. Versions in the `0.*` series are published
+as GitHub pre-releases. Each release contains the three native bundles built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) and a
+`SHA256SUMS.txt` manifest with the SHA-256 checksum of every asset.
+
+| Platform | Architecture | Asset |
+| --- | --- | --- |
+| Windows | x64 | `CVLaTeX-v0.1.0-windows-x64.exe` |
+| Linux | x86_64 | `CVLaTeX-v0.1.0-linux-x86_64` |
+| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.1.0-macos-arm64.zip` |
+
+GitHub's `macos-latest` runner currently builds natively on Apple Silicon, so
+the v0.1.0 macOS asset is named `CVLaTeX-v0.1.0-macos-arm64.zip`. The workflow
+takes the suffix from `runner.arch`; if the runner label moves to Intel it will
+publish `CVLaTeX-v0.1.0-macos-x86_64.zip` without a workflow change. No
+universal macOS binary is produced.
+
+Verify a download with the checksum manifest:
+
+```bash
+sha256sum -c SHA256SUMS.txt
+```
+
+On Windows, compare `Get-FileHash -Algorithm SHA256 <file>` with the matching
+line in `SHA256SUMS.txt`.
+
+**Unsigned builds:** the Windows and macOS bundles are not code-signed or
+notarized. Windows SmartScreen may warn about the `.exe`, and macOS Gatekeeper
+may block the `.app` on first launch (open it from Finder with right-click →
+Open, or allow it in System Settings → Privacy & Security). Verify the SHA-256
+checksum and build provenance before running a bundle.
+
+**Linux runtime:** the bundle needs WebKitGTK 4.1 and GObject introspection from
+your distribution — on Debian/Ubuntu `python3-gi` and
+`gir1.2-webkit2-4.1` (the build-only `libwebkit2gtk-4.1-dev` is needed only
+when building), on Arch `python-gobject` and `webkit2gtk-4.1`. Keep the executable bit
+(`chmod +x CVLaTeX-v0.1.0-linux-x86_64`).
+
+Release notes live in [CHANGELOG.md](CHANGELOG.md), the security policy in
+[SECURITY.md](SECURITY.md) and the third-party licenses in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Usage
 
@@ -127,7 +173,7 @@ On first run, after the interface-language picker, the setup wizard offers to do
 
 - **"No LaTeX engine found" or the "No LaTeX engine is configured" warning**: install TinyTeX from the setup wizard, or set the `pdflatex` path in `Settings → LaTeX engine`. Preview and PDF export stay disabled until an engine is found.
 - **Linux: the integrated preview is empty**: the preview is rendered with the bundled PDF.js, so a blank preview usually means `web/pdfjs/` was not bundled (the build includes it via `--add-data`) or PDF.js failed to load. The notice then offers **Open PDF with the system viewer**, which opens the last compiled PDF with the desktop's default viewer as a fallback.
-- **Linux: the app does not start / no webview**: install the WebKitGTK/gir packages from [Requirements](#requirements) (`python3-gi`, `gir1.2-webkit2-4.1`, `libwebkit2gtk-4.1-dev`).
+- **Linux: the app does not start / no webview**: install the WebKitGTK/gir runtime packages from [Requirements](#requirements) (`python3-gi`, `gir1.2-webkit2-4.1`; add the build-only `libwebkit2gtk-4.1-dev` package only if you are building a bundle).
 - **Linux bundle exits with `You must have either QT or GTK...` or `No module named 'gi'`**: the build machine's venv could not see the distro PyGObject, so the bundle shipped without the GTK backend. Install the system packages from [Requirements](#requirements) and rebuild with `./build.sh`; it recreates the venv with `--system-site-packages` so PyInstaller can import `gi`.
 - **Missing LaTeX package**: the errors shown under the preview name the problem; install the package with your TeX distribution's manager or re-run the TinyTeX installer.
 - **A `.tex` file is rejected on import**: only files generated or exported by CVLaTeX can be imported, because they carry the embedded data block. Foreign LaTeX files are not parsed heuristically.
@@ -137,11 +183,11 @@ On first run, after the interface-language picker, the setup wizard offers to do
 
 ## Development
 
-Install the test dependencies and run the suite (712 tests pass on the current tree):
+Install the test dependencies and run the suite (726 tests pass on the current tree):
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests -q      # 712 passed
+.venv/bin/python -m pytest tests -q      # 726 passed
 ```
 
 The PDF compile tests are skipped, not failed, when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):

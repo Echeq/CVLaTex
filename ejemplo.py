@@ -17,12 +17,11 @@ import latex_gen
 _LANGUAGES = ("zh", "es", "en")
 
 # Header data shared by every language.
-_EMAIL = "lucia.fernandez@example.com"
-_PHONE = "+34 612 345 678"
+_EMAIL = "echeq@example.com"
+_PHONE = "+86 138 0000 0000"
 _SOCIALS = (
-    {"network": "github", "label": "", "value": "github.com/luciafg"},
-    {"network": "linkedin", "label": "", "value": "linkedin.com/in/lucia-fernandez"},
-    {"network": "website", "label": "", "value": "https://luciafernandez.dev"},
+    {"network": "github", "label": "", "value": "github.com/ECHEQ"},
+    {"network": "linkedin", "label": "", "value": "linkedin.com/in/ECHEQ"},
 )
 
 # Same institutions in the three samples; Chinese localizes their names.
@@ -34,18 +33,18 @@ _UNIVERSITIES = {
 
 _TEXT = {
     "es": {
-        "name": "Lucía Fernández García",
-        "profession": "Desarrolladora de software backend",
-        "address": "Calle Mayor 24, 3.º B, 28013 Madrid",
+        "name": "CHEN QIU ELVIS ENRIQUE",
+        "profession": "Desarrollador de software backend",
+        "address": "Beijing, China",
         "birth_label": "Nacimiento",
         "birth_value": "12/05/1996",
         "nationality_label": "Nacionalidad",
-        "nationality_value": "Española",
+        "nationality_value": "China",
         "summary": (
-            "Desarrolladora backend con seis años de experiencia en Python y Java. "
-            "Especializada en APIs, microservicios y despliegues en la nube."
+            "Desarrollador backend con seis años de experiencia en Python y Java. "
+            "Especializado en APIs, microservicios y despliegues en la nube."
         ),
-        "work_position": "Desarrolladora Backend Senior",
+        "work_position": "Desarrollador Backend Senior",
         "work_end": "Actualidad",
         "work_achievements": (
             "Diseñé la API de pagos con FastAPI para más de dos millones de "
@@ -53,12 +52,12 @@ _TEXT = {
             "Mentoricé a tres desarrolladores junior y promoví las pruebas "
             "automatizadas."
         ),
-        "internship1_position": "Becaria de Desarrollo",
+        "internship1_position": "Becario de Desarrollo",
         "internship1_achievements": (
             "Automaticé los informes semanales con scripts de Python, ahorrando "
             "seis horas de trabajo."
         ),
-        "internship2_position": "Becaria de Análisis de Datos",
+        "internship2_position": "Becario de Análisis de Datos",
         "internship2_achievements": (
             "Limpié y analicé 200.000 registros de usuarios con Python y Pandas "
             "para el informe semanal de operaciones.\n"
@@ -98,13 +97,13 @@ _TEXT = {
         "language2_level": "C1 — Avanzado",
     },
     "en": {
-        "name": "Lucía Fernández García",
+        "name": "CHEN QIU ELVIS ENRIQUE",
         "profession": "Backend software developer",
-        "address": "Calle Mayor 24, 3.º B, 28013 Madrid, Spain",
+        "address": "Beijing, China",
         "birth_label": "Date of birth",
         "birth_value": "12/05/1996",
         "nationality_label": "Nationality",
-        "nationality_value": "Spanish",
+        "nationality_value": "Chinese",
         "summary": (
             "Backend developer with six years of experience in Python and Java, "
             "specializing in APIs, microservices and cloud deployments."
@@ -160,13 +159,13 @@ _TEXT = {
         "language2_level": "C1 — Advanced",
     },
     "zh": {
-        "name": "露西亚·费尔南德斯·加西亚 LUCÍA FERNÁNDEZ GARCÍA",
+        "name": "CHEN QIU ELVIS ENRIQUE",
         "profession": "后端软件开发工程师",
-        "address": "西班牙马德里 Calle Mayor 24, 3.º B, 28013",
+        "address": "中国北京",
         "birth_label": "出生年月",
         "birth_value": "1996年5月12日",
         "nationality_label": "国籍",
-        "nationality_value": "西班牙",
+        "nationality_value": "中国",
         "summary": (
             "拥有六年 Python 与 Java 开发经验的后端工程师，专注于 API、微服务"
             "与云端部署。"
@@ -292,7 +291,7 @@ def _build_sample(lang):
             "end": "2023",
             "description": text["project1_description"],
             "result": text["project1_result"],
-            "link": "github.com/luciafg/rutas-sostenibles",
+            "link": "github.com/ECHEQ/rutas-sostenibles",
             "logo": "",
         },
         {
@@ -302,7 +301,7 @@ def _build_sample(lang):
             "end": "2021",
             "description": text["project2_description"],
             "result": text["project2_result"],
-            "link": "github.com/luciafg/panel-metricas",
+            "link": "github.com/ECHEQ/panel-metricas",
             "logo": "",
         },
     ]

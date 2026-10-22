@@ -5,7 +5,7 @@ Thanks for helping. Bug reports, documentation fixes, translations, templates an
 ## Before you start
 
 - Set up the project with [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Linux needs the venv created with `--system-site-packages` so PyGObject/WebKitGTK is visible.
-- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q` (712 tests pass on the current tree; PDF compile tests skip when no LaTeX engine is installed).
+- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q` (726 tests pass on the current tree; PDF compile tests skip when no LaTeX engine is installed).
 - For anything larger than a small fix, open an issue first so the approach can be discussed.
 
 ## Scope
@@ -48,6 +48,10 @@ Never include passwords, tokens, API keys, private documents or other secrets in
 ## Adding a template or a data field
 
 Both are multi-file changes with checks that keep them consistent. Follow the step-by-step guides in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#adding-a-template) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#adding-a-data-field); they list every registration point, the required LaTeX placeholders and the test updates.
+
+## Release maintainers
+
+Releases are cut from `main` by a maintainer. Bump `version.py`, the literal version in the credits modal (`web/index.html`) and `CHANGELOG.md`, run the suite, then push the `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which tests, builds the three native bundles, writes `SHA256SUMS.txt` and publishes the GitHub Release. The step-by-step checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing); never tag a commit whose tests are failing.
 
 ## Pull request checklist
 

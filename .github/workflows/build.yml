@@ -1,24 +1,47 @@
-# Build-only CI: compiles CVLaTeX on the three platforms and uploads the
-# platform-suffixed bundles (CVLaTeX_Windows.exe, CVLaTeX_Linux,
-# CVLaTeX_macOS.zip) as artifacts. It never publishes a release.
+# Continuous integration: run the test suite on Linux, then compile CVLaTeX
+# on the three platforms and upload the platform-suffixed bundles
+# (CVLaTeX_Windows.exe, CVLaTeX_Linux, CVLaTeX_macOS.zip) as artifacts.
+# This workflow never publishes a release; tagged releases are handled by
+# release.yml. Pushes are restricted to branches so a v* tag only triggers the
+# release workflow.
 #
 # Linux runtime note: the frozen bundle still needs the system WebKitGTK and
 # GObject-introspection packages on the TARGET machine (Debian/Ubuntu:
 # python3-gi, gir1.2-webkit2-4.1 and libwebkit2gtk-4.1-dev, or the Qt5/Qt6
 # equivalent), because PyInstaller cannot bundle the native webview engine.
-# The Linux job installs them (plus python3-venv) so the build venv can import
-# gi and PyInstaller can bundle the GTK backend; build.sh recreates the venv
-# with --system-site-packages against /usr/bin/python3 to make that visible.
+# The Linux build job installs them (plus python3-venv) so the build venv can
+# import gi and PyInstaller can bundle the GTK backend; build.sh recreates the
+# venv with --system-site-packages against /usr/bin/python3 to make that
+# visible.
 
 name: build
 
 on:
   push:
+    branches: ["**"]
   pull_request:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
