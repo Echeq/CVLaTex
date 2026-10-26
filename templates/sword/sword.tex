@@ -1,0 +1,200 @@
+% CVLaTeX template: sword
+% Chinese-style "sword" design: a deep navy name banner with a slanted blade
+% tip at its right end, the school logo above the framed photo, a two-column
+% contact grid with personal data on the left and profile links on the right,
+% no row hairlines, and navy section plates over light-gray
+% bars. Entries use compact three-column date / title / organization lines.
+\documentclass[{{font_size}}pt]{article}
+
+\usepackage[{{paper}},top={{margin_top}}cm,bottom={{margin_bottom}}cm,left={{margin_left}}cm,right={{margin_right}}cm]{geometry}
+{{font_engine}}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+\setlength{\emergencystretch}{3em}
+
+% Palette: deep navy accent, light gray bars and a muted gray for support text.
+\definecolor{accent}{RGB}{31,52,110}
+\definecolor{acento2}{RGB}{196,200,212}
+\definecolor{gris}{RGB}{110,118,132}
+
+% ---------------------------------------------------------------------------
+% Name banner geometry
+% ---------------------------------------------------------------------------
+% The banner is painted by the shipout background hook, so the name, the
+% logo and the photo stay in the foreground. It is limited to page 1 and to
+% the top of the text block. The white rotated square cuts the right corner
+% of the navy rectangle, leaving a straight slanted blade tip instead of a
+% square end.
+\newlength{\cvBannerBody}
+\newlength{\cvBannerHeight}
+\newlength{\cvBannerTop}
+\newlength{\cvBannerLeft}
+\newlength{\cvBannerBottom}
+\AtBeginDocument{%
+  \setlength{\cvBannerBody}{0.64\textwidth}%
+  \setlength{\cvBannerHeight}{1.30cm}%
+  % Distance from the paper corner to the text block. The shipout background
+  % hook paints from the page origin, so the banner has to move down by the
+  % top margin and right by the left margin to sit behind the header.
+  \setlength{\cvBannerTop}{\dimexpr 1in+\topmargin+\headheight+\headsep\relax}%
+  \setlength{\cvBannerLeft}{\dimexpr 1in+\oddsidemargin\relax}%
+  \setlength{\cvBannerBottom}{\dimexpr\cvBannerTop+\cvBannerHeight\relax}%
+}
+\AddToHook{shipout/background}{%
+  \ifnum\value{page}=1\relax
+    \put(\cvBannerLeft,-\cvBannerBottom){%
+      \color{accent}%
+      \rule{\dimexpr\cvBannerBody+1.4cm\relax}{\cvBannerHeight}}%
+    \put(\dimexpr\cvBannerLeft+\cvBannerBody\relax,-\cvBannerBottom){%
+      \rotatebox[origin=lb]{-22}{\color{white}\rule{30cm}{30cm}}}%
+  \fi
+}
+
+% ---------------------------------------------------------------------------
+% Section heading: full-width light-gray bar with a navy plate sized to the
+% title. The plate's right end is a small stair-step blade tip; the steps are
+% far smaller than a printed pixel, so the edge reads as a clean slant. Long
+% titles fall back to a full-width navy plate with a natural height and wrap
+% inside it, exactly like the tabbed template.
+% ---------------------------------------------------------------------------
+\newlength{\cvTitleW}
+\newlength{\cvPadW}
+\newlength{\cvTipW}
+\newlength{\cvPlateW}
+\newlength{\cvHeadH}
+\setlength{\cvPadW}{0.6em}
+\setlength{\cvTipW}{0.22cm}
+\setlength{\cvHeadH}{7.2mm}
+
+\newcommand{\cvblade}[1]{%
+  \vbox{\offinterlineskip
+    \hbox{\color{accent}\rule{#1}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.9167#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.8333#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.75#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.6667#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.5833#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.5#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.4167#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.3333#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.25#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.1667#1\relax}{0.6mm}}%
+    \hbox{\color{accent}\rule{\dimexpr0.0833#1\relax}{0.6mm}}%
+  }%
+}
+
+\newcommand{\cvsection}[1]{%
+  \par\vspace{0.85em}%
+  \noindent
+  \begingroup
+  \setlength{\fboxsep}{0pt}%
+  \settowidth{\cvTitleW}{\bfseries\fontsize{13}{15}\selectfont #1}%
+  \setlength{\cvPlateW}{\dimexpr\cvTitleW+2\cvPadW+\cvTipW\relax}%
+  \ifdim\cvPlateW>\dimexpr\linewidth-0.6em\relax
+    % Long-title fallback: one full-width navy plate that wraps naturally.
+    \colorbox{accent}{%
+      \parbox{\linewidth}{%
+        \raggedright
+        \leftskip=\cvPadW\relax
+        \rightskip=\dimexpr\cvPadW plus 1fil\relax
+        \vspace*{0.22em}%
+        {\color{white}\bfseries\fontsize{13}{15}\selectfont #1}%
+        \par\vspace*{0.22em}%
+      }%
+    }%
+  \else
+    \colorbox{acento2}{%
+      \parbox[c][\cvHeadH][c]{\linewidth}{%
+        \hspace*{0.05em}%
+        \colorbox{accent}{%
+          \parbox[b][\cvHeadH][c]{\dimexpr\cvTitleW+2\cvPadW\relax}{%
+            \hspace*{\cvPadW}%
+            {\color{white}\bfseries\fontsize{13}{15}\selectfont #1}%
+          }%
+        }%
+        \cvblade{\cvTipW}%
+      }%
+    }%
+  \fi
+  \endgroup
+  \par\vspace{0.42em}%
+}
+
+% ---------------------------------------------------------------------------
+% Free-block separators, coherent with the navy plates and gray bars.
+% ---------------------------------------------------------------------------
+\newcommand{\cvblockline}{%
+  \par\vspace{0.5em}%
+  {\color{accent}\hrule height 0.6pt}%
+  \par\vspace{0.5em}%
+}
+\newcommand{\cvblockband}{%
+  \par\vspace{0.5em}%
+  {\color{accent}\hrule height 0.32em}%
+  \par\vspace{0.5em}%
+}
+\newcommand{\cvblockspace}{%
+  \par\vspace{2em}%
+}
+
+% ---------------------------------------------------------------------------
+% Three-column entry line: date left, title centered and organization right.
+% Fixed-width columns wrap long Latin/CJK values inside their own column, so
+% an entry never runs past the right margin. An empty date falls back to a
+% two-column line.
+% ---------------------------------------------------------------------------
+\newcommand{\cvcnline}[3]{%
+  \par\noindent
+  \if\relax\detokenize{#1}\relax
+    \begin{minipage}[t]{0.66\linewidth}%
+      \raggedright\bfseries #2%
+    \end{minipage}%
+    \hfill
+    \begin{minipage}[t]{0.30\linewidth}%
+      \raggedleft\bfseries\textcolor{gris}{#3}%
+    \end{minipage}%
+  \else
+    \begin{minipage}[t]{0.24\linewidth}%
+      \raggedright\bfseries\textcolor{accent}{#1}%
+    \end{minipage}%
+    \hfill
+    \begin{minipage}[t]{0.46\linewidth}%
+      \centering\bfseries #2%
+    \end{minipage}%
+    \hfill
+    \begin{minipage}[t]{0.26\linewidth}%
+      \raggedleft\bfseries\textcolor{gris}{#3}%
+    \end{minipage}%
+  \fi
+  \par\vspace{0.1em}%
+}
+
+% ---------------------------------------------------------------------------
+% Compact lists: small navy square markers and tight vertical spacing.
+% ---------------------------------------------------------------------------
+\setlength{\leftmargini}{1.2em}
+\setlength{\leftmarginii}{1.0em}
+\setlength{\labelsep}{0.5em}
+\setlength{\topsep}{2pt}
+\setlength{\partopsep}{0pt}
+\setlength{\itemsep}{1pt}
+\setlength{\parsep}{0pt}
+\renewcommand{\labelitemi}{%
+  \raisebox{0.16ex}{\color{accent}\rule{0.38em}{0.38em}}%
+}
+\renewcommand{\labelitemii}{%
+  \raisebox{0.16ex}{\color{gris}\rule{0.3em}{0.3em}}%
+}
+
+\begin{document}
+
+\sloppy
+
+{{header}}
+
+{{body}}
+
+\end{document}

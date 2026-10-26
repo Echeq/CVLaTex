@@ -141,6 +141,7 @@ def test_build_tex_sin_marcadores_y_roundtrip(plantilla, idioma, prefs_tmp):
     assert tex_datos.extract(tex) == datos
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", TEMPLATES)
 def test_compila_pdf_es(plantilla, prefs_tmp):
@@ -152,6 +153,7 @@ def test_compila_pdf_es(plantilla, prefs_tmp):
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para compilar texto CJK",

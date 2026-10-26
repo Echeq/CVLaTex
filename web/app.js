@@ -83,13 +83,15 @@ const TEMPLATES_CV = [
   { value: "ribbon", labelKey: "template_ribbon" },
   { value: "navy", labelKey: "template_navy" },
   { value: "playful", labelKey: "template_playful" },
+  { value: "sword", labelKey: "template_sword" },
 ];
 
 const THEMES = ["light", "dark", "system"];
 
 const COLOR_FIELDS = ["primary", "secondary", "text", "gray"];
 
-/* Canonical entry schema (English keys, docs/refactor-map.md). Select values
+/* Canonical entry schema (English keys; frozen contract, see
+   tests/test_frontend.py and docs/DEVELOPMENT.md). Select values
    are canonical keys; their labels come from the backend LANG tables through
    `optionLabel()` in web/i18n.js. */
 const DYNAMIC_SECTIONS = {
@@ -213,8 +215,8 @@ const SOCIAL_NETWORKS = [
 // latex_gen.DEFAULT_SECTION_ORDER). The user can reorder, rename and hide
 // them from the form.
 const DEFAULT_SECTION_ORDER = [
-  "summary", "education", "projects", "university_projects", "internships",
-  "work", "skills", "languages", "references",
+  "education", "summary", "work", "internships", "projects",
+  "university_projects", "skills", "languages", "references",
 ];
 
 // Visible default name of every section and block anchor.
@@ -311,6 +313,9 @@ function toast(message) {
 
 let _confirmAccept = null;
 let _confirmCancel = null;
+// Third button of the close guard only ("Exit without saving"); it stays null
+// for every other confirm dialog, which shows just accept/cancel.
+let _confirmExit = null;
 
 function resetConfirmLabels() {
   $("#confirm-accept").textContent = t("confirm_ok");
@@ -318,6 +323,7 @@ function resetConfirmLabels() {
   $("#confirm-accept").hidden = false;
   $("#confirm-exit").hidden = true;
   $("#confirm-cancel").hidden = false;
+  _confirmExit = null;
 }
 
 function closeModal(modal) {
@@ -326,11 +332,13 @@ function closeModal(modal) {
   if (modal.id === "modal-confirm") {
     _confirmAccept = null;
     _confirmCancel = null;
+    _confirmExit = null;
     resetConfirmLabels();
   }
 }
 
 function askConfirm(message, onAccept, onCancel, acceptLabel, cancelLabel) {
+  _confirmExit = null;
   $("#confirm-message").textContent = message;
   _confirmAccept = onAccept || null;
   _confirmCancel = onCancel || null;
@@ -343,6 +351,7 @@ function askConfirm(message, onAccept, onCancel, acceptLabel, cancelLabel) {
 }
 
 function showAlert(message) {
+  _confirmExit = null;
   $("#confirm-message").textContent = message;
   _confirmAccept = null;
   _confirmCancel = null;
@@ -449,7 +458,8 @@ function runAction(action, e) {
       case "manage-blocks": openBlocksModal(); break;
       case "help": $("#modal-help").hidden = false; break;
       case "credits": $("#modal-credits").hidden = false; break;
-      case "exit-without-saving": if (api) api.quit_app(); break;
+      // "exit-without-saving" is not dispatched here: #confirm-exit has its
+      // own listener in setupConfirm() so a click can never run two paths.
       case "close-modal": {
         const modal = e && e.target && e.target.closest ? e.target.closest(".modal") : null;
         if (modal) closeModal(modal);
@@ -522,10 +532,28 @@ async function saveCurrentCv() {
   }
 }
 
-/* Close guard: Save / Exit without saving / Cancel. Saving writes to the
-   current .cvjson when known, otherwise it opens the save dialog. On any
-   failure (or a cancelled dialog) the guard is shown again so the window is
-   never closed with unsaved changes by accident. */
+/* Close guard: three choices only — Save and exit / Exit without saving /
+   Cancel. The periodic copy is a RESTORE POINT, not a normal autosave: it is
+   kept when the app closes without saving and offered again on the next
+   start; it is only cleared by a successful save/open/new/import.
+   Saving writes to the current .cvjson when known, otherwise it opens the
+   save dialog. On any failure (or a cancelled dialog) the guard is shown
+   again so the window is never closed with unsaved changes by accident. */
+let _exitRequested = false;
+
+async function quitNow() {
+  // quit_app destroys the window: never send it twice (double click or a
+  // duplicated handler would otherwise call it again while it tears down).
+  if (!api || _exitRequested) return;
+  _exitRequested = true;
+  try {
+    await api.quit_app();
+  } catch (e) {
+    _exitRequested = false;
+    console.error(e);
+  }
+}
+
 async function saveAndExit() {
   try {
     if (state.filePath) {
@@ -533,7 +561,7 @@ async function saveAndExit() {
       if (r.ok) {
         markDirty(false);
         await clearAutosave();
-        api.quit_app();
+        await quitNow();
       } else {
         toast((r.errores && r.errores[0]) || t("close_guard_save_failed"));
         window.__onCloseRequest();
@@ -544,7 +572,7 @@ async function saveAndExit() {
         state.filePath = r.ruta;
         markDirty(false);
         await clearAutosave();
-        api.quit_app();
+        await quitNow();
       } else if (r.cancelado) {
         // The user cancelled the save dialog: stay in the app, guard usable.
         window.__onCloseRequest();
@@ -557,6 +585,28 @@ async function saveAndExit() {
     console.error(e);
     window.__onCloseRequest();
   }
+}
+
+/* Exit without saving: refresh the restore point with the latest data before
+   closing, so the next start offers exactly what the user saw. If that write
+   fails the window stays open (nothing would be left to recover otherwise)
+   and the guard is shown again. The restore file is deliberately NOT cleared:
+   it is what the next start offers. */
+async function exitWithoutSaving() {
+  try {
+    const r = await api.autosave(state.data);
+    if (!r || !r.ok) {
+      toast((r && r.errores && r.errores[0]) || t("close_guard_restore_failed"));
+      window.__onCloseRequest();
+      return;
+    }
+  } catch (e) {
+    console.error(e);
+    toast(t("close_guard_restore_failed"));
+    window.__onCloseRequest();
+    return;
+  }
+  await quitNow();
 }
 
 async function exportPdf() {
@@ -895,11 +945,14 @@ async function clearAutosave() {
 }
 
 window.__onCloseRequest = function () {
+  // The dirty close guard has exactly three buttons: save+exit (primary),
+  // exit without saving (keeps the restore point) and cancel.
   _confirmAccept = saveAndExit;
+  _confirmExit = exitWithoutSaving;
   _confirmCancel = null;
   $("#confirm-message").textContent = t("close_guard_message");
   $("#confirm-accept").hidden = false;
-  $("#confirm-accept").textContent = t("save");
+  $("#confirm-accept").textContent = t("save_and_exit");
   $("#confirm-exit").hidden = false;
   $("#confirm-exit").textContent = t("exit_without_saving");
   $("#confirm-cancel").hidden = false;
@@ -2805,6 +2858,15 @@ function setupConfirm() {
     const cancel = _confirmCancel;
     closeModal($("#modal-confirm"));
     if (cancel) cancel();
+  });
+  // Third close-guard button. `data-accion="exit-without-saving"` stays in the
+  // HTML as inert markup (the frozen action list pins it) but runAction has no
+  // case for it: this single listener is the only path, so a click runs once.
+  // Escape/backdrop still just dismiss the modal, never the window.
+  $("#confirm-exit").addEventListener("click", () => {
+    const exit = _confirmExit;
+    closeModal($("#modal-confirm"));
+    if (exit) exit();
   });
 }
 

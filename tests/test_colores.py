@@ -15,6 +15,8 @@ import pytest  # noqa: E402
 from docx import Document  # noqa: E402
 from docx.oxml.ns import qn  # noqa: E402
 from docx.shared import RGBColor  # noqa: E402
+from docx.table import Table  # noqa: E402
+from docx.text.paragraph import Paragraph  # noqa: E402
 
 import docx_gen  # noqa: E402
 import latex_engine  # noqa: E402
@@ -271,7 +273,7 @@ def test_api_template_colors_no_lanza():
 
 
 # ---------------------------------------------------------------------------
-# docx_gen: primary en encabezados y separadores, text en Normal
+# docx_gen: palette precedence in the template-specific shapes
 # ---------------------------------------------------------------------------
 
 def _datos_docx():
@@ -291,60 +293,486 @@ def _datos_docx():
     return d
 
 
+def _exportar(datos, prefs_dict, tmp_path, nombre):
+    """Export ``datos`` and reopen the .docx with python-docx."""
+    ruta = tmp_path / nombre
+    docx_gen.export(datos, prefs_dict, str(ruta))
+    return Document(str(ruta))
+
+
+# -- recursive readers ------------------------------------------------------
+
+def _cell_blocks(cell):
+    """Yield ``("paragraph"|"table", item)`` inside a table cell."""
+    for child in cell._tc.iterchildren():
+        if child.tag == qn("w:p"):
+            yield "paragraph", Paragraph(child, cell)
+        elif child.tag == qn("w:tbl"):
+            table = Table(child, cell)
+            yield "table", table
+            for item in _table_blocks(table):
+                yield item
+
+
+def _table_blocks(table):
+    for row in table.rows:
+        for cell in row.cells:
+            for item in _cell_blocks(cell):
+                yield item
+
+
+def _iter_blocks(doc):
+    """Body and table blocks in document order (header table first)."""
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield "paragraph", Paragraph(child, doc)
+        elif child.tag == qn("w:tbl"):
+            table = Table(child, doc)
+            yield "table", table
+            for item in _table_blocks(table):
+                yield item
+
+
+def _iter_paragraphs(doc):
+    for kind, item in _iter_blocks(doc):
+        if kind == "paragraph":
+            yield item
+
+
+def _table_paragraphs(table):
+    return [item for kind, item in _table_blocks(table) if kind == "paragraph"]
+
+
+def _textos(doc):
+    return [paragraph.text for paragraph in _iter_paragraphs(doc)]
+
+
+def _ancestor_element(node, tag):
+    element = node._p if isinstance(node, Paragraph) else node
+    while element is not None:
+        if element.tag == qn(tag):
+            return element
+        element = element.getparent()
+    return None
+
+
+def _ancestor_cell(paragraph):
+    return _ancestor_element(paragraph, "w:tc")
+
+
+# -- colours, fills and borders --------------------------------------------
+
+def _shading_fill(element):
+    if element is None:
+        return None
+    shading = element.find(qn("w:shd"))
+    return shading.get(qn("w:fill")) if shading is not None else None
+
+
+def _paragraph_fill(paragraph):
+    return _shading_fill(paragraph._p.pPr)
+
+
+def _cell_fill(cell):
+    tc = getattr(cell, "_tc", cell)
+    return _shading_fill(tc.find(qn("w:tcPr"))) if tc is not None else None
+
+
+def _ancestor_cell_fill(paragraph):
+    return _cell_fill(_ancestor_cell(paragraph))
+
+
+def _borders(element, tag="w:pBdr"):
+    if element is None:
+        return {}
+    container = element.find(qn(tag))
+    if container is None:
+        return {}
+    out = {}
+    for child in container:
+        try:
+            size = int(child.get(qn("w:sz")))
+        except (TypeError, ValueError):
+            size = None
+        out[child.tag.rsplit("}", 1)[-1]] = {
+            "val": child.get(qn("w:val")),
+            "sz": size,
+            "color": child.get(qn("w:color")),
+        }
+    return out
+
+
+def _paragraph_borders(paragraph):
+    return _borders(paragraph._p.pPr)
+
+
+def _text_runs(paragraph):
+    return [run for run in paragraph.runs if run.text]
+
+
+def _run_color(run):
+    color = run.font.color
+    if color is None or color.type is None:
+        return None
+    return color.rgb
+
+
+# -- header and heading locators -------------------------------------------
+
+def _header_table(doc):
+    assert doc.tables, "the header must be a table"
+    return doc.tables[0]
+
+
+def _header_name_paragraph(doc, name):
+    for paragraph in _table_paragraphs(_header_table(doc)):
+        if paragraph.text.strip() == name:
+            return paragraph
+    raise AssertionError("No name paragraph %r in the header table" % name)
+
+
+def _header_name_runs(doc):
+    return _text_runs(_header_name_paragraph(doc, _datos_docx()["name"]))
+
+
+HEADING_MARKERS = "\u25cf\u25c6\u25aa\u25a0\u2022"
+
+
+def _heading_text(text):
+    return text.strip().lstrip(" \t" + HEADING_MARKERS)
+
+
+def _find_heading(doc, title):
+    """Heading dict: paragraph, table/cell and the shape depth (1 = table)."""
+    for kind, item in _iter_blocks(doc):
+        if kind == "paragraph":
+            if _heading_text(item.text) == title:
+                return {"paragraph": item, "table": None, "cell": None}
+            continue
+        if not item.rows:
+            continue
+        for cell in item.rows[0].cells:
+            for paragraph in cell.paragraphs:
+                if _heading_text(paragraph.text) == title:
+                    return {"paragraph": paragraph, "table": item, "cell": cell}
+    raise AssertionError("No section heading %r" % title)
+
+
+def _heading_runs(heading):
+    """Title runs only (the playful bullet glyph is not part of the title)."""
+    runs = _text_runs(heading["paragraph"])
+    if heading["table"] is None and runs and runs[0].text.strip() in set(HEADING_MARKERS):
+        return runs[1:]
+    return runs
+
+
+def _heading_fill(heading):
+    """Fill of the heading shape: plate/tab/bar cell, or paragraph shading."""
+    if heading["table"] is not None:
+        return _cell_fill(heading["cell"])
+    return _paragraph_fill(heading["paragraph"])
+
+
+def _paragraph_after(doc, paragraph):
+    paragraphs = list(_iter_paragraphs(doc))
+    for index, candidate in enumerate(paragraphs):
+        if candidate._p is paragraph._p:
+            return paragraphs[index + 1] if index + 1 < len(paragraphs) else None
+    return None
+
+
+def _heading_rule(doc, heading):
+    """Bottom rule of a heading: its own paragraph, its rule cell or the next ¶."""
+    if heading["table"] is not None:
+        for cell in heading["table"].rows[0].cells:
+            for paragraph in cell.paragraphs:
+                border = _paragraph_borders(paragraph).get("bottom")
+                if border:
+                    return border
+        heading_rule_paragraph = _paragraph_after(doc, heading["paragraph"])
+    else:
+        border = _paragraph_borders(heading["paragraph"]).get("bottom")
+        if border:
+            return border
+        heading_rule_paragraph = _paragraph_after(doc, heading["paragraph"])
+    if heading_rule_paragraph is None:
+        return None
+    return _paragraph_borders(heading_rule_paragraph).get("bottom")
+
+
+def _header_rule_colors(doc):
+    """Bottom-border colours of the rule paragraphs after the header table."""
+    seen_table = False
+    colors = []
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:tbl"):
+            if seen_table:
+                break
+            seen_table = True
+            continue
+        if not seen_table or child.tag != qn("w:p"):
+            continue
+        paragraph = Paragraph(child, doc)
+        if paragraph.text.strip():
+            break
+        border = _paragraph_borders(paragraph).get("bottom")
+        if border:
+            colors.append(border["color"])
+    return colors
+
+
 def _separadores(doc):
-    """(colores de borde de linea, (borde, relleno) de banda) leidos del XML."""
+    """(line colours, band fills) of the trailing free-block separators.
+
+    The two separator blocks are rendered at the "end" anchor, so they are the
+    paragraphs after the last text of the document. A line separator is a thin
+    bottom rule; a band separator is a shaded bar (or, for navy, another thin
+    rule with no fill), and any secondary hairline of the profile is collected
+    in the line list too.
+    """
+    paragraphs = list(_iter_paragraphs(doc))
+    last_text = max(
+        (i for i, paragraph in enumerate(paragraphs) if paragraph.text.strip()),
+        default=-1,
+    )
     lineas, bandas = [], []
-    for par in doc.paragraphs:
-        p_pr = par._p.pPr
-        if p_pr is None:
-            continue
-        borde = p_pr.find(qn("w:pBdr"))
-        if borde is None:
-            continue
-        inferior = borde.find(qn("w:bottom"))
-        color = inferior.get(qn("w:color")) if inferior is not None else None
-        sombreado = p_pr.find(qn("w:shd"))
-        if sombreado is None:
-            lineas.append(color)
-        else:
-            bandas.append((color, sombreado.get(qn("w:fill"))))
+    for paragraph in paragraphs[last_text + 1:]:
+        border = _paragraph_borders(paragraph).get("bottom")
+        if border:
+            lineas.append(border["color"])
+        fill = _paragraph_fill(paragraph)
+        if fill:
+            bandas.append(fill)
     return lineas, bandas
 
 
-def _colores_de_encabezado(doc, titulo):
-    for par in doc.paragraphs:
-        if par.text == titulo:
-            return [run.font.color.rgb for run in par.runs if run.text]
-    raise AssertionError("No se encontro el encabezado %r" % titulo)
-
+# -- tests ------------------------------------------------------------------
 
 def test_docx_primary_y_text_con_paleta(tmp_path):
-    ruta = tmp_path / "colores.docx"
+    """primary colours the header rule, heading titles/rules and separators."""
     prefs_colores = dict(PREFS_PRUEBA, colors={"primary": "#12AB34", "text": "#112233"})
-    docx_gen.export(_datos_docx(), prefs_colores, str(ruta))
-    doc = Document(str(ruta))
+    doc = _exportar(_datos_docx(), prefs_colores, tmp_path, "colores.docx")
 
     primario = RGBColor(0x12, 0xAB, 0x34)
     for titulo in ETIQUETAS_ES:
-        assert _colores_de_encabezado(doc, titulo) == [primario], titulo
+        heading = _find_heading(doc, titulo)
+        # Classic heading: accent-coloured title over an accent rule, no fill.
+        assert _heading_fill(heading) is None, titulo
+        assert [_run_color(run) for run in _heading_runs(heading)] == [primario], titulo
+        assert _heading_rule(doc, heading)["color"] == "12AB34", titulo
+
+    # The header name takes the prefs text colour; the header rule the primary.
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [
+        RGBColor(0x11, 0x22, 0x33)
+    ]
+    assert _header_rule_colors(doc) == ["12AB34"]
 
     lineas, bandas = _separadores(doc)
     assert lineas == ["12AB34"]
-    assert bandas == [("12AB34", "12AB34")]
+    assert bandas == ["12AB34"]
 
     assert doc.styles["Normal"].font.color.rgb == RGBColor(0x11, 0x22, 0x33)
 
 
-def test_docx_sin_paleta_usa_el_acento_por_defecto(tmp_path):
-    ruta = tmp_path / "sin_colores.docx"
-    docx_gen.export(_datos_docx(), PREFS_PRUEBA, str(ruta))
-    doc = Document(str(ruta))
+def test_docx_sin_paleta_usa_el_acento_de_la_plantilla(tmp_path):
+    doc = _exportar(_datos_docx(), PREFS_PRUEBA, tmp_path, "sin_colores.docx")
+
+    # _datos_docx() does not pick a template: it falls back to classic (#233A5E).
+    lineas, bandas = _separadores(doc)
+    assert lineas == [docx_gen.COLOR_ACCENT]
+    assert bandas == [docx_gen.COLOR_ACCENT]
+    for titulo in ETIQUETAS_ES:
+        heading = _find_heading(doc, titulo)
+        assert _heading_fill(heading) is None, titulo
+        assert [_run_color(run) for run in _heading_runs(heading)] == [
+            RGBColor(0x23, 0x3A, 0x5E)
+        ], titulo
+        assert _heading_rule(doc, heading)["color"] == docx_gen.COLOR_ACCENT, titulo
+
+    # The classic name sits on white in the text role (black when unset).
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [RGBColor(0, 0, 0)]
+    assert _header_rule_colors(doc) == [docx_gen.COLOR_ACCENT]
+
+
+def test_docx_paleta_invalida_cae_al_acento_de_plantilla(tmp_path):
+    """An unusable prefs palette leaves every shape on the template accent."""
+    prefs_colores = dict(PREFS_PRUEBA, colors={
+        "primary": "red", "secondary": "#12", "gray": "  ", "text": "#GGGGGG",
+    })
+    doc = _exportar(_datos_docx(), prefs_colores, tmp_path, "invalida.docx")
 
     lineas, bandas = _separadores(doc)
     assert lineas == [docx_gen.COLOR_ACCENT]
-    assert bandas == [(docx_gen.COLOR_ACCENT, docx_gen.COLOR_ACCENT)]
+    assert bandas == [docx_gen.COLOR_ACCENT]
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_rule(doc, heading)["color"] == docx_gen.COLOR_ACCENT
+    assert _header_rule_colors(doc) == [docx_gen.COLOR_ACCENT]
+    assert doc.styles["Normal"].font.color.rgb is None
+
+
+def test_docx_sword_usa_su_acento_en_cabecera_y_barras(tmp_path):
+    d = _datos_docx()
+    d["template"] = "sword"
+    doc = _exportar(d, PREFS_PRUEBA, tmp_path, "sword.docx")
+
+    # The sword header is a nameplate: navy banner cell with a white name.
+    assert _ancestor_cell_fill(_header_name_paragraph(doc, d["name"])) == "1F346E"
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [
+        RGBColor(0xFF, 0xFF, 0xFF)
+    ]
     for titulo in ETIQUETAS_ES:
-        assert _colores_de_encabezado(doc, titulo) == [None], titulo
+        heading = _find_heading(doc, titulo)
+        # Accent plate behind the white title, accent2 full-width bar after it.
+        assert _heading_fill(heading) == "1F346E", titulo
+        assert [_run_color(run) for run in _heading_runs(heading)] == [
+            RGBColor(0xFF, 0xFF, 0xFF)
+        ], titulo
+        cells = heading["table"].rows[0].cells
+        assert _cell_fill(cells[2]) == "C4C8D4", titulo
+        steps = [
+            _paragraph_fill(paragraph)
+            for paragraph in cells[1].paragraphs
+            if _paragraph_fill(paragraph)
+        ]
+        assert steps and set(steps) == {"1F346E"}, titulo
+
+    lineas, bandas = _separadores(doc)
+    assert lineas == ["1F346E"]
+    assert bandas == ["1F346E"]
+
+    textos = _textos(doc)
+    etiqueta_vieja = "个人简历 PERSONAL RESUME"
+    assert all(etiqueta_vieja not in texto for texto in textos)
+
+
+def test_docx_classic_nombre_negro_y_reglas_acento(tmp_path):
+    """The classic name is black; the accent lives in its rules, not a fill."""
+    d = _datos_docx()
+    d["template"] = "classic"
+    doc = _exportar(d, PREFS_PRUEBA, tmp_path, "classic.docx")
+
+    assert _ancestor_cell_fill(_header_name_paragraph(doc, d["name"])) is None
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [RGBColor(0, 0, 0)]
+    assert _header_rule_colors(doc) == ["233A5E"]
+
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_fill(heading) is None
+    assert [_run_color(run) for run in _heading_runs(heading)] == [
+        RGBColor(0x23, 0x3A, 0x5E)
+    ]
+    assert _heading_rule(doc, heading)["color"] == "233A5E"
+
+
+def test_docx_pref_primary_gana_a_la_plantilla(tmp_path):
+    d = _datos_docx()
+    d["template"] = "sword"
+    prefs_colores = dict(PREFS_PRUEBA, colors={"primary": "#12AB34"})
+    doc = _exportar(d, prefs_colores, tmp_path, "sword_primary.docx")
+
+    # The palette reaches the sword-specific shapes: the banner and every
+    # accent plate/blade, not a universal heading fill. The banner keeps its
+    # white name (the LaTeX sword banner sets the name in white).
+    assert _ancestor_cell_fill(_header_name_paragraph(doc, d["name"])) == "12AB34"
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [
+        RGBColor(0xFF, 0xFF, 0xFF)
+    ]
+
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_fill(heading) == "12AB34"
+    cells = heading["table"].rows[0].cells
+    assert _cell_fill(cells[2]) == "C4C8D4"  # accent2 stays the template gray
+    steps = [
+        _paragraph_fill(paragraph)
+        for paragraph in cells[1].paragraphs
+        if _paragraph_fill(paragraph)
+    ]
+    assert steps and set(steps) == {"12AB34"}
+
+    lineas, bandas = _separadores(doc)
+    assert lineas == ["12AB34"]
+    assert bandas == ["12AB34"]
+
+
+def test_docx_acento_claro_usa_texto_contrastante(tmp_path):
+    """A light accent still picks dark ink; the filled heading band is gone.
+
+    The per-template shapes use fixed white-on-band names, so the light/dark
+    switch survives in the shared :func:`docx_gen._contrast_color` helper; the
+    assertion is kept at that level and the pref propagation is checked on the
+    classic rules.
+    """
+    amarillo = RGBColor(0xF4, 0xB4, 0x40)
+    assert docx_gen._contrast_color(amarillo) == RGBColor(0, 0, 0)
+    assert docx_gen._contrast_color(RGBColor(0x23, 0x3A, 0x5E)) == RGBColor(0xFF, 0xFF, 0xFF)
+
+    d = _datos_docx()
+    d["template"] = "classic"
+    prefs_colores = dict(PREFS_PRUEBA, colors={"primary": "#F4B440"})
+    doc = _exportar(d, prefs_colores, tmp_path, "acento_claro.docx")
+
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_fill(heading) is None
+    assert _heading_rule(doc, heading)["color"] == "F4B440"
+    assert _header_rule_colors(doc) == ["F4B440"]
+    assert [_run_color(run) for run in _header_name_runs(doc)] == [RGBColor(0, 0, 0)]
+
+
+def test_docx_creative_secundario_pisa_acento2_pero_no_acento3(tmp_path):
+    """prefs secondary recolours acento2; the yellow acento3 is template-only."""
+    d = _datos_docx()
+    d["template"] = "creative"
+    prefs_colores = dict(
+        PREFS_PRUEBA,
+        colors={"primary": "#12AB34", "secondary": "#00AA88", "gray": "#A1B2C3"},
+    )
+    doc = _exportar(d, prefs_colores, tmp_path, "creative.docx")
+
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_rule(doc, heading)["color"] == "00AA88"
+    segundo = _paragraph_after(doc, heading["paragraph"])
+    assert segundo is not None
+    assert _paragraph_borders(segundo)["bottom"]["color"] == "F4B440"
+
+    # The palette reaches the creative band (the template-specific shape).
+    assert _ancestor_cell_fill(_header_name_paragraph(doc, d["name"])) == "12AB34"
+    assert [_run_color(run) for run in _heading_runs(heading)] == [
+        RGBColor(0x12, 0xAB, 0x34)
+    ]
+
+
+def test_docx_gray_pisa_el_gris_de_texto_no_la_barra(tmp_path):
+    """prefs gray overrides the readable text gray, never the light bar gray."""
+    d = _datos_docx()
+    d["template"] = "chinese"
+    prefs_colores = dict(PREFS_PRUEBA, colors={"gray": "#A1B2C3", "text": "#112233"})
+    doc = _exportar(d, prefs_colores, tmp_path, "chinese_gray.docx")
+
+    grado = next(
+        paragraph for paragraph in _iter_paragraphs(doc)
+        if "Grado Universitario" in paragraph.text
+    )
+    assert [_run_color(run) for run in _text_runs(grado)] == [
+        RGBColor(0xA1, 0xB2, 0xC3)
+    ]
+    heading = _find_heading(doc, "Perfil")
+    assert _heading_fill(heading) == "1F347D"          # template accent plate
+    assert _cell_fill(heading["table"].rows[0].cells[1]) == "C4C8D4"  # raw gris
+    assert doc.styles["Normal"].font.color.rgb == RGBColor(0x11, 0x22, 0x33)
+
+
+def test_docx_datos_y_prefs_hostiles_no_lanzan(tmp_path):
+    datos_hostiles = [_DictExplosivo(), _Explosivo(), None, {}, {
+        "blocks": _Explosivo(),
+        "education": _Explosivo(),
+        "summary": _Explosivo(),
+        "work": [{"position": _Explosivo(), "achievements": _Explosivo()}],
+        "skills": [{"category": _Explosivo(), "values": _Explosivo()}],
+        "socials": [{"network": _Explosivo(), "value": _Explosivo()}],
+    }]
+    for i, datos in enumerate(datos_hostiles):
+        ruta = tmp_path / ("hostil_%d.docx" % i)
+        docx_gen.export(datos, _DictExplosivo(paper="a4"), str(ruta))
+        assert ruta.is_file()
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +791,7 @@ def prefs_tmp(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 def test_compila_pdf_con_paleta(prefs_tmp):
     tex = latex_gen.build_tex(_datos_prueba(), _prefs_con(COLORES_VALIDOS))

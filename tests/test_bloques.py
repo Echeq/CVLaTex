@@ -29,8 +29,8 @@ MOTOR_CJK = latex_engine.find_xelatex()
 
 # Orden de las secciones estandar en el cuerpo de todas las plantillas.
 CLAVES_SECCIONES = (
-    "summary", "education", "projects", "university_projects", "internships",
-    "work", "skills", "languages", "references",
+    "education", "summary", "work", "internships", "projects",
+    "university_projects", "skills", "languages", "references",
 )
 
 
@@ -129,7 +129,7 @@ def _indice(tex, aguja):
 
 def _titulo(idioma, clave):
     """Titulo de seccion emitido por build_tex para el idioma y la clave dados."""
-    return "\\cvsection{" + latex_gen.LANG[idioma][clave] + "}"
+    return "\\cvsection{" + latex_gen.esc(latex_gen.LANG[idioma][clave]) + "}"
 
 
 def _ultima_seccion(tex, idioma):
@@ -224,6 +224,7 @@ def test_build_tex_bloques_listado_columnas_y_periodo(prefs_tmp):
     assert "\\hfill" in fila
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", TEMPLATES)
 def test_compila_pdf_bloques_es(plantilla, prefs_tmp):
@@ -235,6 +236,7 @@ def test_compila_pdf_bloques_es(plantilla, prefs_tmp):
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para compilar texto CJK",

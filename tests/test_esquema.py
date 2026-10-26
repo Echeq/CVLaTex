@@ -349,8 +349,8 @@ def test_build_tex_cabecera_socials():
     # El label solo se usa con "other"; las entradas sin valor se omiten.
     assert "Ignorado" not in tex
     assert "\\texttt{   }" not in tex
-    # Los socials se renderizan antes que los datos adicionales.
-    assert tex.index("\\textbf{GitHub:}") < tex.index("\\textbf{Nacimiento:}")
+    # Los datos personales y adicionales van antes que los socials.
+    assert tex.index("\\textbf{Nacimiento:}") < tex.index("\\textbf{GitHub:}")
 
 
 def test_build_tex_socials_idioma_del_documento():
@@ -570,8 +570,8 @@ def _sin_bloque_datos(tex):
 
 def test_orden_secciones_defecto_exacto():
     assert latex_gen.DEFAULT_SECTION_ORDER == (
-        "summary", "education", "projects", "university_projects", "internships",
-        "work", "skills", "languages", "references",
+        "education", "summary", "work", "internships", "projects",
+        "university_projects", "skills", "languages", "references",
     )
 
 
@@ -582,15 +582,15 @@ def test_normalizar_orden_secciones_contrato():
     assert latex_gen.normalize_section_order(
         {"section_order": ["work", "summary"]}
     ) == [
-        "work", "summary", "education", "projects", "university_projects",
-        "internships", "skills", "languages", "references",
+        "work", "summary", "education", "internships", "projects",
+        "university_projects", "skills", "languages", "references",
     ]
     # Dedup conservando la primera aparicion y claves invalidas descartadas.
     assert latex_gen.normalize_section_order(
         {"section_order": ["work", "marte", "work", "summary", None, 7]}
     ) == [
-        "work", "summary", "education", "projects", "university_projects",
-        "internships", "skills", "languages", "references",
+        "work", "summary", "education", "internships", "projects",
+        "university_projects", "skills", "languages", "references",
     ]
 
 

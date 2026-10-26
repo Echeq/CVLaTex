@@ -5,7 +5,7 @@ Thanks for helping. Bug reports, documentation fixes, translations, templates an
 ## Before you start
 
 - Set up the project with [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Linux needs the venv created with `--system-site-packages` so PyGObject/WebKitGTK is visible.
-- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q` (728 tests pass on the current tree; PDF compile tests skip when no LaTeX engine is installed).
+- Run the suite before and after your change: `.venv/bin/python -m pytest tests -q`. While iterating, `.venv/bin/python -m pytest -m "not latex" -q` skips the slow LaTeX compilations; run the full suite before opening a pull request. PDF compile tests skip when no LaTeX engine is installed.
 - For anything larger than a small fix, open an issue first so the approach can be discussed.
 
 ## Scope
@@ -51,7 +51,7 @@ Both are multi-file changes with checks that keep them consistent. Follow the st
 
 ## Release maintainers
 
-Releases are cut from `main` by a maintainer. Bump `version.py`, the literal version in the credits modal (`web/index.html`) and `CHANGELOG.md`, run the suite, then push the `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which tests, builds the three native bundles, writes `SHA256SUMS.txt` and publishes the GitHub Release. The step-by-step checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing); never tag a commit whose tests are failing.
+Releases are cut from `main` by a maintainer. Bump `version.py`, the literal version in the credits modal (`web/index.html`) and `CHANGELOG.md`, run the suite, then push the `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which tests, builds the three native archives through `tools/stage_assets.py` → PyInstaller → `tools/package_release.py`, verifies their contents and `SHA256SUMS.txt`, and publishes the GitHub pre-release. The published asset names are `CVLaTeX-vX.Y.Z-windows-x64.zip`, `CVLaTeX-vX.Y.Z-linux-x86_64.tar.gz`, `CVLaTeX-vX.Y.Z-macos-arm64.zip` and `SHA256SUMS.txt`. Staging copies only `web/` and the twelve templates' `.tex` files, so the author's reference `.docx` and the picture samples never ship; signing and notarization are deferred. The step-by-step checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing); never tag a commit whose tests are failing.
 
 ## Pull request checklist
 

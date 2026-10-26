@@ -35,7 +35,6 @@ def _app_dir_for(platform=None, env=None, home=None):
     return os.path.join(base, "CVLaTeX")
 
 
-LOCALAPPDATA = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
 APP_DIR = _app_dir_for()
 CACHE_DIR = os.path.join(APP_DIR, "cache")
 BUILD_DIR = os.path.join(CACHE_DIR, "build")

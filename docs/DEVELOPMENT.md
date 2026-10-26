@@ -5,7 +5,7 @@ How to set up, test, build and extend CVLaTeX. The user-facing guide is [README]
 ## Prerequisites
 
 - Python 3.12 and pip. CI builds with Python 3.12; newer versions generally work but are not covered by CI.
-- Python packages: `requirements.txt` (`pywebview`, `python-docx`, and `pyinstaller` for builds); `requirements-dev.txt` adds `pytest`. Both files pin the tested versions with `==` so a local run and CI install the same releases.
+- Python packages: `requirements.txt` (`pywebview`, `python-docx`, and `pyinstaller` for builds); `requirements-dev.txt` adds `pytest` and `pytest-xdist`. Both files pin the tested versions with `==` so a local run and CI install the same releases.
 - The webview engine for your OS:
   - **Windows 10/11:** WebView2 runtime (preinstalled on current Windows).
   - **macOS:** the built-in WKWebView.
@@ -67,7 +67,19 @@ The full suite (no GUI, no browser, no network):
 .venv/bin/python -m pytest tests -q
 ```
 
-The current tree reports **728 passed**. That count assumes a LaTeX engine is available: the PDF compile tests use `pytest.mark.skipif` and are skipped, not failed, when `pdflatex`/`xelatex` are missing, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
+The PDF compile tests are marked `latex` and are slow, because each one runs `pdflatex`/`xelatex`. While iterating, skip them with the fast loop:
+
+```bash
+.venv/bin/python -m pytest -m "not latex" -q
+```
+
+Before opening a pull request, run the complete suite (CI does the same):
+
+```bash
+.venv/bin/python -m pytest -n auto
+```
+
+`pytest-xdist` is a dev dependency, so `-n auto` spreads the modules over the available CPUs. Without it, `.venv/bin/python -m pytest tests -q` runs everything serially. The LaTeX tests use `pytest.mark.skipif` on `latex_engine.find_pdflatex()`/`find_xelatex()` and are skipped, not failed, when no engine is available, so a machine without LaTeX reports fewer passes plus skips. On Windows use `.venv\Scripts\python.exe -m pytest tests -q`.
 
 Run one module or one test:
 
@@ -106,13 +118,26 @@ node --check web/i18n.js
 Build natively on each platform; PyInstaller bundles are not portable across operating systems.
 
 ```bash
-./build.sh        # Linux -> dist/CVLaTeX_Linux; macOS -> dist/CVLaTeX_macOS.zip + dist/CVLaTeX.app
-build.bat         # Windows -> dist/CVLaTeX_Windows.exe
+./build.sh        # Linux: dist/CVLaTeX_Linux + dist/CVLaTeX-v<version>-linux-x86_64.tar.gz
+                  # macOS: dist/CVLaTeX.app + dist/CVLaTeX-v<version>-macos-<arch>.zip
+build.bat         # Windows: dist/CVLaTeX.exe + dist/CVLaTeX-v<version>-windows-x64.zip
 ```
 
-`build.sh` creates or reuses `.venv`, installs `requirements.txt` when needed, checks the Linux webview packages, generates the macOS `.icns` when `sips`/`iconutil` and `assets/CVLaTex.png` are available, and runs PyInstaller with `--onefile --windowed --add-data "web:web" --add-data "templates:templates"`. `build.bat` expects an already-created `.venv` with the requirements installed and uses the Windows `;` separator in `--add-data`.
+Both scripts call `tools/stage_assets.py` first. It recreates `build/stage/` with `web/` (including the vendored PDF.js viewer) and only the twelve supported templates' `.tex` files. Personal material is excluded by construction: `templates/chinese/Elvis Chen CV.docx`, `templates/picture samples/`, `.venv/`, `cache/` and `dist/` never enter the staging tree. PyInstaller then bundles `build/stage/web` and `build/stage/templates` (not the repository `web/` and `templates/`), and `main.py`/`latex_gen.py` resolve them through the `sys._MEIPASS` fallback in a frozen build.
 
-Both scripts name the PyInstaller app `CVLaTeX` and then rename or zip the result to the platform-suffixed bundle. Keep those names in sync with `.github/workflows/build.yml` and the README when renaming.
+`build.sh` creates or reuses `.venv`, installs `requirements.txt` when needed, checks the Linux webview packages, generates the macOS `.icns` when `sips`/`iconutil` and `assets/CVLaTex.png` are available, passes `--osx-bundle-identifier com.echeq.cvlatex` and, when `/usr/libexec/PlistBuddy` exists, writes `CFBundleShortVersionString`/`CFBundleVersion` from `version.py` into `CVLaTeX.app`. `build.bat` creates/reuses `.venv` when needed and generates the PyInstaller Windows version resource with `tools/windows_version.py` (`ProductName`/`FileDescription` `CVLaTeX`, `FileVersion`/`ProductVersion` `X.Y.Z.0`).
+
+`tools/package_release.py` (standard library only) turns the built binary/bundle and the repository docs into the release archives:
+
+| Platform | Archive | Contents |
+| --- | --- | --- |
+| Windows | `dist/CVLaTeX-v<version>-windows-x64.zip` | `CVLaTeX.exe` + docs |
+| Linux | `dist/CVLaTeX-v<version>-linux-x86_64.tar.gz` | `CVLaTeX` (mode 0755) + docs |
+| macOS | `dist/CVLaTeX-v<version>-macos-<arch>.zip` | `CVLaTeX.app/` + docs |
+
+The docs are `README.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` and `SECURITY.md` when present. The script normalizes timestamps/ownership, avoids absolute paths, reopens every archive and prints its entries. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` remain for local runs, but the versioned archive is the release artifact. Keep the archive names in sync with `.github/workflows/build.yml`, `.github/workflows/release.yml` and the README when renaming.
+
+Code signing and notarization are deliberately deferred; the Windows and macOS archives are unsigned.
 
 ## Architecture
 
@@ -125,6 +150,8 @@ flowchart LR
   GEN --> ENG["latex_engine.py"]
   ENG --> PDF["pdflatex / xelatex"]
   API --> DOCX["docx_gen.py"]
+  DOCX --> DOCXPROF["docx_profiles.py"]
+  DOCX --> DOCXSHAPE["docx_shapes.py"]
   API --> PREFS["prefs.py"]
   API --> DATA["tex_datos.py"]
 ```
@@ -134,7 +161,9 @@ The UI is loaded over HTTP and talks back through the pywebview bridge; generati
 - `main.py` is the pywebview shell and the local HTTP server on a random `127.0.0.1` port. The server serves `web/` at `/`, compiled PDFs from `cache/build` at `/preview/`, uploaded media from the cache at `/media/` and the vendored PDF.js viewer at `/pdfjs/`. `class Api` is the JavaScript bridge exposed as `window.pywebview.api`.
 - `latex_gen.py` owns the canonical schema (`empty_data()`), the `LANG` label tables (es/en/zh), `build_tex(data, prefs.load())`, `esc()` for every user-injected TeX value, section order/visibility/custom titles, free blocks, document colors and `TEMPLATES`/`TEMPLATE_FILES`.
 - `latex_engine.py` resolves `pdflatex` (preference, app-managed TinyTeX, `PATH`), finds `xelatex`, switches to XeLaTeX for CJK text or a `fontspec` preamble, serializes compiles with a lock, clears the build cache, parses errors from `main.log` and implements the cancelable TinyTeX installer.
-- `docx_gen.py` writes Word with python-docx and mirrors section order/visibility/titles, blocks and the color palette. It never needs a LaTeX installation.
+- `docx_gen.py` writes Word with python-docx and mirrors section order/visibility/titles, blocks and the color palette. It resolves a `TemplateProfile` from `docx_profiles.py`, dispatches the header through `_HEADER_BUILDERS` and renders the matching heading, entry line, bullet marker and separators. `_Palette` resolves the profile's color roles, with the preferences palette taking precedence over the template palette. It never needs a LaTeX installation.
+- `docx_profiles.py` holds the frozen `TemplateProfile` dataclass, the `PROFILES` table and `profile_for()`. It stores color role names only, never RGB values, and does not import `latex_gen`.
+- `docx_shapes.py` holds the Word-safe shape primitives (shading, exact line heights and indents, paragraph/cell/table/page borders, fixed tables, stair-stepped blades) used by the DOCX layout.
 - `tex_datos.py` embeds the base64 JSON data block in `% CVLaTeX-DATA-BEGIN` / `% CVLaTeX-DATA-END` comments and extracts it on import. Foreign `.tex` files are rejected rather than parsed heuristically.
 - `prefs.py` stores JSON preferences in the per-OS app data directory (`%LOCALAPPDATA%\CVLaTeX`, `~/Library/Application Support/CVLaTeX`, `$XDG_DATA_HOME/CVLaTeX` or `~/.local/share/CVLaTeX`) with a module-level cache.
 - `messages.py` holds backend user-facing strings and `ejemplo.py` the localized sample CV (es/en/zh).
@@ -146,7 +175,9 @@ The UI is loaded over HTTP and talks back through the pywebview bridge; generati
 main.py                       pywebview shell, Api bridge, HTTP server, .cvjson I/O
 latex_gen.py                  schema, LANG tables, build_tex, rendering
 latex_engine.py               engine resolution, TinyTeX, compile lock
-docx_gen.py                   Word export (python-docx)
+docx_gen.py                   Word export (python-docx), per-template layout
+docx_profiles.py              TemplateProfile and the PROFILES table
+docx_shapes.py                Word-safe shape primitives for the DOCX layout
 tex_datos.py                  embedded base64 data block for .tex
 prefs.py                      per-OS app data directory and preferences
 messages.py                   backend user-facing strings (es/en/zh/ru)
@@ -155,12 +186,31 @@ version.py                    release version (single source of truth)
 templates/<name>/<file>.tex   one LaTeX template per layout
 web/                          index.html, app.js, i18n.js, style.css, pdfjs/
 tests/                        pytest suite (no GUI, no browser)
+tools/                        staging, packaging and Windows version-resource scripts
 build.sh / build.bat          PyInstaller builds
 CHANGELOG.md / SECURITY.md    release notes and security policy
 THIRD_PARTY_NOTICES.md        third-party licenses and provenance
 .github/workflows/build.yml   CI: tests + build matrix (no publishing)
 .github/workflows/release.yml tag-driven test, build and GitHub Release
 ```
+
+## Word export layout
+
+`docx_gen.py` writes the same data to `.docx` with python-docx, without LaTeX. Each LaTeX template has a matching Word layout instead of a shared generic document:
+
+- `docx_profiles.py` freezes the visual identity in a `TemplateProfile` (`PROFILES`, `profile_for()`): header kind, name size and color role, band and photo geometry, heading kind and rule specs, entry kind and column ratios, bullet kind, separators, font family, page frame and sidebar geometry.
+- `docx_gen._Palette` resolves the profile's color role names to RGB colors. The user palette in `prefs["colors"]` (primary, secondary, text, gray) wins over the template palette, which provides the fallback and the third accent (`accent3`, the Creative yellow) that preferences cannot override. An unknown role falls back to the accent; the raw template `gris` is kept apart from the readable `gray` so the light Chinese bar gray is never used as text.
+- `docx_shapes.py` holds the Word-safe primitives: paragraph and cell shading, exact line spacing and indents, `w:pBdr`/`w:tcBorders`/`w:tblBorders`/`w:pgBorders` rules, fixed tables and stair-stepped blades. The shape helpers use no DrawingML shapes, VML or rotation, because python-docx cannot create those parts safely; photos and logos are ordinary inline pictures.
+
+The entry family is selected by `CHINESE_STYLE_TEMPLATES`, not by `entry_kind`, and each header builder chooses its contact layout; keep `entry_kind` and `contact_layout` in sync as documentation of the chosen layout.
+
+Structural contract:
+
+- `doc.tables[0]` is always the borderless header table created by `_new_header_table()` (or the page-wide `fixed_table()` of the sidebar family), and the photo/logo images live inside it. `_add_header()` dispatches to the per-template builder in `_HEADER_BUILDERS`; a profile without a builder falls back to `_header_generic`.
+- Headings are body paragraphs, except the plate-and-tail (Chinese), tab (Black tabs), bar-and-tick (Blue ribbon) and plate-and-stair-blade (Sword) headings, which are one-row fixed tables. Navy's double hairline and Playful's badge heading stay paragraphs.
+- Nested tables never go deeper than two levels: the header table plus at most one table inside a cell (framed photo, name band, contact columns). Body heading plates and section column grids are top-level tables; inside the sidebar body, section grids (and any table-based heading) sit at that second level instead.
+- For Sidebar and Sidebar (right) the header builder returns the body cell and `_add_body()` writes the whole CV inside the header table, so the accent bar runs beside the text. The table row may split across pages and Word repeats the cell shading on every fragment.
+- Slanted ornaments are approximated with stair-stepped shaded paragraphs (Ribbon wing, Sword banner tip, Sword section blade); the export does not attempt pixel parity with the PDF.
 
 ## Adding a template
 
@@ -169,10 +219,23 @@ THIRD_PARTY_NOTICES.md        third-party licenses and provenance
 3. Add the id to `TEMPLATES` and the file path to `TEMPLATE_FILES` in `latex_gen.py`. If the layout reuses the Chinese three-column renderers, also add it to `CHINESE_STYLE_TEMPLATES`.
 4. Add `{ value: "<name>", labelKey: "template_<label>" }` to `TEMPLATES_CV` in `web/app.js` (`<label>` is the id with hyphens replaced by underscores, e.g. `template_sidebar_right`).
 5. Add the menu entry `<a data-accion="template:<name>">` with its `data-marca="template-<name>"` mark to the template submenu in `web/index.html`.
-6. Add the `template_<label>` string to all four tables in `web/i18n.js` (es/en/zh/ru), and extend the frontend tests that pin the 11-template menu.
+6. Add the `template_<label>` string to all four tables in `web/i18n.js` (es/en/zh/ru), and extend the frontend tests that pin the 12-template menu.
 7. Run the suite. The template is exercised automatically by the tests parametrized over `latex_gen.TEMPLATES`.
 
+The Word side must be added in the same change:
+
+8. Add a `TemplateProfile` entry to `PROFILES` in `docx_profiles.py` with the template id and its vocabulary. Store color role names, never RGB values, and copy every measure from the `.tex` template.
+9. Add the header builder to `_HEADER_BUILDERS` in `docx_gen.py`; without it the export falls back to `_header_generic`. The builder creates the borderless header table first and returns `None`, or the body cell when the whole CV lives inside the header table (the sidebar family).
+10. Choose the heading shape: the Latin family always uses the `rule` paragraph builder, with `heading_rule_specs` carrying any stacked double rule; a Chinese-style template can use the `double_rule` or `badge` paragraph builder, or a table heading added to `_CN_HEADING_BUILDERS` and listed in `_CN_TABLE_HEADINGS` so its gap paragraphs are emitted.
+11. Record the `entry_kind` (`classic` for the right-tabbed Latin date/title line, `compact3` for the three-column Chinese line); the renderer follows `CHINESE_STYLE_TEMPLATES` membership, so add the id there too. Set `columns_supported`; only the Latin templates apply `data["columns"]` (1–3), and only to the entry-list sections.
+12. Draw the contact layout in the header builder (stacked lines, two columns when every line fits, badges or a grid) and set `contact_layout` to match as documentation.
+13. Use an existing `bullet_kind` or add its glyph tuple to `_BULLET_STYLES`; markers stay geometric glyphs, never DrawingML.
+14. Add a signature test that pins the new profile's header, heading, entry, bullet and contact kinds, and that the export keeps `doc.tables[0]` borderless with the images inside it. There is no generic profile test yet, so cover the new template explicitly.
+15. Render the new `.docx` in Word and LibreOffice (empty CV, full CV with photo/logo and a long name, hidden section, free blocks) and compare it against the PDF before merging.
+
 Placeholders in comments are stripped before substitution, so documentation comments containing `{{...}}` are safe.
+
+Header guidance: build the header from `_display_name(d, L)` and wrap the rendered name in `\cvfitname` (an optional width narrows the fit box). `\cvfitname` is injected into every template before `\begin{document}`, so a template must not duplicate it. Never re-introduce a redundant document title next to the name; `LANG[...]["title_short"]` is only the fallback for an empty name (the sidebar header stays name + profession and uses neither label). Long names shrink inside the fit box instead of overflowing the banner or column, so do not add per-template width hacks.
 
 ## Adding a data field
 
@@ -199,6 +262,7 @@ Then wire the UI in `web/app.js` and add every new user-visible string to all fo
 - Response envelope keys are frozen: `ok`, `errores`, `ruta`, `cancelado`, `datos`, `colores`. `autosave_read()` returns plain data, never the v3 envelope. `export_cv(data, path=None)` writes directly when a path is given and opens the dialog when it is `None`.
 - The `.cvjson` v3 format is `{"version": 3, "data": ..., "media": {path: {name, b64}}}`. v1/v2 files are migrated after copying to `<file>.v2.bak` (never clobbering an existing backup).
 - `section_order: []` is the "default order" sentinel; keep it on load and expand it with `normalize_section_order()` only when rendering.
+- The canonical default order is education-first (`education, summary, work, internships, projects, university_projects, skills, languages, references`) and must stay in sync with `DEFAULT_SECTION_ORDER` in `web/app.js`; `tests/test_frontend.py` parses the frontend array and asserts it equals `latex_gen.DEFAULT_SECTION_ORDER`.
 - `Api._push()` must keep `ensure_ascii=True`. pywebview's GTK backend passes the character length of the script to WebKit's `evaluate_javascript()`, which expects bytes; any raw non-ASCII character truncates the script and the push is lost with `SyntaxError: Unexpected EOF`. Escaping non-ASCII keeps the script pure ASCII. Tests check this for every template and CV language.
 - The close guard must not call `evaluate_js` synchronously from `_on_closing`; it runs on the WinForms UI thread and deadlocks. Push `__onCloseRequest` from a daemon thread and cancel the close.
 
@@ -208,13 +272,13 @@ WebKitGTK cannot render PDFs inline, so on Linux `app.js` loads the vendored PDF
 
 `web/pdfjs/` contains PDF.js 3.11.174 (`pdf.min.js`, `pdf.worker.min.js`) and CVLaTeX's minimal `viewer.html`; see [web/pdfjs/README.md](../web/pdfjs/README.md) for provenance and update steps. `webview.settings["ALLOW_DOWNLOADS"] = True` is required for the viewer's save dialog, because pywebview cancels downloads by default.
 
-The Linux bundle must include `web/pdfjs/` through `--add-data "web:web"`; a missing folder is the usual cause of a blank Linux preview.
+The Linux bundle must include `web/pdfjs/` through the staged `build/stage/web` tree passed to `--add-data`; a missing folder is the usual cause of a blank Linux preview.
 
 ## Testing strategy
 
 - No GUI and no browser: importing `main` does not open a window, and the frontend is checked by parsing the files.
 - There is no `conftest.py`. Every module that touches preferences defines its own `prefs_tmp` fixture, monkeypatching `prefs.APP_DIR`, `prefs.CACHE_DIR`, `prefs.BUILD_DIR`, `prefs.PREFS_FILE` and `prefs._CACHE` to a temporary directory. New test modules must do the same.
-- Real PDF compiles are guarded with `pytest.mark.skipif` on `latex_engine.find_pdflatex()`/`find_xelatex()` and skip when no engine is available; the build_tex/embed/extract round-trip always runs.
+- Real PDF compiles are marked `pytest.mark.latex` and guarded with `pytest.mark.skipif` on `latex_engine.find_pdflatex()`/`find_xelatex()`; they skip when no engine is available. The build_tex/embed/extract round-trip always runs.
 - Rendering tests are parametrized over the templates and the CV languages, so a template or label change is covered without writing a test per combination.
 - `tests/test_frontend.py` pins exact frontend strings, DOM ids, `data-accion` values and bridge names; `tests/test_esquema.py` pins the schema key set. Update the tests in the same change when you rename or add one.
 - The suite does not run Node. Run `node --check` separately when you edit `web/app.js` or `web/i18n.js`. No linter, formatter or typecheck is configured; pytest plus `node --check` are the available checks.
@@ -222,19 +286,19 @@ The Linux bundle must include `web/pdfjs/` through `--add-data "web:web"`; a mis
 
 ## CI and release notes
 
-`.github/workflows/build.yml` runs on branch pushes, pull requests and manual dispatch with Python 3.12. Its `test` job installs `requirements.txt` + `requirements-dev.txt` and runs `pytest tests -q` on Ubuntu; the `build` job depends on it and builds on Windows, Ubuntu and macOS, uploading `CVLaTeX_Windows.exe`, `CVLaTeX_Linux` and `CVLaTeX_macOS.zip` as artifacts. It never publishes a GitHub release. The `push` trigger is restricted to branches, so a `v*` tag only starts the release workflow.
+`.github/workflows/build.yml` runs on branch pushes, pull requests and manual dispatch with Python 3.12 and workflow-level `permissions: contents: read`. Its `test` job installs `requirements.txt` + `requirements-dev.txt` and runs `python -m pytest tests -q -n 2` on Ubuntu; the `build` job depends on it and calls the native build scripts on Windows, Ubuntu and macOS (`build.bat`, `PYTHON=/usr/bin/python3 ./build.sh`, `./build.sh`), uploading `CVLaTeX-v<version>-windows-x64.zip`, `CVLaTeX-v<version>-linux-x86_64.tar.gz` and `CVLaTeX-v<version>-macos-arm64.zip` as artifacts with `if-no-files-found: error`. It never publishes a GitHub release. The `push` trigger is restricted to branches, so a `v*` tag only starts the release workflow.
 
 The Linux build job installs `python3-gi`, `python3-venv`, `gir1.2-webkit2-4.1` and `libwebkit2gtk-4.1-dev` before calling `PYTHON=/usr/bin/python3 ./build.sh`, so the build venv can import `gi`. Builds are per-platform: a bundle produced on one OS does not run on another.
 
-`.github/workflows/release.yml` is triggered by `v*` tags, declares `permissions: contents: write` and runs `test` → `build` → `publish`. Publish verifies that the tag equals `version.__version__`, renames the artifacts to `CVLaTeX-v${VERSION}-windows-x64.exe`, `CVLaTeX-v${VERSION}-linux-x86_64` and `CVLaTeX-v${VERSION}-macos-<arch>.zip`, writes `SHA256SUMS.txt` and calls `gh release create "$GITHUB_REF_NAME" ... --generate-notes`, with `--prerelease` for `0.*`. It uses the workflow `GITHUB_TOKEN`; no PAT or workflow-scoped token is required.
+`.github/workflows/release.yml` is triggered by `v*` tags, declares workflow-level `permissions: contents: read` and grants `contents: write` only to the `publish` job. It runs `test` → `build` → `publish`. Publish verifies that the tag equals `version.__version__`, checks that every archive contains its binary/bundle plus `README.md`, `LICENSE` and `THIRD_PARTY_NOTICES.md`, writes `SHA256SUMS.txt` over the three archives, then creates the release with `gh release create ... --generate-notes --prerelease`. On a rerun against an existing release it uses `gh release edit --prerelease` and `gh release upload --clobber`, so publishing is idempotent. It uses the workflow `GITHUB_TOKEN`; no PAT or workflow-scoped token is required.
 
-`macos-latest` is an Apple Silicon (`arm64`) runner at the time of writing, so the first release is expected to publish `CVLaTeX-v0.1.0-macos-arm64.zip`. The build step maps `runner.arch` (`X64`/`ARM64`) to the suffix, so an Intel runner would publish `macos-x86_64` without a workflow change. There is no universal binary.
+`macos-latest` is an Apple Silicon (`arm64`) runner at the time of writing, so the release publishes `CVLaTeX-v<version>-macos-arm64.zip`; the build job verifies `uname -m` is `arm64` instead of silently renaming a different bundle. There is no universal binary.
 
 ## Releasing
 
 CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from tags; only maintainers cut releases.
 
-1. Bump the version in three places: `version.py` (`__version__`), the literal `vX.Y.Z` in the `#modal-credits` block of `web/index.html`, and the dated `## [X.Y.Z] - YYYY-MM-DD` section of `CHANGELOG.md`. Update the asset names in `README.md` and any test count in the docs if the suite changed.
+1. Bump the version in three places: `version.py` (`__version__`), the literal `vX.Y.Z` in the `#modal-credits` block of `web/index.html`, and the dated `## [X.Y.Z] - YYYY-MM-DD` section of `CHANGELOG.md`. Update the asset names in `README.md`, this document and `tests/test_release.py` when the format changes.
 2. Run the checks on a clean tree:
 
    ```bash
@@ -243,6 +307,7 @@ CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from ta
    .venv/bin/python -m pytest tests -q
    ```
 
+   `tests/test_release.py` also stages the public assets into a temporary directory and packages dummy binaries, so the archive names, contents and docs packaging are exercised without a full PyInstaller build.
 3. Commit the release on `main`, create an annotated tag and push both:
 
    ```bash
@@ -250,7 +315,14 @@ CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from ta
    git push origin main --follow-tags
    ```
 
-4. The tag starts `.github/workflows/release.yml`. Wait for the `test` and three-platform `build` jobs, then the `publish` job; it verifies the tag against `version.py`, normalizes the asset names, generates `SHA256SUMS.txt` and creates the GitHub Release (pre-release for `0.*`).
+4. The tag starts `.github/workflows/release.yml`. It runs the test suite, builds the three native archives through the platform scripts (`tools/stage_assets.py` → PyInstaller on `build/stage/` → `tools/package_release.py`), and publishes:
+
+   - `CVLaTeX-vX.Y.Z-windows-x64.zip` (contains `CVLaTeX.exe`)
+   - `CVLaTeX-vX.Y.Z-linux-x86_64.tar.gz` (contains `CVLaTeX`, mode 0755)
+   - `CVLaTeX-vX.Y.Z-macos-arm64.zip` (contains `CVLaTeX.app`)
+   - `SHA256SUMS.txt` covering the three archives
+
+   The publish job verifies that the tag equals `version.py`, checks each archive for its binary/bundle and `README.md`/`LICENSE`/`THIRD_PARTY_NOTICES.md`, and creates a GitHub pre-release. Re-running it uploads with `--clobber` and edits the existing release instead of failing. The staging step excludes personal files (`templates/chinese/Elvis Chen CV.docx`, `templates/picture samples/`), so no author CV data ships. Signing and notarization are a later step; the archives remain unsigned.
 5. Verify the published release:
 
    ```bash

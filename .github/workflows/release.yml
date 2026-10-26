@@ -1,20 +1,24 @@
 # Publish a GitHub Release for a vX.Y.Z tag.
 #
 # The tag must match version.__version__. The workflow runs the test suite,
-# builds the three native bundles, verifies/normalizes the asset names,
-# generates SHA256SUMS.txt and creates the release with gh. Tags in the 0.*
-# series are marked as pre-releases. No PAT is needed: the workflow token has
-# contents: write for this repository.
+# builds the three native archives, verifies their contents, generates
+# SHA256SUMS.txt and publishes the release with gh. Tags in the 0.* series are
+# marked as pre-releases. No PAT is needed: only the publish job receives
+# contents: write.
 #
-# Asset names:
-#   CVLaTeX-v${VERSION}-windows-x64.exe
-#   CVLaTeX-v${VERSION}-linux-x86_64
-#   CVLaTeX-v${VERSION}-macos-<arch>.zip
+# Published assets:
+#   CVLaTeX-v<version>-windows-x64.zip
+#   CVLaTeX-v<version>-linux-x86_64.tar.gz
+#   CVLaTeX-v<version>-macos-arm64.zip
+#   SHA256SUMS.txt
 #
 # GitHub's macos-latest runner is Apple Silicon (arm64) at the time of writing,
-# so the first release is expected to publish CVLaTeX-vX.Y.Z-macos-arm64.zip.
-# The build step derives the suffix from runner.arch, so an Intel runner
-# produces macos-x86_64.zip without a workflow change.
+# so the release workflow builds and publishes the arm64 archive. The build job
+# verifies the runner architecture instead of silently renaming a different
+# bundle.
+#
+# Code signing and notarization are explicitly deferred; the assets are
+# unsigned.
 #
 # Linux runtime note: the frozen bundle still needs the system WebKitGTK and
 # GObject-introspection packages on the TARGET machine (Debian/Ubuntu:
@@ -28,7 +32,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -46,7 +50,7 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run tests
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q -n 2
 
   build:
     needs: test
@@ -55,14 +59,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: CVLaTeX_Windows
-            path: dist/CVLaTeX_Windows.exe
+            artifact: CVLaTeX-windows-x64
+            path: dist/CVLaTeX-v*-windows-x64.zip
           - os: ubuntu-latest
-            artifact: CVLaTeX_Linux
-            path: dist/CVLaTeX_Linux
+            artifact: CVLaTeX-linux-x86_64
+            path: dist/CVLaTeX-v*-linux-x86_64.tar.gz
           - os: macos-latest
-            artifact: CVLaTeX_macOS
-            path: dist/CVLaTeX_macOS-*.zip
+            artifact: CVLaTeX-macos-arm64
+            path: dist/CVLaTeX-v*-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -77,23 +81,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-venv gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: |
-          pyinstaller --noconfirm --onefile --windowed --name CVLaTeX --icon "assets/CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
-          Move-Item -Force dist/CVLaTeX.exe dist/CVLaTeX_Windows.exe
+        shell: cmd
+        env:
+          CI: "true"
+        run: build.bat
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
         run: |
           chmod +x build.sh
           PYTHON=/usr/bin/python3 ./build.sh
-          chmod +x dist/CVLaTeX_Linux
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
@@ -101,24 +100,15 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Tag the macOS bundle with the runner architecture
+      - name: Verify macOS architecture
         if: runner.os == 'macOS'
-        env:
-          RUNNER_ARCH: ${{ runner.arch }}
         run: |
-          arch="$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
-          case "$arch" in
-            x64) arch="x86_64" ;;
-            arm64) arch="arm64" ;;
-            *)
-              echo "error: unsupported macOS runner architecture: $RUNNER_ARCH" >&2
-              exit 1
-              ;;
-          esac
-          mv "dist/CVLaTeX_macOS.zip" "dist/CVLaTeX_macOS-${arch}.zip"
-          echo "macOS bundle: dist/CVLaTeX_macOS-${arch}.zip"
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "error: the macOS release job must run on Apple Silicon (found $(uname -m))" >&2
+            exit 1
+          fi
 
-      - name: Upload artifact
+      - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
@@ -128,6 +118,8 @@ jobs:
   publish:
     needs: [test, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -135,14 +127,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Download all bundles
+      - name: Download all archives
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          pattern: CVLaTeX_*
+          pattern: CVLaTeX-*
           merge-multiple: true
 
-      - name: Verify tag and assemble versioned assets
+      - name: Verify tag, archive contents and checksums
         run: |
           set -euo pipefail
           VERSION="$(python -c 'import version; print(version.__version__)')"
@@ -151,56 +143,83 @@ jobs:
             exit 1
           fi
 
-          if [ ! -d release-assets ]; then
-            echo "error: release-assets directory is missing" >&2
-            exit 1
-          fi
+          WINDOWS="CVLaTeX-v${VERSION}-windows-x64.zip"
+          LINUX="CVLaTeX-v${VERSION}-linux-x86_64.tar.gz"
+          MACOS="CVLaTeX-v${VERSION}-macos-arm64.zip"
 
-          # upload-artifact may preserve a `dist/` prefix or place files at the
-          # artifact root; locate each bundle by name instead of assuming a path.
-          windows_src="$(find release-assets -type f -name 'CVLaTeX_Windows.exe' -print -quit)"
-          linux_src="$(find release-assets -type f -name 'CVLaTeX_Linux' -print -quit)"
-          macos_src="$(find release-assets -type f -name 'CVLaTeX_macOS-*.zip' -print -quit)"
-
-          missing=0
-          for src in "$windows_src" "$linux_src" "$macos_src"; do
+          mkdir -p release-assets/publish
+          for name in "$WINDOWS" "$LINUX" "$MACOS"; do
+            src="$(find release-assets -type f -name "$name" -print -quit)"
             if [ -z "$src" ]; then
-              missing=1
+              echo "error: missing release archive: $name" >&2
+              find release-assets -maxdepth 5 -type f -print >&2
+              exit 1
             fi
+            cp -f "$src" "release-assets/publish/$name"
           done
-          if [ "$missing" -ne 0 ]; then
-            echo "error: missing one or more release artifacts; downloaded tree:" >&2
-            find release-assets -maxdepth 5 -type f -print >&2
-            exit 1
-          fi
 
-          mv "$windows_src" "release-assets/CVLaTeX-v${VERSION}-windows-x64.exe"
-          mv "$linux_src" "release-assets/CVLaTeX-v${VERSION}-linux-x86_64"
-          arch="${macos_src##*/CVLaTeX_macOS-}"
-          arch="${arch%.zip}"
-          arch="$(printf '%s' "$arch" | tr '[:upper:]' '[:lower:]')"
-          mv "$macos_src" "release-assets/CVLaTeX-v${VERSION}-macos-${arch}.zip"
+          cd release-assets/publish
+          python - "$VERSION" <<'PY'
+          import sys
+          import tarfile
+          import zipfile
 
-          cd release-assets
-          # Checksums cover every published asset; the manifest itself is not hashed.
-          sha256sum CVLaTeX-v"${VERSION}"-* > SHA256SUMS.txt
+          version = sys.argv[1]
+          required_docs = ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
+          checks = {
+              "CVLaTeX-v%s-windows-x64.zip" % version: ("zip", ["CVLaTeX.exe"]),
+              "CVLaTeX-v%s-linux-x86_64.tar.gz" % version: ("tar", ["CVLaTeX"]),
+              "CVLaTeX-v%s-macos-arm64.zip" % version: ("zip", []),
+          }
+
+          for name, (kind, binaries) in checks.items():
+              if kind == "zip":
+                  with zipfile.ZipFile(name) as archive:
+                      entries = archive.namelist()
+              else:
+                  with tarfile.open(name, "r:gz") as archive:
+                      entries = archive.getnames()
+                      member = archive.getmember("CVLaTeX")
+                      if not member.mode & 0o111:
+                          raise SystemExit("error: %s executable bit is not set" % name)
+              missing = [entry for entry in binaries + required_docs if entry not in entries]
+              if not any(entry.startswith("CVLaTeX.app/") for entry in entries) and "macos" in name:
+                  missing.append("CVLaTeX.app/")
+              if missing:
+                  raise SystemExit("error: %s is missing %s" % (name, ", ".join(missing)))
+              print("verified %s: %d entries" % (name, len(entries)))
+          PY
+
+          sha256sum "$WINDOWS" "$LINUX" "$MACOS" > SHA256SUMS.txt
           cat SHA256SUMS.txt
-
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          assets=(release-assets/CVLaTeX-v"${VERSION}"-* release-assets/SHA256SUMS.txt)
-          if [ "${#assets[@]}" -lt 4 ]; then
-            echo "error: expected three bundles plus SHA256SUMS.txt, found ${#assets[@]}" >&2
-            exit 1
+          cd release-assets/publish
+          assets=(
+            "CVLaTeX-v${VERSION}-windows-x64.zip"
+            "CVLaTeX-v${VERSION}-linux-x86_64.tar.gz"
+            "CVLaTeX-v${VERSION}-macos-arm64.zip"
+            "SHA256SUMS.txt"
+          )
+          for asset in "${assets[@]}"; do
+            if [ ! -f "$asset" ]; then
+              echo "error: expected asset is missing: $asset" >&2
+              exit 1
+            fi
+          done
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Idempotent rerun: keep the existing release, refresh the assets
+            # and make sure it stays a pre-release.
+            gh release edit "$GITHUB_REF_NAME" --prerelease
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --title "CVLaTeX ${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --prerelease
           fi
-          args=(--title "CVLaTeX ${GITHUB_REF_NAME}" --generate-notes)
-          case "$VERSION" in
-            0.*) args+=(--prerelease) ;;
-          esac
-          gh release create "$GITHUB_REF_NAME" "${assets[@]}" "${args[@]}"

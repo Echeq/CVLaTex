@@ -6,7 +6,7 @@ import tex_datos
 
 BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
-TEMPLATES = ("classic", "harvard", "modern", "creative", "chinese", "sidebar", "sidebar-right", "tabbed", "ribbon", "navy", "playful")
+TEMPLATES = ("classic", "harvard", "modern", "creative", "chinese", "sidebar", "sidebar-right", "tabbed", "ribbon", "navy", "playful", "sword")
 TEMPLATE_FILES = {
     "classic": "classic/plantilla.tex",
     "harvard": "harvard/harvard.tex",
@@ -19,10 +19,11 @@ TEMPLATE_FILES = {
     "ribbon": "ribbon/ribbon.tex",
     "navy": "navy/navy.tex",
     "playful": "playful/playful.tex",
+    "sword": "sword/sword.tex",
 }
 # Templates that reuse the three-column Chinese renderers (date/title/org)
 # and the shared \cvcnline macro.
-CHINESE_STYLE_TEMPLATES = ("chinese", "tabbed", "ribbon", "navy", "playful")
+CHINESE_STYLE_TEMPLATES = ("chinese", "tabbed", "ribbon", "navy", "playful", "sword")
 
 _SPECIALS = re.compile(r"([\\{}$&#_%~^])")
 _LATEX_ESCAPES = {
@@ -43,16 +44,16 @@ COLUMN_WIDTHS = {1: "1.0", 2: "0.48", 3: "0.31"}
 
 # Default order of the standard CV body sections.
 DEFAULT_SECTION_ORDER = (
-    "summary", "education", "projects", "university_projects", "internships",
-    "work", "skills", "languages", "references",
+    "education", "summary", "work", "internships", "projects",
+    "university_projects", "skills", "languages", "references",
 )
 
 # Free blocks the user interleaves between CV sections.
 # The anchor is the section after which the block is inserted; "start" goes
 # before everything and "end" after everything.
 BLOCK_ANCHORS = (
-    "start", "summary", "education", "projects", "university_projects",
-    "internships", "work", "skills", "languages", "references", "end",
+    "start", "education", "summary", "work", "internships", "projects",
+    "university_projects", "skills", "languages", "references", "end",
 )
 BLOCK_TYPES = ("separator", "section", "list")
 SEPARATOR_STYLES = ("line", "band", "space")
@@ -98,6 +99,26 @@ _SEPARATOR_MACROS = {
 # "text" has no color of its own in the templates and is injected.
 _COLOR_MAP = {"primary": "accent", "secondary": "acento2", "gray": "gris"}
 _TEMPLATE_COLORS = ("accent", "acento2", "acento3", "gris")
+
+# Shared header macro injected into every template just before \begin{document}:
+# shrink the name only when it overflows the optional width (default \linewidth),
+# never upscale it. Every template loads graphicx, so \resizebox is available.
+_CVFITNAME_MACRO = r"""% Name fitting: shrink the CV name only when it overflows the given width.
+\newbox\cvnamebox
+\newlength\cvnamespace
+\newcommand{\cvfitname}[2][\linewidth]{%
+  \begingroup
+  \setlength{\cvnamespace}{#1}%
+  \sbox\cvnamebox{#2}%
+  \ifdim\wd\cvnamebox>\cvnamespace
+    \resizebox{\cvnamespace}{!}{\usebox\cvnamebox}%
+  \else
+    \usebox\cvnamebox
+  \fi
+  \endgroup
+}
+"""
+
 _RE_DEFINE_COLOR = re.compile(
     r"\\definecolor\s*\{\s*([A-Za-z0-9_]+)\s*\}\s*\{\s*RGB\s*\}\s*"
     r"\{\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}"
@@ -105,13 +126,13 @@ _RE_DEFINE_COLOR = re.compile(
 
 LANG = {
     "zh": {
-        "title": "个人简历 PERSONAL RESUME",
+        "title_short": "个人简历",
         "birth_date": "出生年月：", "phone": "手机号码：", "nationality": "国籍：",
         "address": "地址：",
-        "email": "邮箱：", "school_name": "毕业院校：", "profession": "意向岗位：",
+        "email": "邮箱：", "school_name": "毕业院校：", "profession": "求职意向：",
         "education": "教育背景", "projects": "项目经历",
-        "university_projects": "校内项目",
-        "internships": "实习经历", "work": "工作经历", "skills": "技能特长",
+        "university_projects": "校园经历",
+        "internships": "实习经历", "work": "工作经历", "skills": "技能证书",
         "languages": "语言能力", "references": "推荐人", "summary": "个人简介",
         "grade": "成绩：", "result": "成果：",
         "website": "网站", "link": "链接",
@@ -127,13 +148,13 @@ LANG = {
         },
     },
     "es": {
-        "title": "CURRÍCULUM",
+        "title_short": "CURRÍCULUM",
         "birth_date": "Nacimiento:", "phone": "Teléfono:", "nationality": "Nacionalidad:",
         "address": "Dirección:",
-        "email": "Correo:", "school_name": "Institución de egreso:", "profession": "Puesto deseado:",
+        "email": "Correo:", "school_name": "Institución de egreso:", "profession": "Puesto al que aspiras:",
         "education": "Educación", "projects": "Proyectos",
-        "university_projects": "Proyectos universitarios",
-        "internships": "Pasantías", "work": "Experiencia laboral", "skills": "Habilidades",
+        "university_projects": "Actividades en el campus",
+        "internships": "Pasantías", "work": "Experiencia laboral", "skills": "Habilidades y certificados",
         "languages": "Idiomas", "references": "Referencias", "summary": "Perfil",
         "grade": "Nota:", "result": "Resultado:",
         "website": "Web", "link": "Enlace",
@@ -151,13 +172,13 @@ LANG = {
         },
     },
     "en": {
-        "title": "PERSONAL RESUME",
+        "title_short": "RESUME",
         "birth_date": "Date of birth:", "phone": "Phone:", "nationality": "Nationality:",
         "address": "Address:",
-        "email": "Email:", "school_name": "Graduated from:", "profession": "Desired role:",
+        "email": "Email:", "school_name": "Graduated from:", "profession": "Target role:",
         "education": "Education", "projects": "Projects",
-        "university_projects": "University projects",
-        "internships": "Internships", "work": "Work experience", "skills": "Skills",
+        "university_projects": "Campus activities",
+        "internships": "Internships", "work": "Work experience", "skills": "Skills & certificates",
         "languages": "Languages", "references": "References", "summary": "Profile",
         "grade": "Grade:", "result": "Result:",
         "website": "Website", "link": "Link",
@@ -214,6 +235,15 @@ def _split_word(word):
     # produced by _escape (e.g. \textasciitilde{}).
     chunks = [word[i:i + 18] for i in range(0, len(word), 18)]
     return "\\allowbreak ".join(_escape(chunk) for chunk in chunks)
+
+
+def _display_name(d, L):
+    """Escaped CV name; the short document label only when the name is empty.
+
+    Every header except the sidebar uses this helper, so a real name is always
+    the protagonist and the redundant "resume" label never appears next to it.
+    """
+    return esc(d.get("name", "")).strip() or L["title_short"]
 
 
 def empty_data():
@@ -378,21 +408,53 @@ def _socials(d):
     return value
 
 
-def _contacts(d, L):
-    lines = []
+def _social_line(line, on_dark=False):
+    """Social link line: smaller and muted with a readable light-background color.
+
+    ``black!55`` is a mid gray that stays legible on white/cream templates;
+    the dark sidebar bar keeps plain white instead.
+    """
+    color = "white" if on_dark else "black!55"
+    return f"{{\\footnotesize\\color{{{color}}} {line}}}"
+
+
+def _contact_groups(d, L, on_dark=False):
+    """Contact lines grouped by priority: personal data, objective, links.
+
+    Personal information comes first (phone, email, address, school and every
+    extra field), then the job objective, and the social links last. The
+    social lines are the only ones styled: smaller and muted (``black!55`` on
+    light headers, white on the dark sidebar bar via ``on_dark``). Personal and
+    objective lines stay plain.
+    """
+    personal = []
 
     def add(label, value, mono=False):
         if not value or not str(value).strip():
             return
         v = str(value).strip()
         text = f"\\texttt{{{esc(v)}}}" if mono else esc(v)
-        lines.append(f"\\textbf{{{label}}} {text}")
+        personal.append(f"\\textbf{{{label}}} {text}")
 
     add(L["phone"], d.get("phone"), mono=True)
     add(L["email"], d.get("email"), mono=True)
     add(L["address"], d.get("address"))
     add(L["school_name"], d.get("school_name"))
-    add(L["profession"], d.get("profession"))
+    for x in d.get("extra_fields") or []:
+        x = x or {}
+        label = str(x.get("label", "")).strip()
+        value = str(x.get("value", "")).strip()
+        if label and value:
+            personal.append(f"\\textbf{{{esc(label)}:}} {esc(value)}")
+
+    objective = []
+    profession = d.get("profession")
+    if profession and str(profession).strip():
+        objective.append(
+            f"\\textbf{{{L['profession']}}} {esc(str(profession).strip())}"
+        )
+
+    social = []
     for entry in _socials(d):
         try:
             if not isinstance(entry, dict):
@@ -403,13 +465,18 @@ def _contacts(d, L):
             label = social_label(entry.get("network"), entry.get("label"), L)
         except Exception:
             continue
-        lines.append(f"\\textbf{{{esc(label)}:}} \\texttt{{{esc(value)}}}")
-    for x in d.get("extra_fields") or []:
-        x = x or {}
-        label = str(x.get("label", "")).strip()
-        value = str(x.get("value", "")).strip()
-        if label and value:
-            lines.append(f"\\textbf{{{esc(label)}:}} {esc(value)}")
+        social.append(
+            _social_line(
+                f"\\textbf{{{esc(label)}:}} \\texttt{{{esc(value)}}}",
+                on_dark=on_dark,
+            )
+        )
+    return personal, objective, social
+
+
+def _contacts(d, L, on_dark=False):
+    personal, objective, social = _contact_groups(d, L, on_dark=on_dark)
+    lines = list(personal) + list(objective) + list(social)
     if not lines:
         return ""
     return "{\\small\n" + " \\\\\n".join(lines) + "\n\\par}"
@@ -461,8 +528,8 @@ def _image_parts(d, logo_ref, has_photo, photo_ext):
 
 
 def _header_classic(d, L, parts):
-    title = f"{{\\small\\bfseries\\color{{gris}} {L['title']}}}\n"
-    name = f"{{\\LARGE\\bfseries {esc(d.get('name', ''))}}}"
+    name = _display_name(d, L)
+    name_tex = f"{{\\LARGE\\bfseries\\cvfitname{{{name}}}}}"
     contact = _contacts(d, L)
 
     right_col = ""
@@ -470,7 +537,7 @@ def _header_classic(d, L, parts):
         right_col = (
             "\\begin{minipage}[t]{0.28\\textwidth}\n"
             "\\raggedleft\n"
-            "\\vspace{0.5em}\n"
+            "\\vspace{0.25em}\n"
             + "".join(parts)
             + "\\end{minipage}\n"
         )
@@ -479,9 +546,7 @@ def _header_classic(d, L, parts):
         row = (
             "\\noindent\n"
             "\\begin{minipage}[t]{0.7\\textwidth}\n"
-            f"  {title}\\par\n"
-            "  \\vspace{0.15em}\n"
-            f"  {name}\\par\n"
+            f"  {name_tex}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contact}\n"
             "\\end{minipage}%\n"
@@ -490,9 +555,7 @@ def _header_classic(d, L, parts):
     else:
         row = (
             "\\noindent\n"
-            f"  {title}\\par\n"
-            "  \\vspace{0.15em}\n"
-            f"  {name}\\par\n"
+            f"  {name_tex}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contact}\n"
         )
@@ -500,11 +563,10 @@ def _header_classic(d, L, parts):
 
 
 def _header_harvard(d, L, parts):
+    name = _display_name(d, L)
     lines = [
         "\\begin{center}\n",
-        f"  {{\\small\\bfseries\\color{{gris}} {L['title']}}}\\par\n",
-        "  \\vspace{0.45em}\n",
-        f"  {{\\LARGE\\scshape {esc(d.get('name', ''))}}}\\par\n",
+        f"  {{\\LARGE\\scshape\\cvfitname{{{name}}}}}\\par\n",
     ]
     contact = _contacts(d, L)
     if contact:
@@ -520,35 +582,29 @@ def _header_harvard(d, L, parts):
 
 
 def _header_modern(d, L, parts):
-    title = f"{{\\small\\bfseries\\color{{gris}} {L['title']}}}\n"
-    name = f"{{\\Huge\\bfseries\\color{{accent}} {esc(d.get('name', ''))}}}"
+    name = _display_name(d, L)
+    name_tex = f"{{\\Huge\\bfseries\\color{{accent}}\\cvfitname{{{name}}}}}"
     contact = _contacts(d, L)
 
     if parts:
         row = (
             "\\noindent\n"
             "\\begin{minipage}[t]{0.7\\textwidth}\n"
-            f"  {title}"
-            "  \\par\n"
-            "  \\vspace{0.2em}\n"
-            f"  {name}\\par\n"
+            f"  {name_tex}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contact}\n"
             "\\end{minipage}%\n"
             "\\hfill\n"
             "\\begin{minipage}[t]{0.28\\textwidth}\n"
             "\\raggedleft\n"
-            "\\vspace{0.4em}\n"
+            "\\vspace{0.25em}\n"
             + "".join(parts)
             + "\\end{minipage}\n"
         )
     else:
         row = (
             "\\noindent\n"
-            f"  {title}"
-            "  \\par\n"
-            "  \\vspace{0.2em}\n"
-            f"  {name}\\par\n"
+            f"  {name_tex}\\par\n"
             "  \\vspace{0.4em}\n"
             f"  {contact}\n"
         )
@@ -556,14 +612,13 @@ def _header_modern(d, L, parts):
 
 
 def _header_creative(d, L, parts):
+    name = _display_name(d, L)
     band = (
         "\\noindent\\colorbox{accent}{%\n"
         "\\begin{minipage}{\\dimexpr\\textwidth-2\\fboxsep\\relax}\n"
-        "\\vspace{0.55em}\n"
-        f"{{\\color{{white}}\\Huge\\bfseries {esc(d.get('name', ''))}}}\\par\n"
-        "\\vspace{0.3em}\n"
-        f"{{\\color{{white}}\\small\\bfseries {L['title']}}}\\par\n"
-        "\\vspace{0.55em}\n"
+        "\\vspace{0.6em}\n"
+        f"{{\\color{{white}}\\Huge\\bfseries\\cvfitname{{{name}}}}}\\par\n"
+        "\\vspace{0.6em}\n"
         "\\end{minipage}}\n"
     )
     contact = _contacts(d, L)
@@ -596,24 +651,20 @@ def _header_creative(d, L, parts):
 
 
 def _header_chinese(d, L, parts):
+    name = _display_name(d, L)
     band = (
         "\\noindent\\begingroup\\setlength{\\fboxsep}{0pt}%\n"
         "\\colorbox{accent}{%\n"
         "\\parbox[c][1.6cm][c]{\\linewidth}{%\n"
         "\\hspace{0.4em}{\\color{white}\\bfseries\\fontsize{22}{24}\\selectfont "
-        + L["title"] +
-        "}}}\n"
+        "\\cvfitname[\\dimexpr\\linewidth-1.2em\\relax]{" + name + "}}}}\n"
         "\\endgroup\\par\n"
     )
-    name = esc(d.get("name", "")).strip()
     contact = _contacts(d, L)
 
     left_col = [band]
-    if name:
-        left_col.append("\\vspace{0.35em}\n")
-        left_col.append(f"{{\\color{{accent}}\\fontsize{{18}}{{21}}\\selectfont {name}}}\\par\n")
     if contact:
-        left_col.append("\\vspace{0.45em}\n" + contact + "\n")
+        left_col.append("\\vspace{0.55em}\n" + contact + "\n")
 
     if parts:
         row = (
@@ -656,28 +707,38 @@ def _contact_plain_width(line):
     """Approximate visible width of a contact line in 10pt em units.
 
     CJK glyphs are roughly twice as wide as the Latin average, so they weigh
-    two units. Commands and grouping braces are not visible and are dropped.
+    two units. Commands and grouping braces are not visible and are dropped;
+    the color name inside ``\\color{...}`` is not text either.
     """
-    text = re.sub(r"\\[A-Za-z]+\*?", "", line)
-    text = text.replace("{", "").replace("}", "")
+    text = re.sub(r"\\allowbreak\s*", "", line)
+    text = re.sub(r"\\color\{[^}]*\}", "", text)
+    text = re.sub(r"\\[A-Za-z]+\*?", "", text)
+    text = text.replace("{", "").replace("}", "").strip()
     return sum(2 if ord(char) > 0x2E80 else 1 for char in text)
 
 
-def _contact_columns(contact):
-    """Two balanced columns, or one column when long strings would break.
+def _contact_columns(personal, objective, social, contact):
+    """Two columns: personal data + objective left, social links right.
 
+    Without social links the personal data is balanced across both columns.
     Two 0.48 columns of the header's 0.7 text block hold about 30 Latin
     characters per line at 10pt, so anything longer (URLs, emails, long
     institution names) keeps the clean single-column block from ``_contacts``.
     """
-    lines = _contact_lines(contact)
+    left = list(personal) + list(objective)
+    right = list(social)
+    if not left:
+        # Social links only: ``contact`` already holds them line by line, so
+        # skip the two-column layout rather than emit an empty left column.
+        return contact
+    if not right:
+        right = left[1::2]
+        left = left[0::2]
+    lines = left + right
     if len(lines) < 2:
         return contact
     if max(_contact_plain_width(line) for line in lines) > 30:
         return contact
-    columns = ([], [])
-    for index, line in enumerate(lines):
-        columns[index % 2].append(line)
 
     def column(items):
         return (
@@ -687,7 +748,7 @@ def _contact_columns(contact):
             + "\n\\end{minipage}"
         )
 
-    return column(columns[0]) + "%\n\\hfill\n" + column(columns[1]) + "\n"
+    return column(left) + "%\n\\hfill\n" + column(right) + "\n"
 
 
 def _badge_contacts(contact):
@@ -708,27 +769,27 @@ def _badge_contacts(contact):
 
 
 def _header_tabbed(d, L, parts):
-    """Black-tab header: huge LANG title, name and two balanced contact columns.
+    """Black-tab header: huge name headline and two contact columns.
 
     The photo/logo row keeps the content inside the text block; the heavy page
-    frame belongs to the template. An empty ``parts`` list gives the left
-    column the full width, so the header still looks intentional.
+    frame belongs to the template. Personal data and the objective fill the
+    primary column, the social links the secondary one. An empty ``parts`` list
+    gives the left column the full width, so the header still looks intentional.
     """
-    name = esc(d.get("name", "")).strip()
+    name = _display_name(d, L)
+    personal, objective, social = _contact_groups(d, L)
     contact = _contacts(d, L)
-    # The huge LANG title stands on its own: the old 0.5em square was sized at
-    # 11pt and sat on the baseline, reading as a stray period before the title
+    # The name is the headline on its own: the old 0.5em square was sized at
+    # 11pt and sat on the baseline, reading as a stray period before the text
     # (the reference design has no marker).
-    title = (
+    headline = (
         "\\noindent"
-        f"{{\\fontsize{{26}}{{30}}\\selectfont\\bfseries\\color{{accent}} {L['title']}}}\\par\n"
+        f"{{\\fontsize{{26}}{{30}}\\selectfont\\bfseries\\color{{accent}}"
+        f" \\cvfitname{{{name}}}}}\\par\n"
     )
     left = []
-    if name:
-        left.append(f"{{\\LARGE\\bfseries {name}}}\\par\n")
     if contact:
-        left.append("\\vspace{0.45em}\n")
-        left.append(_contact_columns(contact) + "\n")
+        left.append(_contact_columns(personal, objective, social, contact) + "\n")
     if parts:
         row = (
             "\\noindent\n"
@@ -746,8 +807,8 @@ def _header_tabbed(d, L, parts):
     else:
         row = "\\noindent\n" + "".join(left)
     return (
-        title
-        + "\\vspace{0.2em}\n"
+        headline
+        + "\\vspace{0.3em}\n"
         + row
         + "\\vspace{0.55em}\n"
         + "{\\color{accent}\\hrule height 2.2pt}\n"
@@ -757,32 +818,25 @@ def _header_tabbed(d, L, parts):
 
 
 def _header_ribbon(d, L, parts):
-    """Blue ribbon band with the LANG title as subtitle and a gold rule.
+    """Blue ribbon band with the name as the only band content and a gold rule.
 
     The band is a zero-padding ``\\colorbox`` over the full text block, so a
     template band drawn behind the header lines up with it; the contacts stay
     on white below the gold ``acento2`` rule. Empty ``parts`` stretches the
     band's text column to the full width.
     """
-    name = esc(d.get("name", "")).strip()
+    name = _display_name(d, L)
     contact = _contacts(d, L)
     band_left = (
         "\\vspace{0.45em}\n"
-        f"{{\\color{{white}}\\small\\bfseries {L['title']}}}\\par\n"
-        "\\vspace{0.15em}\n"
+        "{\\color{white}\\fontsize{24}{28}\\selectfont\\bfseries"
+        " \\cvfitname{" + name + "}\\par}\n"
+        "\\vspace{0.45em}\n"
     )
-    if name:
-        band_left += (
-            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
-            "\\color{white}\\fontsize{24}{28}\\selectfont\\bfseries "
-            + name
-            + "\\par}\n"
-        )
-    band_left += "\\vspace{0.45em}\n"
     if parts:
         # The band wraps a full-\linewidth minipage, so it always matches the
         # gold rule and the text block. The inner columns keep a 0.04 gap;
-        # [c] keeps the title/name optically centred against a tall photo
+        # [c] keeps the name optically centred against a tall photo
         # (a [t] variant pushed all the leftover blue below the text instead).
         band = (
             "\\noindent\\begingroup\\setlength{\\fboxsep}{0pt}%\n"
@@ -819,25 +873,16 @@ def _header_ribbon(d, L, parts):
 
 
 def _header_navy(d, L, parts):
-    """Navy minimal header: small LANG title above a large name and thin rules."""
-    name = esc(d.get("name", "")).strip()
+    """Navy minimal header: large name as the first header element and thin rules."""
+    name = _display_name(d, L)
     contact = _contacts(d, L)
     left = [
-        f"{{\\small\\bfseries\\color{{accent}} {L['title']}}}\\par\n",
-        "\\vspace{0.12em}\n",
+        # Ragged right (set by the surrounding block) plus the CVFitName box:
+        # a long name shrinks to the column instead of wrapping or overflowing.
+        "{\\fontsize{24}{27}\\selectfont\\bfseries\\color{accent}"
+        " \\cvfitname{" + name + "}\\par}\n",
+        "\\vspace{0.3em}\n",
     ]
-    if name:
-        left.append(
-            # Ragged right (set by the surrounding block) plus disabled
-            # hyphenation: a long zh name must wrap at spaces, never as
-            # "FER-/NÁNDEZ". \par must stay inside the group so the paragraph
-            # is broken with those penalties still active.
-            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
-            "\\fontsize{24}{27}\\selectfont\\bfseries\\color{accent} "
-            + name
-            + "\\par}\n"
-        )
-        left.append("\\vspace{0.3em}\n")
     if contact:
         left.append(contact + "\n")
     if parts:
@@ -855,8 +900,6 @@ def _header_navy(d, L, parts):
             + "\\end{minipage}\n"
         )
     else:
-        # \raggedright also in the full-width branch: justified text stretched
-        # the zh name's first line (underfull hbox) instead of wrapping it.
         row = "\\noindent{\\raggedright\n" + "".join(left) + "\\par}\n"
     return (
         row
@@ -868,27 +911,19 @@ def _header_navy(d, L, parts):
 
 
 def _header_playful(d, L, parts):
-    """Playful header: small LANG title, large name and badged contact lines."""
-    name = esc(d.get("name", "")).strip()
+    """Playful header: large name as the first header element and badge contacts."""
+    name = _display_name(d, L)
     contact = _badge_contacts(_contacts(d, L))
     left = [
-        f"{{\\small\\bfseries\\color{{accent}} {L['title']}}}\\par\n",
-        "\\vspace{0.18em}\n",
+        "{\\fontsize{26}{30}\\selectfont\\bfseries\\color{accent}"
+        " \\cvfitname{" + name + "}\\par}\n",
+        "\\vspace{0.45em}\n",
     ]
-    if name:
-        left.append(
-            "{\\hyphenpenalty=10000\\exhyphenpenalty=10000"
-            "\\fontsize{26}{30}\\selectfont\\bfseries\\color{accent} "
-            + name
-            + "\\par}\n"
-        )
-        left.append("\\vspace{0.45em}\n")
     if contact:
         left.append(contact + "\n")
     if parts:
-        # 0.72 instead of 0.7: the full zh name fits on its own line at 26pt
-        # before the Latin transliteration wraps, so the name does not need a
-        # third line in the narrow column.
+        # 0.72 instead of 0.7 leaves room for the badge gutter while the name
+        # still uses the full column width.
         row = (
             "\\noindent\n"
             "\\begin{minipage}[t]{0.72\\textwidth}\n"
@@ -903,8 +938,6 @@ def _header_playful(d, L, parts):
             + "\\end{minipage}\n"
         )
     else:
-        # \raggedright in the full-width branch: justification stretched the
-        # zh name's first line and pushed the Latin transliteration to the far right.
         row = "\\noindent{\\raggedright\n" + "".join(left) + "\\par}\n"
     return (
         row
@@ -919,8 +952,9 @@ def _header_sidebar(d, L, parts):
     """Main column header of the sidebar template: name, profession and rule.
 
     The photo, the logos and the contacts live in the left bar (see
-    ``_sidebar``), so ``parts`` is intentionally ignored here. Empty name and
-    profession yield "" (never a marker).
+    ``_sidebar``), so ``parts`` is intentionally ignored here. The name has no
+    document label: a name-less CV simply starts with the profession. Empty
+    name and profession yield "" (never a marker).
     """
     name = esc(d.get("name", "")).strip()
     profession = esc(d.get("profession", "")).strip()
@@ -928,7 +962,9 @@ def _header_sidebar(d, L, parts):
         return ""
     lines = []
     if name:
-        lines.append(f"{{\\Huge\\bfseries\\color{{accent}} {name}}}\\par\n")
+        lines.append(
+            f"{{\\Huge\\bfseries\\color{{accent}}\\cvfitname{{{name}}}}}\\par\n"
+        )
     if profession:
         lines.append("\\vspace{0.4em}\n")
         lines.append(f"{{\\large\\scshape\\color{{gris}} {profession}}}\\par\n")
@@ -956,7 +992,7 @@ def _sidebar(d, L):
         else "\\hspace*{-6.2cm}"
     )
     logo_ref, has_photo, photo_ext = _image_info(d)
-    contact = _contacts(d, L)
+    contact = _contacts(d, L, on_dark=True)
 
     def clamp(value, default, low, high):
         try:
@@ -1003,6 +1039,100 @@ def _sidebar(d, L):
     )
 
 
+def _sword_contact_grid(personal, objective, social):
+    """Two-column contact grid: personal data + objective left, links right.
+
+    Rows inside each column are separated by a small vertical gap only, with no
+    hairlines. When there are no social links the personal data is balanced
+    across both columns; with no personal/objective content the links take the
+    full width. Long entries wrap inside their own column and grow the row
+    instead of running into the photo column.
+    """
+    left = list(personal) + list(objective)
+    right = list(social)
+    if not left:
+        if not right:
+            return ""
+        return (
+            "\\noindent\\parbox[t]{\\linewidth}{\\raggedright\\small "
+            + "\n\\par\\vspace{0.18em}\n".join(right)
+            + "}\\par\n"
+        )
+    if not right:
+        right = left[1::2]
+        left = left[0::2]
+
+    return (
+        "\\noindent\\hbox to \\linewidth{%\n"
+        "\\parbox[t]{0.47\\linewidth}{\\raggedright\\small "
+        + "\n\\par\\vspace{0.18em}\n".join(left)
+        + "}%\n"
+        "\\hfil\n"
+        "\\parbox[t]{0.47\\linewidth}{\\raggedright\\small "
+        + "\n\\par\\vspace{0.18em}\n".join(right)
+        + "}%\n"
+        "}\\par\n"
+    )
+
+
+def _header_sword(d, L, parts):
+    """Navy banner header: white name on a blade-tipped band, contacts below.
+
+    The banner itself (and its slanted right end) belongs to the template's
+    shipout hook; this header only places the foreground content on top of it.
+    Personal data and the objective fill the left contact column and the social
+    links the right one, without row hairlines. Empty values never emit markup.
+    """
+    name = _display_name(d, L)
+    personal, objective, social = _contact_groups(d, L)
+    # CJK glyphs nearly fill the band; Latin capitals sit slightly lower, so
+    # they get a touch more negative leading to stay optically centred.
+    top_shift = "-0.25em" if L is LANG["zh"] else "-0.40em"
+    banner = (
+        "\\vspace*{" + top_shift + "}"
+        "\\hspace*{0.45em}"
+        "{\\color{white}\\bfseries\\fontsize{20}{24}\\selectfont "
+        "\\cvfitname[\\dimexpr\\cvBannerBody-0.9em\\relax]{" + name + "}}"
+    )
+
+    left = [
+        "\\noindent\\begin{minipage}[t]{0.70\\textwidth}\n",
+        "\\vspace{0pt}\n",
+        "\\raggedright\n",
+        "\\noindent\\begingroup\\setlength{\\fboxsep}{0pt}%\n",
+        "\\parbox[c][\\cvBannerHeight][t]{\\cvBannerBody}{%\n",
+        banner + "}\n",
+        "\\endgroup\\par\n",
+        "\\vspace{0.45em}\n",
+    ]
+    if personal or objective or social:
+        left.append(_sword_contact_grid(personal, objective, social))
+    left.append("\\end{minipage}%\n")
+
+    if parts:
+        stacked = []
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if part.startswith("\\vspace"):
+                stacked.append(part + "\n")
+            else:
+                stacked.append(part + "\\par\n")
+        row = (
+            "".join(left)
+            + "\\hfill\n"
+            + "\\begin{minipage}[t]{0.26\\textwidth}\n"
+            + "\\vspace{0pt}\n"
+            + "\\raggedleft\n"
+            + "".join(stacked)
+            + "\\end{minipage}\n"
+        )
+    else:
+        row = "".join(left)
+    return row + "\\vspace{0.5em}\n{\\color{accent}\\hrule height 0.7pt}\n"
+
+
 def _header(d, L, template_name="classic"):
     logo_ref, has_photo, photo_ext = _image_info(d)
     parts = _image_parts(d, logo_ref, has_photo, photo_ext)
@@ -1022,6 +1152,8 @@ def _header(d, L, template_name="classic"):
         return _header_navy(d, L, parts)
     if template_name == "playful":
         return _header_playful(d, L, parts)
+    if template_name == "sword":
+        return _header_sword(d, L, parts)
     if template_name in ("sidebar", "sidebar-right"):
         return _header_sidebar(d, L, parts)
     return _header_classic(d, L, parts)
@@ -1553,6 +1685,9 @@ def build_tex(data, p):
         line for line in tex.splitlines()
         if not (line.lstrip().startswith("%") and "{{" in line)
     )
+    # One shared macro for every template: the headers wrap the name in it so
+    # a long name shrinks instead of overflowing its band or column.
+    tex = tex.replace("\\begin{document}", _CVFITNAME_MACRO + "\\begin{document}", 1)
     L = LANG.get(str(data.get("cv_language", "zh")), LANG["zh"])
 
     # Free blocks are inserted after their anchor section; "start" and "end"
@@ -1564,7 +1699,9 @@ def build_tex(data, p):
     for key in normalize_section_order(data):
         if not is_section_hidden(data, key):
             title = custom_section_title(data, key)
-            title = esc(title) if title is not None else L[key]
+            # Escape the final title, custom or default: LANG labels are plain
+            # text too and may contain LaTeX specials (e.g. "Skills & certificates").
+            title = esc(title if title is not None else L[key])
             if key == "summary":
                 summary = esc(str(data.get("summary", "") or "").strip())
                 if summary:
@@ -1584,8 +1721,9 @@ def build_tex(data, p):
     header = _header(data, L, template_id)
     if not sidebar and not header.strip() and not body.strip():
         # A fully empty CV (e.g. a zh "sidebar" CV without a name: its header
-        # omits the document title) must still ship one blank page; with no
-        # material at all TeX reports "No pages of output" and emits no PDF.
+        # omits the name (and the fallback label) must still ship one blank
+        # page; with no material at all TeX reports "No pages of output" and
+        # emits no PDF.
         body += "\\null\n"
 
     m = p["margins"]

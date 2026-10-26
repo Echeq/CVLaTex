@@ -1,6 +1,11 @@
-# Continuous integration: run the test suite on Linux, then compile CVLaTeX
-# on the three platforms and upload the platform-suffixed bundles
-# (CVLaTeX_Windows.exe, CVLaTeX_Linux, CVLaTeX_macOS.zip) as artifacts.
+# Continuous integration: run the test suite on Linux, then build the three
+# native release archives and upload them as workflow artifacts.
+#
+# Artifacts:
+#   CVLaTeX-v<version>-windows-x64.zip
+#   CVLaTeX-v<version>-linux-x86_64.tar.gz
+#   CVLaTeX-v<version>-macos-arm64.zip
+#
 # This workflow never publishes a release; tagged releases are handled by
 # release.yml. Pushes are restricted to branches so a v* tag only triggers the
 # release workflow.
@@ -22,6 +27,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -31,6 +39,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
       - name: Install Python dependencies
         run: |
@@ -38,7 +47,7 @@ jobs:
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run tests
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q -n 2
 
   build:
     needs: test
@@ -47,14 +56,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: CVLaTeX_Windows
-            path: dist/CVLaTeX_Windows.exe
+            artifact: CVLaTeX-windows-x64
+            path: dist/CVLaTeX-v*-windows-x64.zip
           - os: ubuntu-latest
-            artifact: CVLaTeX_Linux
-            path: dist/CVLaTeX_Linux
+            artifact: CVLaTeX-linux-x86_64
+            path: dist/CVLaTeX-v*-linux-x86_64.tar.gz
           - os: macos-latest
-            artifact: CVLaTeX_macOS
-            path: dist/CVLaTeX_macOS.zip
+            artifact: CVLaTeX-macos-arm64
+            path: dist/CVLaTeX-v*-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -69,23 +78,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-venv gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: |
-          pyinstaller --noconfirm --onefile --windowed --name CVLaTeX --icon "assets/CVLaTex.ico" --add-data "web;web" --add-data "templates;templates" main.py
-          Move-Item -Force dist/CVLaTeX.exe dist/CVLaTeX_Windows.exe
+        shell: cmd
+        env:
+          CI: "true"
+        run: build.bat
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
         run: |
           chmod +x build.sh
           PYTHON=/usr/bin/python3 ./build.sh
-          chmod +x dist/CVLaTeX_Linux
 
       - name: Build (macOS)
         if: runner.os == 'macOS'
@@ -93,7 +97,7 @@ jobs:
           chmod +x build.sh
           ./build.sh
 
-      - name: Upload artifact
+      - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

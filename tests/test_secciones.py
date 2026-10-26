@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
+import ejemplo  # noqa: E402
 import latex_engine  # noqa: E402
 import latex_gen  # noqa: E402
 import main  # noqa: E402
@@ -143,7 +144,7 @@ def _indice(tex, aguja):
 
 def _titulo(idioma, clave):
     """Titulo de seccion que build_tex emite con LANG para idioma y clave."""
-    return "\\cvsection{" + latex_gen.LANG[idioma][clave] + "}"
+    return "\\cvsection{" + latex_gen.esc(latex_gen.LANG[idioma][clave]) + "}"
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +172,8 @@ def test_orden_por_defecto_de_titulos(plantilla, idioma, prefs_tmp):
 # tras normalizar (las faltantes se anaden al final en orden por defecto).
 ORDEN_BRUTO = ["work", "marte", "work", "university_projects"]
 ORDEN_NORMALIZADO = [
-    "work", "university_projects", "summary", "education", "projects",
-    "internships", "skills", "languages", "references",
+    "work", "university_projects", "education", "summary", "internships",
+    "projects", "skills", "languages", "references",
 ]
 
 
@@ -300,8 +301,8 @@ def test_migrar_secciones_validas_se_normalizan():
     assert titulos == {"summary": "Sobre mí", "work": "Experiencia"}
     assert ocultas == ["work", "languages"]
     assert orden == [
-        "languages", "work", "summary", "education", "projects",
-        "university_projects", "internships", "skills", "references",
+        "languages", "work", "education", "summary", "internships",
+        "projects", "university_projects", "skills", "references",
     ]
 
 
@@ -413,8 +414,8 @@ def test_cvjson_abrir_sanea_las_tres_claves_escritas_a_mano(prefs_tmp, monkeypat
     assert abierto["datos"]["section_titles"] == {"summary": "Perfil X"}
     assert abierto["datos"]["hidden_sections"] == ["work"]
     assert abierto["datos"]["section_order"] == [
-        "languages", "work", "summary", "education", "projects",
-        "university_projects", "internships", "skills", "references",
+        "languages", "work", "education", "summary", "internships",
+        "projects", "university_projects", "skills", "references",
     ]
 
 
@@ -434,6 +435,7 @@ def datos_compilacion(idioma):
     return datos
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", TEMPLATES)
 def test_compila_pdf_secciones_es(plantilla, prefs_tmp):
@@ -447,6 +449,7 @@ def test_compila_pdf_secciones_es(plantilla, prefs_tmp):
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para compilar texto CJK",
@@ -458,6 +461,33 @@ def test_compila_pdf_secciones_zh(plantilla, prefs_tmp):
     tex = latex_gen.build_tex(datos, prefs.load())
     assert "{{" not in tex
     assert tex_datos.extract(tex) == datos
+    resultado = latex_engine.compile(tex, None, None)
+    assert resultado["ok"], resultado["errores"]
+    assert resultado["pdf"] and os.path.isfile(resultado["pdf"])
+
+
+# ---------------------------------------------------------------------------
+# Regresion: un titulo por defecto con "&" (en: "Skills & certificates")
+# debe escaparse igual que un titulo personalizado.
+# ---------------------------------------------------------------------------
+
+def test_seccion_por_defecto_con_ampersand_se_escapa(prefs_tmp):
+    datos = ejemplo.sample_data("en")
+    datos["template"] = "classic"
+    tex = latex_gen.build_tex(datos, prefs.load())
+
+    assert "\\cvsection{Skills \\& certificates}" in tex
+    assert "\\cvsection{Skills & certificates}" not in tex
+
+
+@pytest.mark.latex
+@pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
+def test_compila_pdf_sample_en_con_ampersand_en_titulo(prefs_tmp):
+    datos = ejemplo.sample_data("en")
+    datos["template"] = "classic"
+    tex = latex_gen.build_tex(datos, prefs.load())
+    assert "\\cvsection{Skills \\& certificates}" in tex
+
     resultado = latex_engine.compile(tex, None, None)
     assert resultado["ok"], resultado["errores"]
     assert resultado["pdf"] and os.path.isfile(resultado["pdf"])

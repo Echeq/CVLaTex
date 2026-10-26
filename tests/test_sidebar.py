@@ -364,14 +364,27 @@ def test_sidebar_contactos_socials_y_extra_en_la_barra(plantilla, idioma, prefs_
     }
     etiqueta, valor = redes[idioma]
     assert f"\\textbf{{{etiqueta}:}} \\texttt{{{latex_gen.esc(valor)}}}" in bloque
+    # Social links are the muted group: white on the dark bar, never black!55.
+    assert (
+        f"{{\\footnotesize\\color{{white}} \\textbf{{{etiqueta}:}} "
+        f"\\texttt{{{latex_gen.esc(valor)}}}}}"
+    ) in bloque
+    assert "\\footnotesize\\color{gris}" not in bloque
     extras = {"es": "\\textbf{Nacimiento:} 12/05/1994", "zh": "\\textbf{国籍:} 中国"}
     assert extras[idioma] in bloque
+    # Personal data first, then the objective, then the social link.
+    assert bloque.index(f"\\textbf{{{L['phone']}}}") < bloque.index(
+        f"\\textbf{{{L['profession']}}}"
+    )
+    assert bloque.index(f"\\textbf{{{L['profession']}}}") < bloque.index(
+        f"\\textbf{{{etiqueta}:}}"
+    )
     # The name is a header thing: it never enters the bar.
     assert latex_gen.esc(datos["name"]) not in bloque
 
     # After the bar, the main column keeps the name and no contact.
     after = resto(tex, plantilla)
-    assert f"{{\\Huge\\bfseries\\color{{accent}} {latex_gen.esc(datos['name'])}}}" in after
+    assert f"{{\\Huge\\bfseries\\color{{accent}}\\cvfitname{{{latex_gen.esc(datos['name'])}}}}}" in after
     assert f"\\textbf{{{L['phone']}}}" not in after
     assert f"\\textbf{{{L['email']}}}" not in after
 
@@ -467,6 +480,7 @@ def test_sidebar_barra_solo_en_la_primera_pagina(plantilla, prefs_tmp):
     assert "\\newcommand{\\cvsection}" in tex
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para medir el PDF",
@@ -506,6 +520,7 @@ def test_barra_y_contenido_medidos_en_el_pdf(plantilla, idioma, prefs_tmp):
         assert abs((x + w) - ANCHO_A4_PT) < 0.5  # flush to the right edge
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", PLANTILLAS)
 def test_sidebar_largo_sin_barra_desde_la_pagina_2(plantilla, prefs_tmp):
@@ -544,6 +559,7 @@ def test_sidebar_largo_sin_barra_desde_la_pagina_2(plantilla, prefs_tmp):
     assert x_min < 7 * CM_PT - 10, f"la página 2 sigue usando el margen de 7cm (x={x_min})"
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", PLANTILLAS)
 def test_compila_pdf_sidebar_es(plantilla, prefs_tmp, tmp_path):
@@ -558,6 +574,7 @@ def test_compila_pdf_sidebar_es(plantilla, prefs_tmp, tmp_path):
     assert _pdf_page_count(resultado["pdf"]) == 1
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) para compilar texto CJK",

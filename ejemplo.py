@@ -16,12 +16,12 @@ import latex_gen
 
 _LANGUAGES = ("zh", "es", "en")
 
-# Header data shared by every language.
-_EMAIL = "echeq@example.com"
-_PHONE = "+86 138 0000 0000"
+# Header data shared by every language. The sample is deliberately fictional.
+_EMAIL = "alex.ruiz@example.com"
+_PHONE = "+34 600 000 000"
 _SOCIALS = (
-    {"network": "github", "label": "", "value": "github.com/ECHEQ"},
-    {"network": "linkedin", "label": "", "value": "linkedin.com/in/ECHEQ"},
+    {"network": "github", "label": "", "value": "github.com/example"},
+    {"network": "linkedin", "label": "", "value": "linkedin.com/in/example"},
 )
 
 # Same institutions in the three samples; Chinese localizes their names.
@@ -33,13 +33,13 @@ _UNIVERSITIES = {
 
 _TEXT = {
     "es": {
-        "name": "CHEN QIU ELVIS ENRIQUE",
+        "name": "ALEJANDRO RUIZ MARTÍN",
         "profession": "Desarrollador de software backend",
-        "address": "Beijing, China",
+        "address": "Madrid, España",
         "birth_label": "Nacimiento",
-        "birth_value": "12/05/1996",
+        "birth_value": "01/01/1995",
         "nationality_label": "Nacionalidad",
-        "nationality_value": "China",
+        "nationality_value": "Española",
         "summary": (
             "Desarrollador backend con seis años de experiencia en Python y Java. "
             "Especializado en APIs, microservicios y despliegues en la nube."
@@ -80,30 +80,33 @@ _TEXT = {
             "Más de 300 estrellas en GitHub y adoptado por tres organizaciones "
             "locales"
         ),
-        "university_project_name": "Sistema de gestión de biblioteca",
-        "university_project_course": "Ingeniería del Software",
+        "university_project_name": "Club de Robótica",
+        "university_project_course": "Vocal de proyectos",
         "university_project_description": (
-            "Aplicación de escritorio para préstamos, reservas y catálogo, con "
-            "base de datos PostgreSQL."
+            "Coordiné talleres de robótica para estudiantes de primero y "
+            "segundo curso.\n"
+            "Organicé una competición interna con 12 equipos."
         ),
-        "university_project_result": "Matrícula de honor",
+        "university_project_result": "Finalista en la competición regional",
         "degree_master": "Máster en Ingeniería Informática",
         "degree_bachelor": "Grado en Ingeniería del Software",
         "skill_languages": "Lenguajes",
         "skill_tools": "Herramientas",
+        "skill_certs": "Certificaciones",
+        "cert_values": "AWS Cloud Practitioner, Scrum Foundation",
         "language1": "Español",
         "language1_level": "Nativo",
         "language2": "Inglés",
         "language2_level": "C1 — Avanzado",
     },
     "en": {
-        "name": "CHEN QIU ELVIS ENRIQUE",
+        "name": "ALEJANDRO RUIZ MARTÍN",
         "profession": "Backend software developer",
-        "address": "Beijing, China",
+        "address": "Madrid, Spain",
         "birth_label": "Date of birth",
-        "birth_value": "12/05/1996",
+        "birth_value": "01/01/1995",
         "nationality_label": "Nationality",
-        "nationality_value": "Chinese",
+        "nationality_value": "Spanish",
         "summary": (
             "Backend developer with six years of experience in Python and Java, "
             "specializing in APIs, microservices and cloud deployments."
@@ -142,28 +145,31 @@ _TEXT = {
         "project2_result": (
             "Over 300 stars on GitHub and adopted by three local organisations"
         ),
-        "university_project_name": "Library Management System",
-        "university_project_course": "Software Engineering",
+        "university_project_name": "Robotics Club",
+        "university_project_course": "Project officer",
         "university_project_description": (
-            "Desktop application for loans, reservations and cataloguing, backed "
-            "by a PostgreSQL database."
+            "Coordinated robotics workshops for first- and second-year "
+            "students.\n"
+            "Organised an internal competition with 12 teams."
         ),
-        "university_project_result": "Honours distinction",
+        "university_project_result": "Regional competition finalist",
         "degree_master": "Master's in Computer Engineering",
         "degree_bachelor": "Bachelor's in Software Engineering",
         "skill_languages": "Languages",
         "skill_tools": "Tools",
+        "skill_certs": "Certifications",
+        "cert_values": "AWS Cloud Practitioner, Scrum Foundation",
         "language1": "Spanish",
         "language1_level": "Native",
         "language2": "English",
         "language2_level": "C1 — Advanced",
     },
     "zh": {
-        "name": "CHEN QIU ELVIS ENRIQUE",
+        "name": "ALEJANDRO RUIZ MARTÍN",
         "profession": "后端软件开发工程师",
-        "address": "中国北京",
+        "address": "西班牙马德里",
         "birth_label": "出生年月",
-        "birth_value": "1996年5月12日",
+        "birth_value": "1995年1月1日",
         "nationality_label": "国籍",
         "nationality_value": "中国",
         "summary": (
@@ -198,17 +204,19 @@ _TEXT = {
             "后端采用 FastAPI 与 PostgreSQL，数据每日更新。"
         ),
         "project2_result": "GitHub 获 300 余颗星，并被三家本地机构采用",
-        "university_project_name": "图书馆管理系统",
-        "university_project_course": "软件工程",
+        "university_project_name": "机器人社团",
+        "university_project_course": "项目负责人",
         "university_project_description": (
-            "用于图书借阅、预约与编目管理的桌面应用，底层使用 PostgreSQL "
-            "数据库。"
+            "为大一、大二学生组织机器人工作坊。\n"
+            "筹办 12 支队伍参加的校内比赛。"
         ),
-        "university_project_result": "荣誉成绩（Matrícula de honor）",
+        "university_project_result": "区域比赛决赛入围",
         "degree_master": "计算机工程硕士",
         "degree_bachelor": "软件工程学士",
         "skill_languages": "编程语言",
         "skill_tools": "工具",
+        "skill_certs": "证书",
+        "cert_values": "AWS 云从业者, Scrum Foundation",
         "language1": "西班牙语",
         "language1_level": "母语",
         "language2": "英语",
@@ -291,7 +299,7 @@ def _build_sample(lang):
             "end": "2023",
             "description": text["project1_description"],
             "result": text["project1_result"],
-            "link": "github.com/ECHEQ/rutas-sostenibles",
+            "link": "github.com/example/rutas-sostenibles",
             "logo": "",
         },
         {
@@ -301,7 +309,7 @@ def _build_sample(lang):
             "end": "2021",
             "description": text["project2_description"],
             "result": text["project2_result"],
-            "link": "github.com/ECHEQ/panel-metricas",
+            "link": "github.com/example/panel-metricas",
             "logo": "",
         },
     ]
@@ -344,6 +352,7 @@ def _build_sample(lang):
     d["skills"] = [
         {"category": text["skill_languages"], "values": "Python, Java, SQL"},
         {"category": text["skill_tools"], "values": "Docker, Git, PostgreSQL"},
+        {"category": text["skill_certs"], "values": text["cert_values"]},
     ]
 
     d["languages"] = [

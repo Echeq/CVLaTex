@@ -10,12 +10,12 @@ These are the recommended downloads for most users: self-contained builds that n
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 | [CVLaTeX-v0.1.0-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-windows-x64.zip) |
-| macOS Apple Silicon (arm64) | [CVLaTeX-v0.1.0-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-macos-arm64.zip) |
-| Linux x86_64 | [CVLaTeX-v0.1.0-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/CVLaTeX-v0.1.0-linux-x86_64.tar.gz) |
-| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.1.0/SHA256SUMS.txt) |
+| Windows x64 | [CVLaTeX-v0.2.0-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-windows-x64.zip) |
+| macOS Apple Silicon (arm64) | [CVLaTeX-v0.2.0-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-macos-arm64.zip) |
+| Linux x86_64 | [CVLaTeX-v0.2.0-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-linux-x86_64.tar.gz) |
+| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/SHA256SUMS.txt) |
 
-All four files are attached to the [v0.1.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0). The macOS build is Apple Silicon only; Intel Macs are not supported in v0.1.0.
+All four files are attached to the [v0.2.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0). **v0.2.0 is the first public pre-release** and the first release assembled by CI; v0.1.0 was a manual upload. The macOS build is Apple Silicon only; Intel Macs are not supported in v0.2.0. All 12 templates, the web assets and the Linux PDF.js viewer ship inside every bundle.
 
 ## Requirements
 
@@ -25,12 +25,12 @@ All four files are attached to the [v0.1.0 release](https://github.com/Echeq/CVL
 
 ## Installation
 
-For most users: download the archive above, extract it, and run the app. No Python or LaTeX installation is required; the app can install TinyTeX on first run.
+For most users: download the archive above, extract it, and run the app. No Python or LaTeX installation is required; the app can install TinyTeX on first run. On first run the language picker asks for the interface language and the app starts with a blank CV; `Edit → Load sample CV` fills it with a fictional example when you want one.
 
 ### Windows
 
 1. Download and extract the `.zip`.
-2. Run `CVLaTeX-v0.1.0-windows-x64.exe`.
+2. Run `CVLaTeX.exe`.
 3. Windows SmartScreen will warn because the build is unsigned: click **More info → Run anyway**.
 4. WebView2 is required and normally preinstalled on Windows 10/11; if missing, install the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 5. On first run, let the app install TinyTeX if you want PDF preview/export.
@@ -39,7 +39,7 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 
 1. Download and unzip; drag `CVLaTeX.app` to Applications (optional).
 2. Open it. If Gatekeeper blocks it, right-click the app → **Open**, or use **System Settings → Privacy & Security → Open Anyway**.
-3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.1.0.
+3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.2.0.
 4. Let the app install TinyTeX if you want PDF preview/export.
 
 ### Linux
@@ -48,10 +48,9 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 2. Extract and run:
 
    ```bash
-   tar -xzf CVLaTeX-v0.1.0-linux-x86_64.tar.gz
-   cd CVLaTeX-v0.1.0-linux-x86_64
-   chmod +x CVLaTeX-v0.1.0-linux-x86_64
-   ./CVLaTeX-v0.1.0-linux-x86_64
+   tar -xzf CVLaTeX-v0.2.0-linux-x86_64.tar.gz
+   chmod +x CVLaTeX
+   ./CVLaTeX
    ```
 
 3. `libwebkit2gtk-4.1-dev` is build-only and not needed to run.
@@ -90,18 +89,18 @@ On Linux the `--system-site-packages` flag is required so the venv sees the dist
 
 ## Releases
 
-**v0.1.0 is the first public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.1.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0). Versions in the `0.*` series are published as GitHub pre-releases.
+**v0.2.0 is the first public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.2.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0). Versions in the `0.*` series are published as GitHub pre-releases. (v0.1.0 was uploaded manually; v0.2.0 is the first archive set produced by the release workflow.)
 
 | Platform | Architecture | Asset |
 | --- | --- | --- |
-| Windows | x64 | `CVLaTeX-v0.1.0-windows-x64.zip` (contains `CVLaTeX-v0.1.0-windows-x64.exe`) |
-| Linux | x86_64 | `CVLaTeX-v0.1.0-linux-x86_64.tar.gz` (contains `CVLaTeX-v0.1.0-linux-x86_64`) |
-| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.1.0-macos-arm64.zip` (contains `CVLaTeX.app`) |
+| Windows | x64 | `CVLaTeX-v0.2.0-windows-x64.zip` (contains `CVLaTeX.exe`) |
+| Linux | x86_64 | `CVLaTeX-v0.2.0-linux-x86_64.tar.gz` (contains `CVLaTeX`) |
+| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.2.0-macos-arm64.zip` (contains `CVLaTeX.app`) |
 | All platforms | — | `SHA256SUMS.txt` |
 
 GitHub's `macos-latest` runner currently builds natively on Apple Silicon, so
-the v0.1.0 macOS asset is named `CVLaTeX-v0.1.0-macos-arm64.zip`. No universal
-macOS binary and no Intel macOS build are produced for v0.1.0.
+the v0.2.0 macOS asset is named `CVLaTeX-v0.2.0-macos-arm64.zip`. No universal
+macOS binary and no Intel macOS build are produced for v0.2.0.
 
 Verify a download with the checksum manifest (Linux/macOS, with the downloaded
 files and `SHA256SUMS.txt` in the current directory):
@@ -134,17 +133,19 @@ The form is on the left and the compiled preview on the right; changes are recom
 
 ### Templates
 
-`Edit → CV template` groups the 11 templates into ATS Friendly (Classic, Harvard (academic)), Chinese styles (Chinese (standard), Black tabs, Blue ribbon, Navy minimal, Playful) and Normal CV (Modern, Creative, Sidebar (left), Sidebar (right)).
+`Edit → CV template` groups the 12 templates into ATS Friendly (Classic, Harvard (academic)), Chinese styles (Chinese (standard), Black tabs, Blue ribbon, Navy minimal, Playful, Sword) and Normal CV (Modern, Creative, Sidebar (left), Sidebar (right)).
 
 The Sidebar layout paints a full-height accent bar on the left of the first page only, holding the photo, school logo, contacts, social networks and extra details, while the main column keeps the name/profession header and the professional sections; the first page reserves about 7 cm on the left for the bar (ignoring the left margin setting) and pages 2+ use the configured margins and the full text width. Sidebar (right) mirrors the same layout with the bar on the right of the first page only, reserving about 7 cm on the right (ignoring the right margin setting) and using the configured margins and full text width afterwards. TeX fixes line breaks before pagination, so a single paragraph that straddles the page 1/2 break keeps its first-page line width; breaks between sections or entries reflow normally.
 
-Chinese (standard) renders with a per-OS CJK font fallback (Microsoft YaHei, PingFang SC, Noto Sans CJK SC, WenQuanYi Zen Hei, Source Han Sans SC) and switches compilation to XeLaTeX automatically. Black tabs wraps every page in a heavy frame with black section tabs, Blue ribbon uses a slanted blue header band and a gold accent, Navy minimal keeps navy rules and dense three-column academic entries, and Playful combines a large name, badge-style headings, diamond bullets and purple links.
+Chinese (standard) renders with a per-OS CJK font fallback (Microsoft YaHei, PingFang SC, Noto Sans CJK SC, WenQuanYi Zen Hei, Source Han Sans SC) and switches compilation to XeLaTeX automatically. Black tabs wraps every page in a heavy frame with black section tabs, Blue ribbon uses a slanted blue header band and a gold accent, Navy minimal keeps navy rules and dense three-column academic entries, Playful combines a large name, badge-style headings, diamond bullets and purple links, and Sword pairs a slanted navy name banner with a two-column contact grid (personal data on the left, profile links on the right, no row hairlines) and navy section plates over gray bars.
+
+Every header shows the person's name as its main element instead of a redundant "resume" label, and long names shrink automatically to fit their banner or column.
 
 ### Form and sections
 
 - Personal details plus a Social networks card: pick a network (GitHub, LinkedIn, X, Instagram, Facebook, YouTube, TikTok, Telegram, WeChat, Website or Other, which also takes a custom name), type the URL/username, and remove entries you no longer need.
 - Extra details holds custom label/value pairs shown in the CV header; the old birth date and nationality fields now live here.
-- Body sections: Profile, Education, Projects, University projects, Internships, Work, Skills, Languages, References. Each section header lets you rename it inline, hide/show it and move it up or down; the five entry-list sections support 1–3 columns.
+- Body sections: Education, Profile, Work, Internships, Projects, Campus activities, Skills & certificates, Languages, References. Each section header lets you rename it inline, hide/show it and move it up or down; the five entry-list sections support 1–3 columns.
 
 ### Sample CV
 
@@ -158,7 +159,7 @@ The `Add` menu inserts free blocks interleaved with the standard sections:
 - `Separator line`, `Color band` and `Blank space`.
 - `Custom section` with a title and multi-line content.
 
-Each block is anchored to the start, after a section, or to the end, and can be moved. `Add → Manage blocks…` edits, moves and deletes existing blocks. A block anchored to a hidden section keeps its position. In the Word export, block columns degrade to a single column.
+Each block is anchored to the start, after a section, or to the end, and can be moved. `Add → Manage blocks…` edits, moves and deletes existing blocks. A block anchored to a hidden section keeps its position. In the Word export, free-block columns stay a single column.
 
 ### Document colors
 
@@ -173,10 +174,12 @@ Each block is anchored to the start, after a section, or to the end, and can be 
 
 - `File → Export → PDF…` compiles the document (requires a LaTeX engine).
 - `File → Export → LaTeX…` writes the generated `.tex` with the data block embedded as comments.
-- `File → Export → Word (.docx)…` exports Word with python-docx (no LaTeX needed).
+- `File → Export → Word (.docx)…` writes a `.docx` with python-docx (no LaTeX needed) that follows the selected template instead of one generic layout: the header composition, section-heading shape, entry lines (right-tabbed date/title lines in the Latin templates, three-column entries in the Chinese-style ones), bullet markers and separators are reproduced with the template palette, and Preferences override its colors. The Latin templates also honour the 1–3 columns of the five entry-list sections; the Chinese-style templates keep their three-column entries and ignore that setting, as in the PDF.
 - `File → Import LaTeX (.tex)…` rebuilds the form from the data block embedded in a CVLaTeX `.tex`; files without it are rejected with an alert.
 - `File → Save…` / `File → Open…` use the `.cvjson` project format: version 3 stores the data plus the photo and logos embedded in base64. v1/v2 files are accepted and migrated (a backup copy with the `.v2.bak` suffix is written first, never clobbering an existing one).
 - Autosave writes unsaved changes to the app data directory (`%LOCALAPPDATA%\CVLaTeX` on Windows, `~/Library/Application Support/CVLaTeX` on macOS, `$XDG_DATA_HOME/CVLaTeX` or `~/.local/share/CVLaTeX` on Linux); on the next start CVLaTeX offers to recover it only if it differs from an empty CV. Closing the window with unsaved changes opens a guard with Save / Exit without saving / Cancel; Save writes to the current `.cvjson` (and asks for a path when the CV has none yet).
+
+The Word layout is an approximation built from WordprocessingML primitives, not a pixel copy of the PDF. Shapes are built from shading and borders rather than DrawingML or VML, and nothing is rotated, so the slanted ornaments (the Sword blade tip, the Blue ribbon wing) are drawn as stair-stepped bars. The Sidebar bar starts at the top margin instead of the paper edge and continues on later pages, while the PDF draws that bar on page 1 only; on the last page it ends with the content. Fonts are written explicitly (Cambria, Calibri for Playful, Microsoft YaHei for CJK), so a machine without them gets the system substitution. Word's line breaking and pagination differ from TeX, and free-block columns stay single-column.
 
 ### Photo and logos
 
@@ -210,21 +213,22 @@ On first run, after the interface-language picker, the setup wizard offers to do
 
 ## Development
 
-Install the test dependencies and run the suite (728 tests pass on the current tree):
+Install the test dependencies and run the suite:
 
 ```bash
 .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python -m pytest tests -q      # 728 passed
+.venv/bin/python -m pytest -m "not latex" -q   # fast loop: skips LaTeX compiles
+.venv/bin/python -m pytest -n auto             # full suite, parallel
 ```
 
-The PDF compile tests are skipped, not failed, when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):
+The fast loop excludes the slow PDF compilations, so use it while iterating and run the full suite before opening a pull request. The PDF compile tests are skipped, not failed, when `pdflatex`/`xelatex` are not installed. Validate the frontend syntax without a browser (optional, needs Node):
 
 ```bash
 node --check web/app.js
 node --check web/i18n.js
 ```
 
-Build the platform bundle with `./build.sh` on Linux/macOS or `build.bat` on Windows. The outputs are `dist/CVLaTeX_Linux`, `dist/CVLaTeX_macOS.zip` (with the unzipped `dist/CVLaTeX.app`) and `dist/CVLaTeX_Windows.exe`.
+Build the release archives with `./build.sh` on Linux/macOS or `build.bat` on Windows. Each script stages the public assets, runs PyInstaller and calls `tools/package_release.py`, producing `dist/CVLaTeX-v0.2.0-linux-x86_64.tar.gz`, `dist/CVLaTeX-v0.2.0-macos-arm64.zip` and `dist/CVLaTeX-v0.2.0-windows-x64.zip`. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` stay available for local runs.
 
 Setup for all platforms, architecture, testing strategy and the guides for adding templates or data fields are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

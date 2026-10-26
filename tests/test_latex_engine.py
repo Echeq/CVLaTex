@@ -349,6 +349,7 @@ def test_zh_font_engine_uses_if_fontexiststf_chains(prefs_tmp):
     assert latex_engine._uses_xelatex(tex) is True
 
 
+@pytest.mark.latex
 @pytest.mark.skipif(
     MOTOR_PDF is None or MOTOR_CJK is None,
     reason="Sin motores LaTeX (pdflatex/xelatex) instalados",

@@ -16,6 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import latex_gen  # noqa: E402
 import version  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +36,8 @@ JS = _read(JS_PATH)
 CSS = _read(CSS_PATH)
 I18N = _read(I18N_PATH)
 
-# Frozen bridge surface of main.Api (docs/refactor-map.md).
+# Frozen bridge surface of main.Api (contract pinned here and documented in
+# docs/DEVELOPMENT.md).
 FROZEN_API = {
     "init", "empty_data", "load_sample", "template_colors", "choose_file",
     "choose_photo", "save_image", "export_pdf", "export_tex", "export_docx",
@@ -62,6 +64,7 @@ FROZEN_ACTIONS = (
     "font:10", "font:11", "font:12", "template:classic", "template:harvard",
     "template:modern", "template:creative", "template:chinese",
     "template:tabbed", "template:ribbon", "template:navy", "template:playful",
+    "template:sword",
     "load-sample", "reset-all",
     "add:columns:1", "add:columns:2", "add:columns:3", "add:period",
     "add:block-line", "add:block-band", "add:block-space", "add:section",
@@ -272,6 +275,9 @@ def test_i18n_template_group_keys():
             "es": "Creativo lúdico", "en": "Playful",
             "zh": "创意活泼", "ru": "Игривый",
         },
+        "template_sword": {
+            "es": "Sword", "en": "Sword", "zh": "Sword", "ru": "Sword",
+        },
         "template_sidebar": {
             "es": "Barra lateral (izquierda)", "en": "Sidebar (left)",
             "zh": "侧边栏（左）", "ru": "Боковая панель (слева)",
@@ -469,10 +475,10 @@ def test_index_reset_all_after_load_sample():
 
 
 def test_index_template_submenu_groups():
-    """The eleven templates are grouped under three labelled, non-clickable headings.
+    """The twelve templates are grouped under three labelled, non-clickable headings.
 
     Order: ATS Friendly (classic, harvard), Chinese styles (chinese, tabbed,
-    ribbon, navy, playful) and Normal CV (modern, creative, sidebar,
+    ribbon, navy, playful, sword) and Normal CV (modern, creative, sidebar,
     sidebar-right); the groups are separated with <hr>.
     """
     edit_menu = HTML[HTML.index('data-i18n="menu_edit"'):HTML.index('data-i18n="menu_add"')]
@@ -496,17 +502,17 @@ def test_index_template_submenu_groups():
     normal = subdrop[subdrop.index('data-i18n="template_group_normal"'):]
     allowed = (
         "classic", "harvard", "chinese", "tabbed", "ribbon", "navy", "playful",
-        "modern", "creative", "sidebar", "sidebar-right",
+        "sword", "modern", "creative", "sidebar", "sidebar-right",
     )
     assert re.findall(r'data-accion="template:([a-z-]+)"', ats) == ["classic", "harvard"]
     assert re.findall(r'data-accion="template:([a-z-]+)"', chinese) == [
-        "chinese", "tabbed", "ribbon", "navy", "playful",
+        "chinese", "tabbed", "ribbon", "navy", "playful", "sword",
     ]
     assert re.findall(r'data-accion="template:([a-z-]+)"', normal) == [
         "modern", "creative", "sidebar", "sidebar-right",
     ]
     # No template link crosses into another group.
-    new_anchors = ("tabbed", "ribbon", "navy", "playful")
+    new_anchors = ("tabbed", "ribbon", "navy", "playful", "sword")
     for value in new_anchors:
         assert 'data-accion="template:%s"' % value in chinese, value
         assert 'data-accion="template:%s"' % value not in ats, value
@@ -520,12 +526,12 @@ def test_index_template_submenu_groups():
     # The groups are separated with the menu hr and every link keeps its mark.
     for before, after in (
         ('data-accion="template:harvard"', 'data-i18n="template_group_chinese"'),
-        ('data-accion="template:playful"', 'data-i18n="template_group_normal"'),
+        ('data-accion="template:sword"', 'data-i18n="template_group_normal"'),
     ):
         assert "<hr>" in subdrop[subdrop.index(before):subdrop.index(after)], (before, after)
     for value in allowed:
         assert 'data-marca="template-%s"' % value in subdrop, value
-    assert len(re.findall(r'data-marca="template-[a-z-]+"', subdrop)) == 11
+    assert len(re.findall(r'data-marca="template-[a-z-]+"', subdrop)) == 12
     # Small muted label: not a clickable menu item.
     heading_css = _css_block(".menu-heading")
     assert "cursor: default" in heading_css
@@ -534,7 +540,7 @@ def test_index_template_submenu_groups():
 
 def test_app_template_list_and_sample_language():
     """TEMPLATES_CV stays in sync with the menu and the sample keeps the language."""
-    for value in ("tabbed", "ribbon", "navy", "playful"):
+    for value in ("tabbed", "ribbon", "navy", "playful", "sword"):
         pair = '{ value: "%s", labelKey: "template_%s" }' % (value, value)
         assert pair in JS, value
     # The sample CV follows the per-CV language, never the template.
@@ -748,6 +754,16 @@ def test_app_uses_english_section_keys_and_order():
         assert token not in JS, token
 
 
+def test_app_default_section_order_matches_backend():
+    """The frontend default order must never drift from latex_gen."""
+    match = re.search(
+        r"const DEFAULT_SECTION_ORDER\s*=\s*\[(.*?)\];", JS, re.S,
+    )
+    assert match, "DEFAULT_SECTION_ORDER array not found in web/app.js"
+    order = re.findall(r'"([^"]+)"', match.group(1))
+    assert order == list(latex_gen.DEFAULT_SECTION_ORDER)
+
+
 def test_app_personal_card_is_slimmed():
     """The personal card dropped birth date, nationality, website, GitHub, LinkedIn."""
     body = _function_body("renderForm")
@@ -891,6 +907,13 @@ def test_app_latex_mode_mark_uses_scoped_active_class():
 
 # ---------------- close guard and installer ----------------
 
+def _close_guard_body():
+    """Body of the window.__onCloseRequest assignment (not a `function`)."""
+    start = JS.index("window.__onCloseRequest = function () {")
+    end = JS.index("\n};", start)
+    return JS[start:end]
+
+
 def test_app_close_guard_tokens():
     for token in (
         "api.set_dirty(",
@@ -900,16 +923,22 @@ def test_app_close_guard_tokens():
         '"#confirm-exit"',
         't("close_guard_message")',
         "function saveAndExit(",
+        "function exitWithoutSaving(",
         "state.filePath",
         "api.export_cv(state.data, state.filePath)",
-        't("save")',
+        't("save_and_exit")',
+        't("exit_without_saving")',
         't("close_guard_save_failed")',
+        't("close_guard_restore_failed")',
     ):
         assert token in JS, token
     # The three-option guard is fully translated in every language.
     for lang in ("es", "en", "zh", "ru"):
         table = _i18n_pairs(lang)
-        assert "save" in table and "close_guard_save_failed" in table, lang
+        for key in ("close_guard_message", "save_and_exit",
+                    "exit_without_saving", "cancel", "save",
+                    "close_guard_save_failed", "close_guard_restore_failed"):
+            assert table.get(key), (lang, key)
     assert 'data-accion="exit-without-saving"' in HTML
     assert 'data-i18n="exit_without_saving"' in HTML
     # The dirty flag is cleared after save/open/new/sample/import.
@@ -921,6 +950,106 @@ def test_app_close_guard_tokens():
     assert "state.filePath = r.ruta;" in _function_body("saveCurrentCv")
     for name in ("newCv", "importTex", "loadSample"):
         assert "state.filePath = null;" in _function_body(name), name
+
+
+def test_app_close_guard_has_exactly_three_buttons():
+    """Dirty close: save+exit (primary), exit without saving, cancel. No 4th."""
+    body = _close_guard_body()
+    assert "_confirmAccept = saveAndExit;" in body
+    assert "_confirmExit = exitWithoutSaving;" in body
+    assert "_confirmCancel = null;" in body
+    for key in ('t("save_and_exit")', 't("exit_without_saving")', 't("cancel")'):
+        assert key in body, key
+    assert '$("#confirm-exit").hidden = false;' in body
+    assert '$("#confirm-accept").hidden = false;' in body
+    assert '$("#confirm-cancel").hidden = false;' in body
+    # The removed "save and stay" fourth option does not come back.
+    assert "save_and_stay" not in JS
+    assert "save-and-stay" not in JS
+    assert "save_and_stay" not in HTML
+    assert "save-and-stay" not in HTML
+    # The confirm modal holds exactly those three buttons; save is the only
+    # primary one and "exit without saving" starts hidden for generic dialogs.
+    confirm = HTML[HTML.index('id="modal-confirm"'):HTML.index('id="modal-crop"')]
+    assert confirm.count("<button") == 3
+    assert 'id="confirm-accept"' in confirm
+    assert 'id="confirm-cancel"' in confirm
+    assert 'data-accion="exit-without-saving"' in confirm
+    exit_pos = confirm.index('id="confirm-exit"')
+    exit_tag = confirm[confirm.rindex("<button", 0, exit_pos):]
+    exit_tag = exit_tag[:exit_tag.index(">")]
+    assert "hidden" in exit_tag
+    assert "primary" not in exit_tag
+    accept_pos = confirm.index('id="confirm-accept"')
+    accept_tag = confirm[confirm.rindex("<button", 0, accept_pos):]
+    accept_tag = accept_tag[:accept_tag.index(">")]
+    assert "primary" in accept_tag
+
+
+def test_app_confirm_exit_has_a_single_click_path():
+    """#confirm-exit runs once: explicit listener, no runAction case."""
+    body = _function_body("setupConfirm")
+    assert '$("#confirm-exit").addEventListener("click"' in body
+    assert "const exit = _confirmExit;" in body
+    assert 'case "exit-without-saving"' not in _function_body("runAction")
+    assert 'case "exit-without-saving"' not in JS
+    # quit_app is behind a one-shot guard so the close flow cannot double-fire.
+    quit_body = _function_body("quitNow")
+    assert "if (!api || _exitRequested) return;" in quit_body
+    assert "api.quit_app(" in quit_body
+    assert "api.quit_app(" not in _function_body("saveAndExit")
+    assert "api.quit_app(" not in _function_body("exitWithoutSaving")
+
+
+def test_app_exit_without_saving_writes_the_restore_point_first():
+    """Exit without saving refreshes the restore point, then quits; a failed
+    write keeps the app (and the modal) open."""
+    body = _function_body("exitWithoutSaving")
+    autosave_pos = body.index("await api.autosave(state.data);")
+    quit_pos = body.index("await quitNow();")
+    assert autosave_pos < quit_pos
+    assert "autosave_clear" not in body
+    assert "clearAutosave" not in body
+    assert 't("close_guard_restore_failed")' in body
+    # Both the rejected envelope and the exception re-arm the guard.
+    assert body.count("window.__onCloseRequest();") == 2
+    assert body.count("return;") >= 2
+
+
+def test_app_save_and_exit_clears_the_restore_point_after_saving():
+    body = _function_body("saveAndExit")
+    assert body.count("await clearAutosave();") == 2
+    assert body.count("await quitNow();") == 2
+    for clear_pos in (body.index("await clearAutosave();"),
+                      body.index("await clearAutosave();", body.index("await clearAutosave();") + 1)):
+        assert body.rindex("markDirty(false);", 0, clear_pos) < clear_pos
+        assert clear_pos < body.index("await quitNow();", clear_pos)
+    # A cancelled dialog or a failed write never quits.
+    assert 'window.__onCloseRequest();' in body
+
+
+def test_i18n_recovery_offers_a_restore_point():
+    tables = {lang: _i18n_pairs(lang) for lang in ("es", "en", "zh", "ru")}
+    assert "versión sin guardar" in tables["es"]["confirm_recover"]
+    assert tables["es"]["recover"] == "Restaurar"
+    assert tables["es"]["discard"] == "Empezar de cero"
+    assert "unsaved version" in tables["en"]["confirm_recover"].lower()
+    assert tables["en"]["recover"] == "Restore"
+    assert tables["en"]["discard"] == "Start from zero"
+    assert tables["zh"]["recover"]
+    assert "несохранённая версия" in tables["ru"]["confirm_recover"].lower()
+    # The close guard announces the close without saving and the restore note.
+    assert "cerrará sin guardar" in tables["es"]["close_guard_message"]
+    assert "restaurar" in tables["es"]["close_guard_message"]
+    assert "close without saving" in tables["en"]["close_guard_message"].lower()
+    assert "restore" in tables["en"]["close_guard_message"].lower()
+    assert "不保存直接关闭" in tables["zh"]["close_guard_message"]
+    assert "без сохранения" in tables["ru"]["close_guard_message"]
+    # No table calls the restore point an "autosave".
+    for lang, table in tables.items():
+        for key in ("confirm_recover", "recover", "toast_recovered",
+                    "toast_discarded", "close_guard_message"):
+            assert "autosave" not in table[key].lower(), (lang, key)
 
 
 def test_app_installer_cancel_tokens():

@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "latex: compiles a document with pdflatex/xelatex (slow)",
+]

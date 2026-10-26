@@ -1,17 +1,20 @@
 """pywebview shell for CVLaTeX plus the local HTTP server that feeds the UI.
 
 `Api` methods are the JavaScript bridge (`window.pywebview.api.*`); the frozen
-bridge surface lives in docs/refactor-map.md. The local server (random
+bridge surface is pinned by tests/test_frontend.py and documented in
+docs/DEVELOPMENT.md. The local server (random
 127.0.0.1 port) serves `web/` at `/`, compiled PDFs at `/preview/` and uploaded
 media at `/media/`.
 """
 
 import base64
+import hmac
 import http.server
 import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import sys
 import threading
@@ -19,6 +22,7 @@ import time
 import uuid
 import webbrowser
 from pathlib import Path
+from urllib.parse import parse_qs, quote, urlsplit
 
 import webview
 
@@ -37,6 +41,18 @@ ROUTES = {
     "/style.css": os.path.join(WEB_DIR, "style.css"),
     "/i18n.js": os.path.join(WEB_DIR, "i18n.js"),
 }
+# Local HTTP server hardening: the app window is the only allowed client.
+# A per-session secret guards every route; the browser gets it once in the
+# window URL and then echoes it as a SameSite=Strict cookie for assets.
+SESSION_COOKIE = "cvlatex_session"
+TOKEN_PARAM = "token"
+# Flat media files the app itself drops in CACHE_DIR (foto/logo/recorte plus
+# uuid4().hex, and the cv_ prefix used by materialize_media()). Anything else
+# in the cache (build/, out/, backups) stays unreachable over HTTP.
+MEDIA_NAME_RE = re.compile(
+    r"^(?:foto|logo|recorte|cv)_[0-9a-f]{32}\.(?:png|jpg|jpeg)$", re.IGNORECASE
+)
+PDF_NAME_RE = re.compile(r"^[^/\\]+\.pdf$", re.IGNORECASE)
 
 
 def window_title(ui_language):
@@ -51,6 +67,11 @@ def window_title(ui_language):
     return "CVLaTeX — CV Editor"
 
 AUTOSAVE_FILE = "autosave.cvjson"
+# The restore point is written atomically: `<file>.tmp` is flushed and fsynced
+# in the same directory and then renamed over the primary, while the previous
+# good copy stays as `<file>.bak` for autosave_read() to fall back to.
+AUTOSAVE_TMP_FILE = AUTOSAVE_FILE + ".tmp"
+AUTOSAVE_BAK_FILE = AUTOSAVE_FILE + ".bak"
 CACHE_MAX_AGE_DAYS = 30
 MEDIA_EXTS = (".jpg", ".jpeg", ".png")
 MEDIA_FIELDS = ("photo", "photo_original", "photo_crop", "school_logo")
@@ -58,8 +79,27 @@ LOGO_FIELDS = ("work", "internships", "projects", "university_projects", "educat
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
+    # Per-session secret, set by _start_server() before the server accepts
+    # connections. Empty means "locked": every request is rejected.
+    TOKEN = ""
+    _set_session_cookie = False
+
     def log_message(self, fmt, *args):
         pass
+
+    def end_headers(self):
+        """Add the security headers to every response, including errors."""
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if self._set_session_cookie:
+            self.send_header(
+                "Set-Cookie",
+                "%s=%s; Path=/; HttpOnly; SameSite=Strict"
+                % (SESSION_COOKIE, self.TOKEN),
+            )
+        super().end_headers()
+        self._set_session_cookie = False
 
     def _serve(self, path):
         try:
@@ -74,15 +114,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(content)))
-            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(content)
         except (OSError, ConnectionError):
             pass
 
     def _request_path(self):
-        from urllib.parse import urlsplit
-
         return urlsplit(self.path).path
 
     def _no_content(self):
@@ -102,16 +139,59 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         self._serve(target)
 
+    def _serve_media(self, relative):
+        """Only flat app-created media files; build/out/tex stay unreachable."""
+        if not MEDIA_NAME_RE.fullmatch(relative):
+            self.send_error(404)
+            return
+        self._serve_within(prefs.CACHE_DIR, relative)
+
+    def _serve_preview(self, relative):
+        """Only flat PDFs produced by the compiler in BUILD_DIR."""
+        if not PDF_NAME_RE.fullmatch(relative):
+            self.send_error(404)
+            return
+        self._serve_within(prefs.BUILD_DIR, relative)
+
+    def _authorized(self):
+        """Host, Origin and session-token gate shared by every route."""
+        port = self.server.server_address[1]
+        expected = "127.0.0.1:%d" % port
+        if self.headers.get("Host") != expected:
+            return False
+        origin = self.headers.get("Origin")
+        if origin is not None and origin != "http://" + expected:
+            return False
+        token = self.TOKEN
+        if not token:
+            return False
+        supplied = parse_qs(urlsplit(self.path).query).get(TOKEN_PARAM, [""])[0]
+        expected_token = token.encode("utf-8")
+        if supplied and hmac.compare_digest(supplied.encode("utf-8"), expected_token):
+            self._set_session_cookie = True
+            return True
+        for piece in self.headers.get("Cookie", "").split(";"):
+            name, _, value = piece.strip().partition("=")
+            if name == SESSION_COOKIE and hmac.compare_digest(
+                value.encode("utf-8"), expected_token
+            ):
+                return True
+        return False
+
     def do_GET(self):
+        self._set_session_cookie = False
+        if not self._authorized():
+            self.send_error(403)
+            return
         path = self._request_path()
         if path in ("/", "/index.html"):
             self._serve(os.path.join(WEB_DIR, "index.html"))
         elif path in ROUTES:
             self._serve(ROUTES[path])
         elif path.startswith("/preview/"):
-            self._serve_within(prefs.BUILD_DIR, path[len("/preview/"):])
+            self._serve_preview(path[len("/preview/"):])
         elif path.startswith("/media/"):
-            self._serve_within(prefs.CACHE_DIR, path[len("/media/"):])
+            self._serve_media(path[len("/media/"):])
         elif path.startswith("/pdfjs/"):
             self._serve_within(os.path.join(WEB_DIR, "pdfjs"), path[len("/pdfjs/"):])
         elif path == "/favicon.ico":
@@ -460,6 +540,16 @@ class Api:
     # ----------------------------------------------------------- autosave
 
     def autosave(self, data):
+        """Write the restore point atomically and keep the previous one.
+
+        The JSON goes to `<file>.tmp` in APP_DIR, is flushed and fsynced, the
+        current good file is copied to `<file>.bak` and only then `os.replace`
+        promotes the tmp file. A crash mid-write therefore leaves either the
+        old primary or the old .bak readable, never a truncated file.
+        """
+        target = os.path.join(prefs.APP_DIR, AUTOSAVE_FILE)
+        tmp = os.path.join(prefs.APP_DIR, AUTOSAVE_TMP_FILE)
+        backup = os.path.join(prefs.APP_DIR, AUTOSAVE_BAK_FILE)
         try:
             os.makedirs(prefs.APP_DIR, exist_ok=True)
             content = {
@@ -467,23 +557,30 @@ class Api:
                 "data": data,
                 "media": collect_media(data, self._media_cache),
             }
-            with open(os.path.join(prefs.APP_DIR, AUTOSAVE_FILE), "w", encoding="utf-8") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(content, f, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.path.isfile(target):
+                try:
+                    shutil.copy2(target, backup)
+                except OSError:
+                    # Best-effort: a missing backup must not block the save.
+                    pass
+            os.replace(tmp, target)
             return {"ok": True}
         except Exception as e:
+            try:
+                if os.path.isfile(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
             return {"ok": False, "errores": [str(e)]}
 
-    def autosave_read(self):
-        """Return the autosave data ready for the form, or None.
-
-        Mirrors `open_cv`: migrates the data, materializes the embedded media
-        of a v2/v3 envelope into CACHE_DIR and fills the missing schema keys.
-        The frontend receives plain data, never the {version, data, media}
-        envelope. Never raises: a missing, corrupt or unusable file returns
-        None.
-        """
+    def _read_autosave_file(self, path):
+        """Plain data of one autosave file, or None. Never raises."""
         try:
-            with open(os.path.join(prefs.APP_DIR, AUTOSAVE_FILE), "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 content = json.load(f)
             if not isinstance(content, dict):
                 return None
@@ -506,11 +603,28 @@ class Api:
         except Exception:
             return None
 
+    def autosave_read(self):
+        """Return the restore point ready for the form, or None.
+
+        Tries `autosave.cvjson` first and falls back to `autosave.cvjson.bak`
+        when the primary is missing or corrupt. Mirrors `open_cv`: migrates
+        the data, materializes the embedded media of a v2/v3 envelope into
+        CACHE_DIR and fills the missing schema keys. The frontend receives
+        plain data, never the {version, data, media} envelope. Never raises.
+        """
+        for name in (AUTOSAVE_FILE, AUTOSAVE_BAK_FILE):
+            data = self._read_autosave_file(os.path.join(prefs.APP_DIR, name))
+            if data is not None:
+                return data
+        return None
+
     def autosave_clear(self):
+        """Delete the restore point: primary, .bak fallback and a stale .tmp."""
         try:
-            path = os.path.join(prefs.APP_DIR, AUTOSAVE_FILE)
-            if os.path.isfile(path):
-                os.remove(path)
+            for name in (AUTOSAVE_FILE, AUTOSAVE_BAK_FILE, AUTOSAVE_TMP_FILE):
+                path = os.path.join(prefs.APP_DIR, name)
+                if os.path.isfile(path):
+                    os.remove(path)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "errores": [str(e)]}
@@ -1349,10 +1463,12 @@ def purge_cache():
 
 def _start_server():
     os.makedirs(prefs.BUILD_DIR, exist_ok=True)
+    token = secrets.token_urlsafe(32)
+    Handler.TOKEN = token
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, port
+    return server, port, token
 
 
 def main():
@@ -1366,11 +1482,11 @@ def main():
     # its native save dialog.
     webview.settings["ALLOW_DOWNLOADS"] = True
     purge_cache()
-    server, port = _start_server()
+    server, port, token = _start_server()
     api = Api(None)
     win = webview.create_window(
         window_title(prefs.get("ui_language")),
-        url=f"http://127.0.0.1:{port}",
+        url="http://127.0.0.1:%d/?%s=%s" % (port, TOKEN_PARAM, quote(token, safe="")),
         js_api=api,
         width=1240,
         height=800,
