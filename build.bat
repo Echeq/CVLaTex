@@ -34,7 +34,7 @@ if errorlevel 1 goto :fail
 
 pyinstaller --noconfirm --onefile --windowed --name CVLaTeX ^
   --icon "%CD%\assets\CVLaTex.ico" ^
-  --version-file "build\windows_version.txt" ^
+  --version-file "%CD%\build\windows_version.txt" ^
   --distpath dist --workpath build\pyinstaller --specpath build ^
   --add-data "%CD%\build\stage\web;web" ^
   --add-data "%CD%\build\stage\templates;templates" ^
