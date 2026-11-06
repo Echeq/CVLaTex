@@ -262,7 +262,7 @@ def test_readme_documents_release_assets():
     assert "## Download" in readme
     assert "## Releases" in readme
     assert "## Installation" in readme
-    assert "v%s is the first public pre-release" % VERSION in readme
+    assert "v%s is the latest public pre-release" % VERSION in readme
 
     base = "https://github.com/Echeq/CVLaTex/releases/download/v%s/" % VERSION
     for asset in (
@@ -323,6 +323,9 @@ def test_build_scripts_stage_public_assets_and_package_archives():
         "PlistBuddy",
         "CFBundleShortVersionString",
         "CFBundleVersion",
+        "unset LD_LIBRARY_PATH",
+        "ModuleNotFoundError",
+        "cannot bootstrap its Python runtime",
     ):
         assert snippet in build_sh, snippet
 

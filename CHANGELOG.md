@@ -5,6 +5,47 @@ All notable changes to CVLaTeX are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-11-06
+
+Bug-fix release for the Linux bundle. v0.2.0 shipped a Linux executable that
+exited immediately with `ModuleNotFoundError: No module named '_struct'`; this
+release rebuilds it with a consistent Python installation and adds a bootstrap
+smoke test to the release pipelines.
+
+### Added
+
+- Linux bundle bootstrap smoke test in the build and release workflows: the
+  built executable is started once and the job fails if PyInstaller reports a
+  missing module or a NULL bootstrap module.
+
+### Changed
+
+- The Linux build now clears an ambient `LD_LIBRARY_PATH` before creating the
+  venv and running PyInstaller, so the standard library and the bundled
+  `libpython` come from the same Python installation.
+
+### Fixed
+
+- Linux releases no longer fail at startup with
+  `ModuleNotFoundError: No module named '_struct'` when CI's `setup-python`
+  exposes its own `libpython`. The distro Python has `_struct` built in, so
+  PyInstaller could omit it while bundling the action toolcache `libpython`.
+
+### Known limitations
+
+- The Windows and macOS bundles are **unsigned and not notarized**. Windows
+  SmartScreen and macOS Gatekeeper may warn or block the first launch; verify
+  the SHA-256 checksum before deciding to run them.
+- The Linux bundle needs WebKitGTK 4.1 and GObject introspection from the
+  distribution (`python3-gi`, `gir1.2-webkit2-4.1` on Debian/Ubuntu; the
+  `-dev` package is additionally required to build). Keep the executable bit.
+- PDF compile tests skip, rather than fail, when no `pdflatex`/`xelatex`
+  engine is installed; Word and `.tex` export and the schema/round-trip tests
+  always run.
+- Distribution is archive-based: a `.exe` on Windows, a bare executable on
+  Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer,
+  package repository, auto-updater or universal macOS binary.
+
 ## [0.2.0] - 2026-10-26
 
 Second release and the first public pre-release assembled by CI: v0.1.0 was a manual upload, while v0.2.0 is built and published from a `v0.2.0` tag. Every bundle carries all 12 templates, the web assets and the vendored PDF.js viewer.
@@ -105,5 +146,6 @@ with no account and no server.
   Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer,
   package repository, auto-updater or universal macOS binary.
 
+[0.2.1]: https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0

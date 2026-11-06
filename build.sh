@@ -23,6 +23,16 @@ PYTHON="${PYTHON:-python3}"
 PLATFORM="$(uname -s)"
 VENV_PY=".venv/bin/python"
 
+# Do not let an ambient LD_LIBRARY_PATH pick a different libpython than the
+# interpreter that creates the venv. GitHub's setup-python exports its toolcache
+# libpython, where _struct is an extension; the distro Python has _struct built
+# in. PyInstaller would then bundle the toolcache libpython with the distro
+# stdlib and the resulting binary dies at startup with
+# "ModuleNotFoundError: No module named '_struct'".
+if [ "$PLATFORM" != Darwin ]; then
+  unset LD_LIBRARY_PATH
+fi
+
 # PyInstaller must see the distro PyGObject (python3-gi / python-gobject) to
 # bundle the GTK backend. A plain venv hides it, so on Linux keep the build
 # venv linked to system site-packages and recreate an unusable one.
@@ -166,6 +176,16 @@ case "$PLATFORM" in
     fi
     mv -f dist/CVLaTeX dist/CVLaTeX_Linux
     chmod +x dist/CVLaTeX_Linux
+    # Catch a mixed-Python bundle before packaging. PyInstaller can produce a
+    # binary that dies in the bootstrap with "No module named '_struct'" when
+    # the stdlib and the bundled libpython come from different installations.
+    # Run headless so a healthy build exits instead of opening a window.
+    bootstrap_output="$(env -u DISPLAY -u WAYLAND_DISPLAY timeout 20 ./dist/CVLaTeX_Linux 2>&1 || true)"
+    if printf '%s\n' "$bootstrap_output" | grep -Eq "ModuleNotFoundError|Module object for .* is NULL"; then
+      printf '%s\n' "$bootstrap_output" >&2
+      echo "error: the Linux bundle cannot bootstrap its Python runtime" >&2
+      exit 1
+    fi
     "$VENV_PY" tools/package_release.py --platform linux --binary dist/CVLaTeX_Linux
     OUTPUT="dist/CVLaTeX-v${VERSION}-linux-x86_64.tar.gz (raw: dist/CVLaTeX_Linux)"
     ;;

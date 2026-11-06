@@ -10,12 +10,12 @@ These are the recommended downloads for most users: self-contained builds that n
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 | [CVLaTeX-v0.2.0-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-windows-x64.zip) |
-| macOS Apple Silicon (arm64) | [CVLaTeX-v0.2.0-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-macos-arm64.zip) |
-| Linux x86_64 | [CVLaTeX-v0.2.0-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/CVLaTeX-v0.2.0-linux-x86_64.tar.gz) |
-| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.2.0/SHA256SUMS.txt) |
+| Windows x64 | [CVLaTeX-v0.2.1-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-windows-x64.zip) |
+| macOS Apple Silicon (arm64) | [CVLaTeX-v0.2.1-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-macos-arm64.zip) |
+| Linux x86_64 | [CVLaTeX-v0.2.1-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-linux-x86_64.tar.gz) |
+| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/SHA256SUMS.txt) |
 
-All four files are attached to the [v0.2.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0). **v0.2.0 is the first public pre-release** and the first release assembled by CI; v0.1.0 was a manual upload. The macOS build is Apple Silicon only; Intel Macs are not supported in v0.2.0. All 12 templates, the web assets and the Linux PDF.js viewer ship inside every bundle.
+All four files are attached to the [v0.2.1 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1). **v0.2.1 is the latest public pre-release**, a Linux startup fix over v0.2.0 (the first public pre-release and the first release assembled by CI). The macOS build is Apple Silicon only; Intel Macs are not supported in v0.2.1. All 12 templates, the web assets and the Linux PDF.js viewer ship inside every bundle.
 
 ## Requirements
 
@@ -39,7 +39,7 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 
 1. Download and unzip; drag `CVLaTeX.app` to Applications (optional).
 2. Open it. If Gatekeeper blocks it, right-click the app → **Open**, or use **System Settings → Privacy & Security → Open Anyway**.
-3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.2.0.
+3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.2.1.
 4. Let the app install TinyTeX if you want PDF preview/export.
 
 ### Linux
@@ -48,7 +48,7 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 2. Extract and run:
 
    ```bash
-   tar -xzf CVLaTeX-v0.2.0-linux-x86_64.tar.gz
+   tar -xzf CVLaTeX-v0.2.1-linux-x86_64.tar.gz
    chmod +x CVLaTeX
    ./CVLaTeX
    ```
@@ -89,18 +89,18 @@ On Linux the `--system-site-packages` flag is required so the venv sees the dist
 
 ## Releases
 
-**v0.2.0 is the first public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.2.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0). Versions in the `0.*` series are published as GitHub pre-releases. (v0.1.0 was uploaded manually; v0.2.0 is the first archive set produced by the release workflow.)
+**v0.2.1 is the latest public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.2.1 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1). Versions in the `0.*` series are published as GitHub pre-releases. (v0.1.0 was uploaded manually; v0.2.0 was the first archive set produced by the release workflow. v0.2.1 fixes the Linux bundle startup failure caused by a mixed `libpython`.)
 
 | Platform | Architecture | Asset |
 | --- | --- | --- |
-| Windows | x64 | `CVLaTeX-v0.2.0-windows-x64.zip` (contains `CVLaTeX.exe`) |
-| Linux | x86_64 | `CVLaTeX-v0.2.0-linux-x86_64.tar.gz` (contains `CVLaTeX`) |
-| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.2.0-macos-arm64.zip` (contains `CVLaTeX.app`) |
+| Windows | x64 | `CVLaTeX-v0.2.1-windows-x64.zip` (contains `CVLaTeX.exe`) |
+| Linux | x86_64 | `CVLaTeX-v0.2.1-linux-x86_64.tar.gz` (contains `CVLaTeX`) |
+| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.2.1-macos-arm64.zip` (contains `CVLaTeX.app`) |
 | All platforms | — | `SHA256SUMS.txt` |
 
 GitHub's `macos-latest` runner currently builds natively on Apple Silicon, so
-the v0.2.0 macOS asset is named `CVLaTeX-v0.2.0-macos-arm64.zip`. No universal
-macOS binary and no Intel macOS build are produced for v0.2.0.
+the v0.2.1 macOS asset is named `CVLaTeX-v0.2.1-macos-arm64.zip`. No universal
+macOS binary and no Intel macOS build are produced for v0.2.1.
 
 Verify a download with the checksum manifest (Linux/macOS, with the downloaded
 files and `SHA256SUMS.txt` in the current directory):
@@ -228,7 +228,7 @@ node --check web/app.js
 node --check web/i18n.js
 ```
 
-Build the release archives with `./build.sh` on Linux/macOS or `build.bat` on Windows. Each script stages the public assets, runs PyInstaller and calls `tools/package_release.py`, producing `dist/CVLaTeX-v0.2.0-linux-x86_64.tar.gz`, `dist/CVLaTeX-v0.2.0-macos-arm64.zip` and `dist/CVLaTeX-v0.2.0-windows-x64.zip`. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` stay available for local runs.
+Build the release archives with `./build.sh` on Linux/macOS or `build.bat` on Windows. Each script stages the public assets, runs PyInstaller and calls `tools/package_release.py`, producing `dist/CVLaTeX-v0.2.1-linux-x86_64.tar.gz`, `dist/CVLaTeX-v0.2.1-macos-arm64.zip` and `dist/CVLaTeX-v0.2.1-windows-x64.zip`. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` stay available for local runs.
 
 Setup for all platforms, architecture, testing strategy and the guides for adding templates or data fields are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
