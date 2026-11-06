@@ -16,7 +16,7 @@ vendored PDF.js build and renders the compiled PDF to canvases inside that
 same iframe. The app is served from a `127.0.0.1` port and must work offline,
 so PDF.js cannot be loaded from a CDN: both files are shipped in this folder.
 
-`viewer.html` is CVLaTeX's own minimal wrapper (no PDF.js web viewer assets
+`viewer.html` is CVLaTex's own minimal wrapper (no PDF.js web viewer assets
 are used). It expects the worker next to it as `pdf.worker.min.js`.
 
 ## Updating

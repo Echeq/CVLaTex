@@ -1,9 +1,51 @@
 # Changelog
 
-All notable changes to CVLaTeX are documented in this file.
+All notable changes to CVLaTex are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.3.0] - 2026-11-06
+
+Product rename from CVLaTeX to CVLaTex. The GitHub repository was already named
+CVLaTex; this release aligns the application name, binaries, archives,
+documentation and per-user data directory with it.
+
+### Added
+
+- Automatic migration of the old per-user data directory (`CVLaTeX`) to
+  `CVLaTex` on first launch, preserving `prefs.json`, autosave, cache and the
+  TinyTeX installation.
+- `.tex` import keeps accepting the legacy `% CVLaTeX-DATA-BEGIN` /
+  `% CVLaTeX-DATA-END` markers, while new exports use the `CVLaTex` markers.
+
+### Changed
+
+- Product name, window titles, credits, documentation, generated `.tex`
+  comments and release assets now use `CVLaTex`.
+- Binaries and archives are now `CVLaTex`, `CVLaTex.exe`, `CVLaTex.app` and
+  `CVLaTex-v<version>-...`.
+- Version bumped to 0.3.0.
+
+### Fixed
+
+- Existing `.cvjson` projects, `.tex` files with either marker spelling,
+  preferences and TinyTeX installs keep working after the rename.
+
+### Known limitations
+
+- The Windows and macOS bundles are **unsigned and not notarized**. Windows
+  SmartScreen and macOS Gatekeeper may warn or block the first launch; verify
+  the SHA-256 checksum before deciding to run them.
+- The Linux bundle needs WebKitGTK 4.1 and GObject introspection from the
+  distribution (`python3-gi`, `gir1.2-webkit2-4.1` on Debian/Ubuntu; the
+  `-dev` package is additionally required to build). Keep the executable bit.
+- PDF compile tests skip, rather than fail, when no `pdflatex`/`xelatex`
+  engine is installed; Word and `.tex` export and the schema/round-trip tests
+  always run.
+- Distribution is archive-based: a `.exe` on Windows, a bare executable on
+  Linux and a `.zip` containing `CVLaTex.app` on macOS. There is no installer,
+  package repository, auto-updater or universal macOS binary.
 
 ## [0.2.1] - 2026-11-06
 
@@ -43,7 +85,7 @@ smoke test to the release pipelines.
   engine is installed; Word and `.tex` export and the schema/round-trip tests
   always run.
 - Distribution is archive-based: a `.exe` on Windows, a bare executable on
-  Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer,
+  Linux and a `.zip` containing `CVLaTex.app` on macOS. There is no installer,
   package repository, auto-updater or universal macOS binary.
 
 ## [0.2.0] - 2026-10-26
@@ -69,19 +111,19 @@ Second release and the first public pre-release assembled by CI: v0.1.0 was a ma
 ### Fixed
 
 - Release builds no longer bundle the author's reference CV (`templates/chinese/Elvis Chen CV.docx`) or `templates/picture samples/`; the staging step copies template `.tex` files explicitly.
-- The Windows deployment is a `.zip` containing `CVLaTeX.exe`, the Linux one is a `.tar.gz` containing the executable with its mode preserved, and the macOS one is a `.zip` containing `CVLaTeX.app`.
+- The Windows deployment is a `.zip` containing `CVLaTex.exe`, the Linux one is a `.tar.gz` containing the executable with its mode preserved, and the macOS one is a `.zip` containing `CVLaTex.app`.
 
 ### Known limitations
 
 - The Windows and macOS bundles are **unsigned and not notarized**. Windows SmartScreen and macOS Gatekeeper may warn or block the first launch; verify the SHA-256 checksum before deciding to run them. Code signing and notarization are deferred to a later release.
 - The Linux bundle needs WebKitGTK 4.1 and GObject introspection from the distribution (`python3-gi`, `gir1.2-webkit2-4.1` on Debian/Ubuntu; the `-dev` package is additionally required to build). Keep the executable bit.
 - PDF compile tests skip, rather than fail, when no `pdflatex`/`xelatex` engine is installed; Word and `.tex` export and the schema/round-trip tests always run.
-- Distribution is archive-based: a `.zip` containing `CVLaTeX.exe` on Windows, a `.tar.gz` containing a bare executable on Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer, package repository, auto-updater or universal macOS binary.
+- Distribution is archive-based: a `.zip` containing `CVLaTex.exe` on Windows, a `.tar.gz` containing a bare executable on Linux and a `.zip` containing `CVLaTex.app` on macOS. There is no installer, package repository, auto-updater or universal macOS binary.
 - Word export approximates the PDF instead of reproducing it pixel for pixel. Its shapes use no DrawingML or VML and nothing is rotated, so the Sword blade tip and the Blue ribbon wing are stair-stepped; the Sidebar bar starts at the top margin (not the paper edge) and continues on later pages, while the PDF draws it on page 1 only. Cambria, Calibri and Microsoft YaHei are requested explicitly and are substituted when the machine lacks them.
 
 ## [0.1.0] - 2026-10-22
 
-First public pre-release. CVLaTeX is a cross-platform desktop CV editor for
+First public pre-release. CVLaTex is a cross-platform desktop CV editor for
 Windows, Linux and macOS: a local form, LaTeX templates and a compiled preview,
 with no account and no server.
 
@@ -100,7 +142,7 @@ with no account and no server.
 - PDF export with `pdflatex`/`xelatex`; Word (`.docx`) export with python-docx
   and LaTeX (`.tex`) export with an embedded data block, both without a LaTeX
   engine.
-- LaTeX import from CVLaTeX-generated `.tex` files; foreign files are rejected
+- LaTeX import from CVLaTex-generated `.tex` files; foreign files are rejected
   instead of parsed heuristically.
 - `.cvjson` v3 project files with embedded photo and logos; v1/v2 files are
   migrated after writing a `.v2.bak` backup.
@@ -143,9 +185,10 @@ with no account and no server.
   is installed; Word and `.tex` export and the schema/round-trip tests always
   run.
 - Distribution is archive-based: a `.exe` on Windows, a bare executable on
-  Linux and a `.zip` containing `CVLaTeX.app` on macOS. There is no installer,
+  Linux and a `.zip` containing `CVLaTex.app` on macOS. There is no installer,
   package repository, auto-updater or universal macOS binary.
 
+[0.3.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.3.0
 [0.2.1]: https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Echeq/CVLaTex/releases/tag/v0.1.0

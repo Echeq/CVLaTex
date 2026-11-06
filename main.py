@@ -1,4 +1,4 @@
-"""pywebview shell for CVLaTeX plus the local HTTP server that feeds the UI.
+"""pywebview shell for CVLaTex plus the local HTTP server that feeds the UI.
 
 `Api` methods are the JavaScript bridge (`window.pywebview.api.*`); the frozen
 bridge surface is pinned by tests/test_frontend.py and documented in
@@ -59,12 +59,12 @@ def window_title(ui_language):
     """Native window title for the given UI language (English by default)."""
     language = str(ui_language or "").strip().lower()
     if language == "es":
-        return "CVLaTeX — Editor de CV"
+        return "CVLaTex — Editor de CV"
     if language == "zh":
-        return "CVLaTeX — 简历编辑器"
+        return "CVLaTex — 简历编辑器"
     if language == "ru":
-        return "CVLaTeX — Редактор резюме"
-    return "CVLaTeX — CV Editor"
+        return "CVLaTex — Редактор резюме"
+    return "CVLaTex — CV Editor"
 
 AUTOSAVE_FILE = "autosave.cvjson"
 # The restore point is written atomically: `<file>.tmp` is flushed and fsynced
@@ -503,7 +503,7 @@ class Api:
                 suggested = "mi_cv.cvjson"
                 if data.get("name"):
                     suggested = "%s.cvjson" % data["name"].strip().replace(" ", "_")
-                target = self.choose_file(("CVLaTeX (*.cvjson)",), True, suggested)
+                target = self.choose_file(("CVLaTex (*.cvjson)",), True, suggested)
                 if not target:
                     return {"ok": False, "cancelado": True}
             content = {
@@ -518,7 +518,7 @@ class Api:
             return {"ok": False, "errores": [str(e)]}
 
     def open_cv(self):
-        path = self.choose_file(("CVLaTeX (*.cvjson)",), False, None)
+        path = self.choose_file(("CVLaTex (*.cvjson)",), False, None)
         if not path:
             return {"ok": False, "cancelado": True}
         try:
@@ -641,7 +641,7 @@ class Api:
             try:
                 data = tex_datos.extract(tex)
             except tex_datos.MissingDataBlock:
-                if "CVLaTeX" in tex:
+                if "CVLaTex" in tex or "CVLaTeX" in tex:
                     msg = messages.t("import_no_data")
                 else:
                     msg = messages.t("import_incompatible")
@@ -1472,6 +1472,7 @@ def _start_server():
 
 
 def main():
+    prefs.migrate_legacy_app_dir()
     if getattr(sys, "frozen", False):
         import multiprocessing
 

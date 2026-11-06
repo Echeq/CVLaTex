@@ -2,9 +2,9 @@
 # native release archives and upload them as workflow artifacts.
 #
 # Artifacts:
-#   CVLaTeX-v<version>-windows-x64.zip
-#   CVLaTeX-v<version>-linux-x86_64.tar.gz
-#   CVLaTeX-v<version>-macos-arm64.zip
+#   CVLaTex-v<version>-windows-x64.zip
+#   CVLaTex-v<version>-linux-x86_64.tar.gz
+#   CVLaTex-v<version>-macos-arm64.zip
 #
 # This workflow never publishes a release; tagged releases are handled by
 # release.yml. Pushes are restricted to branches so a v* tag only triggers the
@@ -56,14 +56,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: CVLaTeX-windows-x64
-            path: dist/CVLaTeX-v*-windows-x64.zip
+            artifact: CVLaTex-windows-x64
+            path: dist/CVLaTex-v*-windows-x64.zip
           - os: ubuntu-latest
-            artifact: CVLaTeX-linux-x86_64
-            path: dist/CVLaTeX-v*-linux-x86_64.tar.gz
+            artifact: CVLaTex-linux-x86_64
+            path: dist/CVLaTex-v*-linux-x86_64.tar.gz
           - os: macos-latest
-            artifact: CVLaTeX-macos-arm64
-            path: dist/CVLaTeX-v*-macos-arm64.zip
+            artifact: CVLaTex-macos-arm64
+            path: dist/CVLaTex-v*-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

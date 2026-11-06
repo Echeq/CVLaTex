@@ -1,4 +1,4 @@
-# CVLaTeX
+# CVLaTex
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -10,12 +10,12 @@ These are the recommended downloads for most users: self-contained builds that n
 
 | Platform | Download |
 | --- | --- |
-| Windows x64 | [CVLaTeX-v0.2.1-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-windows-x64.zip) |
-| macOS Apple Silicon (arm64) | [CVLaTeX-v0.2.1-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-macos-arm64.zip) |
-| Linux x86_64 | [CVLaTeX-v0.2.1-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/CVLaTeX-v0.2.1-linux-x86_64.tar.gz) |
-| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.2.1/SHA256SUMS.txt) |
+| Windows x64 | [CVLaTex-v0.3.0-windows-x64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.3.0/CVLaTex-v0.3.0-windows-x64.zip) |
+| macOS Apple Silicon (arm64) | [CVLaTex-v0.3.0-macos-arm64.zip](https://github.com/Echeq/CVLaTex/releases/download/v0.3.0/CVLaTex-v0.3.0-macos-arm64.zip) |
+| Linux x86_64 | [CVLaTex-v0.3.0-linux-x86_64.tar.gz](https://github.com/Echeq/CVLaTex/releases/download/v0.3.0/CVLaTex-v0.3.0-linux-x86_64.tar.gz) |
+| Checksums | [SHA256SUMS.txt](https://github.com/Echeq/CVLaTex/releases/download/v0.3.0/SHA256SUMS.txt) |
 
-All four files are attached to the [v0.2.1 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1). **v0.2.1 is the latest public pre-release**, a Linux startup fix over v0.2.0 (the first public pre-release and the first release assembled by CI). The macOS build is Apple Silicon only; Intel Macs are not supported in v0.2.1. All 12 templates, the web assets and the Linux PDF.js viewer ship inside every bundle.
+All four files are attached to the [v0.3.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.3.0). **v0.3.0 is the latest public pre-release**, the CVLaTeX → CVLaTex rename release; v0.2.1 was the Linux startup fix and v0.2.0 the first public pre-release assembled by CI. The macOS build is Apple Silicon only; Intel Macs are not supported in v0.3.0. All 12 templates, the web assets and the Linux PDF.js viewer ship inside every bundle.
 
 ## Requirements
 
@@ -30,16 +30,16 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 ### Windows
 
 1. Download and extract the `.zip`.
-2. Run `CVLaTeX.exe`.
+2. Run `CVLaTex.exe`.
 3. Windows SmartScreen will warn because the build is unsigned: click **More info → Run anyway**.
 4. WebView2 is required and normally preinstalled on Windows 10/11; if missing, install the [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
 5. On first run, let the app install TinyTeX if you want PDF preview/export.
 
 ### macOS
 
-1. Download and unzip; drag `CVLaTeX.app` to Applications (optional).
+1. Download and unzip; drag `CVLaTex.app` to Applications (optional).
 2. Open it. If Gatekeeper blocks it, right-click the app → **Open**, or use **System Settings → Privacy & Security → Open Anyway**.
-3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.2.1.
+3. This build is **Apple Silicon (arm64) only**; Intel Macs are not supported in v0.3.0.
 4. Let the app install TinyTeX if you want PDF preview/export.
 
 ### Linux
@@ -48,9 +48,9 @@ For most users: download the archive above, extract it, and run the app. No Pyth
 2. Extract and run:
 
    ```bash
-   tar -xzf CVLaTeX-v0.2.1-linux-x86_64.tar.gz
-   chmod +x CVLaTeX
-   ./CVLaTeX
+   tar -xzf CVLaTex-v0.3.0-linux-x86_64.tar.gz
+   chmod +x CVLaTex
+   ./CVLaTex
    ```
 
 3. `libwebkit2gtk-4.1-dev` is build-only and not needed to run.
@@ -89,18 +89,18 @@ On Linux the `--system-site-packages` flag is required so the venv sees the dist
 
 ## Releases
 
-**v0.2.1 is the latest public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.2.1 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.2.1). Versions in the `0.*` series are published as GitHub pre-releases. (v0.1.0 was uploaded manually; v0.2.0 was the first archive set produced by the release workflow. v0.2.1 fixes the Linux bundle startup failure caused by a mixed `libpython`.)
+**v0.3.0 is the latest public pre-release.** The direct downloads are in [Download](#download) and the same files are attached to the [v0.3.0 release](https://github.com/Echeq/CVLaTex/releases/tag/v0.3.0). Versions in the `0.*` series are published as GitHub pre-releases. (v0.1.0 was uploaded manually; v0.2.0 was the first archive set produced by the release workflow; v0.2.1 fixed the Linux bundle startup failure; v0.3.0 renames the product to CVLaTex.)
 
 | Platform | Architecture | Asset |
 | --- | --- | --- |
-| Windows | x64 | `CVLaTeX-v0.2.1-windows-x64.zip` (contains `CVLaTeX.exe`) |
-| Linux | x86_64 | `CVLaTeX-v0.2.1-linux-x86_64.tar.gz` (contains `CVLaTeX`) |
-| macOS | Apple Silicon (arm64) | `CVLaTeX-v0.2.1-macos-arm64.zip` (contains `CVLaTeX.app`) |
+| Windows | x64 | `CVLaTex-v0.3.0-windows-x64.zip` (contains `CVLaTex.exe`) |
+| Linux | x86_64 | `CVLaTex-v0.3.0-linux-x86_64.tar.gz` (contains `CVLaTex`) |
+| macOS | Apple Silicon (arm64) | `CVLaTex-v0.3.0-macos-arm64.zip` (contains `CVLaTex.app`) |
 | All platforms | — | `SHA256SUMS.txt` |
 
 GitHub's `macos-latest` runner currently builds natively on Apple Silicon, so
-the v0.2.1 macOS asset is named `CVLaTeX-v0.2.1-macos-arm64.zip`. No universal
-macOS binary and no Intel macOS build are produced for v0.2.1.
+the v0.3.0 macOS asset is named `CVLaTex-v0.3.0-macos-arm64.zip`. No universal
+macOS binary and no Intel macOS build are produced for v0.3.0.
 
 Verify a download with the checksum manifest (Linux/macOS, with the downloaded
 files and `SHA256SUMS.txt` in the current directory):
@@ -167,7 +167,7 @@ Each block is anchored to the start, after a section, or to the end, and can be 
 
 ### UI language and document language
 
-- **UI language** applies to the interface. On first launch CVLaTeX asks for it (English preselected) before the LaTeX setup wizard; the choice is stored in the preferences and applied instantly, including the window title. `File → Settings → Interface language` offers English (default), Español, 中文 and Русский and can change it later.
+- **UI language** applies to the interface. On first launch CVLaTex asks for it (English preselected) before the LaTeX setup wizard; the choice is stored in the preferences and applied instantly, including the window title. `File → Settings → Interface language` offers English (default), Español, 中文 and Русский and can change it later.
 - **Document language** is the per-CV `CV label language` field (Spanish, English or Chinese; no Russian option). It selects the labels, fonts and engine used to render the CV. A new CV defaults to the UI language (English when the UI is Russian); the value is then saved with the document, so saved CVs keep their language and do not follow later UI changes.
 
 ### Export, import and save
@@ -175,9 +175,9 @@ Each block is anchored to the start, after a section, or to the end, and can be 
 - `File → Export → PDF…` compiles the document (requires a LaTeX engine).
 - `File → Export → LaTeX…` writes the generated `.tex` with the data block embedded as comments.
 - `File → Export → Word (.docx)…` writes a `.docx` with python-docx (no LaTeX needed) that follows the selected template instead of one generic layout: the header composition, section-heading shape, entry lines (right-tabbed date/title lines in the Latin templates, three-column entries in the Chinese-style ones), bullet markers and separators are reproduced with the template palette, and Preferences override its colors. The Latin templates also honour the 1–3 columns of the five entry-list sections; the Chinese-style templates keep their three-column entries and ignore that setting, as in the PDF.
-- `File → Import LaTeX (.tex)…` rebuilds the form from the data block embedded in a CVLaTeX `.tex`; files without it are rejected with an alert.
+- `File → Import LaTeX (.tex)…` rebuilds the form from the data block embedded in a CVLaTex `.tex`; files without it are rejected with an alert.
 - `File → Save…` / `File → Open…` use the `.cvjson` project format: version 3 stores the data plus the photo and logos embedded in base64. v1/v2 files are accepted and migrated (a backup copy with the `.v2.bak` suffix is written first, never clobbering an existing one).
-- Autosave writes unsaved changes to the app data directory (`%LOCALAPPDATA%\CVLaTeX` on Windows, `~/Library/Application Support/CVLaTeX` on macOS, `$XDG_DATA_HOME/CVLaTeX` or `~/.local/share/CVLaTeX` on Linux); on the next start CVLaTeX offers to recover it only if it differs from an empty CV. Closing the window with unsaved changes opens a guard with Save / Exit without saving / Cancel; Save writes to the current `.cvjson` (and asks for a path when the CV has none yet).
+- Autosave writes unsaved changes to the app data directory (`%LOCALAPPDATA%\CVLaTex` on Windows, `~/Library/Application Support/CVLaTex` on macOS, `$XDG_DATA_HOME/CVLaTex` or `~/.local/share/CVLaTex` on Linux); on the next start CVLaTex offers to recover it only if it differs from an empty CV. Closing the window with unsaved changes opens a guard with Save / Exit without saving / Cancel; Save writes to the current `.cvjson` (and asks for a path when the CV has none yet).
 
 The Word layout is an approximation built from WordprocessingML primitives, not a pixel copy of the PDF. Shapes are built from shading and borders rather than DrawingML or VML, and nothing is rotated, so the slanted ornaments (the Sword blade tip, the Blue ribbon wing) are drawn as stair-stepped bars. The Sidebar bar starts at the top margin instead of the paper edge and continues on later pages, while the PDF draws that bar on page 1 only; on the last page it ends with the content. Fonts are written explicitly (Cambria, Calibri for Playful, Microsoft YaHei for CJK), so a machine without them gets the system substitution. Word's line breaking and pagination differ from TeX, and free-block columns stay single-column.
 
@@ -206,7 +206,7 @@ On first run, after the interface-language picker, the setup wizard offers to do
 - **Linux: the app does not start / no webview**: install the WebKitGTK/gir runtime packages from [Requirements](#requirements) (`python3-gi`, `gir1.2-webkit2-4.1`; add the build-only `libwebkit2gtk-4.1-dev` package only if you are building a bundle).
 - **Linux bundle exits with `You must have either QT or GTK...` or `No module named 'gi'`**: the build machine's venv could not see the distro PyGObject, so the bundle shipped without the GTK backend. Install the system packages from [Requirements](#requirements) and rebuild with `./build.sh`; it recreates the venv with `--system-site-packages` so PyInstaller can import `gi`.
 - **Missing LaTeX package**: the errors shown under the preview name the problem; install the package with your TeX distribution's manager or re-run the TinyTeX installer.
-- **A `.tex` file is rejected on import**: only files generated or exported by CVLaTeX can be imported, because they carry the embedded data block. Foreign LaTeX files are not parsed heuristically.
+- **A `.tex` file is rejected on import**: only files generated or exported by CVLaTex can be imported, because they carry the embedded data block. Foreign LaTeX files are not parsed heuristically.
 - **Saving from the embedded PDF viewer does nothing**: downloads are enabled in the WebView so the viewer's save button opens the native dialog; if it still fails, use `File → Export → PDF…`.
 - **Building on Windows cannot replace the executable**: close the running app first; Windows locks the executable while it runs.
 - **A bundle built on one OS does not run on another**: bundles are per-platform; build natively or use the CI artifacts.
@@ -228,7 +228,7 @@ node --check web/app.js
 node --check web/i18n.js
 ```
 
-Build the release archives with `./build.sh` on Linux/macOS or `build.bat` on Windows. Each script stages the public assets, runs PyInstaller and calls `tools/package_release.py`, producing `dist/CVLaTeX-v0.2.1-linux-x86_64.tar.gz`, `dist/CVLaTeX-v0.2.1-macos-arm64.zip` and `dist/CVLaTeX-v0.2.1-windows-x64.zip`. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` stay available for local runs.
+Build the release archives with `./build.sh` on Linux/macOS or `build.bat` on Windows. Each script stages the public assets, runs PyInstaller and calls `tools/package_release.py`, producing `dist/CVLaTex-v0.3.0-linux-x86_64.tar.gz`, `dist/CVLaTex-v0.3.0-macos-arm64.zip` and `dist/CVLaTex-v0.3.0-windows-x64.zip`. The raw `dist/CVLaTex_Linux`, `dist/CVLaTex.app` and `dist/CVLaTex.exe` stay available for local runs.
 
 Setup for all platforms, architecture, testing strategy and the guides for adding templates or data fields are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

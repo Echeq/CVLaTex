@@ -11,7 +11,7 @@ __pycache__/
 # PyInstaller artifacts (the exe is published as a release asset, not committed)
 build/
 dist/
-CVLaTeX.spec
+CVLaTex.spec
 
 # Runtime caches and logs
 cache/

@@ -349,13 +349,13 @@ def test_messages_tables_cover_every_key_and_fall_back_to_english(prefs_tmp):
 
 
 def test_window_title_languages(prefs_tmp):
-    assert main.window_title("es") == "CVLaTeX — Editor de CV"
-    assert main.window_title("en") == "CVLaTeX — CV Editor"
-    assert main.window_title("zh") == "CVLaTeX — 简历编辑器"
-    assert main.window_title("ru") == "CVLaTeX — Редактор резюме"
+    assert main.window_title("es") == "CVLaTex — Editor de CV"
+    assert main.window_title("en") == "CVLaTex — CV Editor"
+    assert main.window_title("zh") == "CVLaTex — 简历编辑器"
+    assert main.window_title("ru") == "CVLaTex — Редактор резюме"
     # An unknown or missing language falls back to English (the default).
-    assert main.window_title(None) == "CVLaTeX — CV Editor"
-    assert main.window_title("fr") == "CVLaTeX — CV Editor"
+    assert main.window_title(None) == "CVLaTex — CV Editor"
+    assert main.window_title("fr") == "CVLaTex — CV Editor"
 
 
 def test_prefs_ui_language_defaults_to_english(prefs_tmp, monkeypatch):

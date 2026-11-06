@@ -141,6 +141,29 @@ def test_build_tex_sin_marcadores_y_roundtrip(plantilla, idioma, prefs_tmp):
     assert tex_datos.extract(tex) == datos
 
 
+def test_extract_accepts_legacy_cvlatex_markers():
+    data = {"name": "Ana", "template": "classic"}
+    block = tex_datos.data_block(data).replace(
+        tex_datos.MARK_START, tex_datos.LEGACY_MARK_START
+    ).replace(tex_datos.MARK_END, tex_datos.LEGACY_MARK_END)
+    tex = block + "\\documentclass{article}\n\\begin{document}\n\\end{document}\n"
+
+    assert tex_datos.extract(tex) == data
+
+
+def test_embed_replaces_legacy_block_with_the_new_markers():
+    old = {"name": "Ana"}
+    block = tex_datos.data_block(old).replace(
+        tex_datos.MARK_START, tex_datos.LEGACY_MARK_START
+    ).replace(tex_datos.MARK_END, tex_datos.LEGACY_MARK_END)
+    tex = block + "\\documentclass{article}\n\\begin{document}\n\\end{document}\n"
+
+    updated = tex_datos.embed(tex, {"name": "Bea"})
+    assert tex_datos.MARK_START in updated
+    assert tex_datos.LEGACY_MARK_START not in updated
+    assert tex_datos.extract(updated) == {"name": "Bea"}
+
+
 @pytest.mark.latex
 @pytest.mark.skipif(MOTOR_PDF is None, reason="Sin motor LaTeX (pdflatex) instalado")
 @pytest.mark.parametrize("plantilla", TEMPLATES)

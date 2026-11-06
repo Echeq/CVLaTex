@@ -23,11 +23,11 @@ MSG_PLANTILLA_AJENA = (
     "Se recomienda buscar otra plantilla."
 )
 MSG_SIN_BLOQUE = (
-    "Este .tex fue generado por una versión anterior de CVLaTeX sin datos incrustados: "
+    "Este .tex fue generado por una versión anterior de CVLaTex sin datos incrustados: "
     "no se puede reimportar. Vuelve a generarlo con la versión actual."
 )
 MSG_BLOQUE_DANADO = (
-    "El bloque de datos de CVLaTeX está dañado y no se puede reimportar."
+    "El bloque de datos de CVLaTex está dañado y no se puede reimportar."
 )
 
 
@@ -64,7 +64,7 @@ def test_import_tex_antiguo_sin_bloque(prefs_tmp, monkeypatch):
     prefs.set("ui_language", "es")
     ruta = prefs_tmp / "antiguo.tex"
     ruta.write_text(
-        "% Documento generado por CVLaTeX (version antigua)\n"
+        "% Documento generado por CVLaTex (version antigua)\n"
         "\\documentclass{article}\n"
         "\\begin{document}\n"
         "Sin bloque de datos\n"
@@ -80,9 +80,9 @@ def test_import_tex_bloque_danado(prefs_tmp, monkeypatch):
     prefs.set("ui_language", "es")
     ruta = prefs_tmp / "danado.tex"
     ruta.write_text(
-        "% CVLaTeX-DATA-BEGIN\n"
+        "% CVLaTex-DATA-BEGIN\n"
         "% esto-no-es-base64-valido!!!\n"
-        "% CVLaTeX-DATA-END\n"
+        "% CVLaTex-DATA-END\n"
         "\\documentclass{article}\n"
         "\\begin{document}\n"
         "Documento con bloque corrupto\n"

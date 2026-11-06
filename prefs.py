@@ -1,8 +1,8 @@
 """User preferences in the per-OS application data directory.
 
-Windows keeps %LOCALAPPDATA%\\CVLaTeX\\prefs.json; macOS uses
-~/Library/Application Support/CVLaTeX and other systems follow the XDG base
-directory spec ($XDG_DATA_HOME or ~/.local/share) + /CVLaTeX.
+Windows keeps %LOCALAPPDATA%\\CVLaTex\\prefs.json; macOS uses
+~/Library/Application Support/CVLaTex and other systems follow the XDG base
+directory spec ($XDG_DATA_HOME or ~/.local/share) + /CVLaTex.
 
 Las claves son inglesas desde la migracion: paper, margins, font_size,
 auto_compile, breakpoint, latex_path, setup_dismissed, theme, colors, split,
@@ -16,9 +16,12 @@ import os
 import shutil
 import sys
 
+APP_NAME = "CVLaTex"
+LEGACY_APP_NAME = "CVLaTeX"
 
-def _app_dir_for(platform=None, env=None, home=None):
-    """Application data directory (with the CVLaTeX subfolder) for a platform.
+
+def _app_dir_for(platform=None, env=None, home=None, app_name=APP_NAME):
+    """Application data directory (with the CVLaTex subfolder) for a platform.
 
     Pure function so the per-OS paths are unit-testable: `platform` defaults
     to `sys.platform`, `env` to `os.environ` and `home` to the user home.
@@ -32,7 +35,32 @@ def _app_dir_for(platform=None, env=None, home=None):
         base = os.path.join(home, "Library", "Application Support")
     else:
         base = env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
-    return os.path.join(base, "CVLaTeX")
+    return os.path.join(base, app_name)
+
+
+def legacy_app_dir(app_dir=None):
+    """Return the pre-0.3.0 CVLaTeX data directory next to the current one."""
+    current = APP_DIR if app_dir is None else app_dir
+    return os.path.join(os.path.dirname(current), LEGACY_APP_NAME)
+
+
+def migrate_legacy_app_dir():
+    """Move the old CVLaTeX data directory to CVLaTex once.
+
+    Returns True when the legacy directory was moved. Does nothing when the
+    new directory already exists or there is no legacy directory to move.
+    """
+    legacy = legacy_app_dir()
+    if os.path.abspath(legacy) == os.path.abspath(APP_DIR):
+        return False
+    if os.path.exists(APP_DIR) or not os.path.isdir(legacy):
+        return False
+    try:
+        os.makedirs(os.path.dirname(APP_DIR), exist_ok=True)
+        shutil.move(legacy, APP_DIR)
+        return True
+    except OSError:
+        return False
 
 
 APP_DIR = _app_dir_for()

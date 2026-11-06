@@ -1,12 +1,12 @@
 @echo off
-rem Build CVLaTeX on Windows.
+rem Build CVLaTex on Windows.
 rem
 rem Creates/reuses .venv, stages only the public runtime assets
 rem (web\ + the 12 template .tex files) under build\stage, generates a Windows
 rem version resource from version.py and runs PyInstaller against the staged
 rem tree. The release archive is produced by tools\package_release.py:
-rem   dist\CVLaTeX-v<version>-windows-x64.zip (contains CVLaTeX.exe)
-rem The raw dist\CVLaTeX.exe stays available for local runs.
+rem   dist\CVLaTex-v<version>-windows-x64.zip (contains CVLaTex.exe)
+rem The raw dist\CVLaTex.exe stays available for local runs.
 setlocal
 cd /d "%~dp0"
 
@@ -32,7 +32,7 @@ if errorlevel 1 goto :fail
 python tools\windows_version.py --out build\windows_version.txt
 if errorlevel 1 goto :fail
 
-pyinstaller --noconfirm --onefile --windowed --name CVLaTeX ^
+pyinstaller --noconfirm --onefile --windowed --name CVLaTex ^
   --icon "%CD%\assets\CVLaTex.ico" ^
   --version-file "%CD%\build\windows_version.txt" ^
   --distpath dist --workpath build\pyinstaller --specpath build ^
@@ -42,20 +42,20 @@ pyinstaller --noconfirm --onefile --windowed --name CVLaTeX ^
   "%CD%\main.py"
 if errorlevel 1 goto :fail
 
-if not exist "dist\CVLaTeX.exe" (
-  echo Error: PyInstaller did not create dist\CVLaTeX.exe 1>&2
+if not exist "dist\CVLaTex.exe" (
+  echo Error: PyInstaller did not create dist\CVLaTex.exe 1>&2
   goto :fail
 )
 
-python tools\package_release.py --platform windows --binary "dist\CVLaTeX.exe"
+python tools\package_release.py --platform windows --binary "dist\CVLaTex.exe"
 if errorlevel 1 goto :fail
 
 echo.
-echo Done: versioned Windows archive in dist\ (raw binary: dist\CVLaTeX.exe)
+echo Done: versioned Windows archive in dist\ (raw binary: dist\CVLaTex.exe)
 if /I not "%CI%"=="true" pause
 exit /b 0
 
 :fail
-echo Error: CVLaTeX build failed 1>&2
+echo Error: CVLaTex build failed 1>&2
 if /I not "%CI%"=="true" pause
 exit /b 1

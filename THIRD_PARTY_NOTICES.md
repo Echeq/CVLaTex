@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-CVLaTeX is distributed under the MIT license (see [LICENSE](LICENSE)). It
+CVLaTex is distributed under the MIT license (see [LICENSE](LICENSE)). It
 bundles or depends on the third-party components below. Their licenses apply
 to their respective code; this file summarizes provenance and does not replace
 the upstream license texts. Where a license could not be verified locally, the
@@ -16,7 +16,7 @@ upstream project is linked instead of guessing.
 - **Release:** <https://github.com/mozilla/pdf.js/releases/tag/v3.11.174>
 
 `web/pdfjs/pdf.min.js` and `web/pdfjs/pdf.worker.min.js` are unmodified build
-artifacts of the `pdfjs-dist` 3.11.174 npm package. CVLaTeX's
+artifacts of the `pdfjs-dist` 3.11.174 npm package. CVLaTex's
 `web/pdfjs/viewer.html` is its own minimal wrapper.
 
 ## Python dependencies
@@ -87,7 +87,7 @@ WKWebView (both supplied by the operating system).
 
 ### TinyTeX
 
-- **Shipped with CVLaTeX:** No. The app downloads and installs TinyTeX into the
+- **Shipped with CVLaTex:** No. The app downloads and installs TinyTeX into the
   user's application data directory only when the user accepts the setup
   wizard.
 - **Licensing:** TinyTeX is a distribution of TeX Live; its components carry

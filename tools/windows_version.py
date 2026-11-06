@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write a PyInstaller Windows version resource for CVLaTeX.
+"""Write a PyInstaller Windows version resource for CVLaTex.
 
 PyInstaller's ``--version-file`` expects a Python literal using
 ``VSVersionInfo``/``FixedFileInfo``/``StringFileInfo``/``VarFileInfo``. This
@@ -51,12 +51,12 @@ VSVersionInfo(
           '040904B0',
           [
             StringStruct('CompanyName', 'Echeq'),
-            StringStruct('FileDescription', 'CVLaTeX'),
+            StringStruct('FileDescription', 'CVLaTex'),
             StringStruct('FileVersion', '%(file_version)s'),
-            StringStruct('InternalName', 'CVLaTeX'),
+            StringStruct('InternalName', 'CVLaTex'),
             StringStruct('LegalCopyright', 'MIT License'),
-            StringStruct('OriginalFilename', 'CVLaTeX.exe'),
-            StringStruct('ProductName', 'CVLaTeX'),
+            StringStruct('OriginalFilename', 'CVLaTex.exe'),
+            StringStruct('ProductName', 'CVLaTex'),
             StringStruct('ProductVersion', '%(file_version)s')
           ]
         )
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print("error: %s" % exc, file=sys.stderr)
         return 1
-    print("Wrote %s for CVLaTeX %s" % (destination, version))
+    print("Wrote %s for CVLaTex %s" % (destination, version))
     return 0
 
 

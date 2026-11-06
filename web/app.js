@@ -1,6 +1,6 @@
 "use strict";
 
-/* CVLaTeX frontend. All user-visible strings come from web/i18n.js through
+/* CVLaTex frontend. All user-visible strings come from web/i18n.js through
    `t()`; identifiers and comments are English. The bridge calls mirror the
    frozen Api surface of main.py, including its Spanish envelope keys
    (`errores`, `ruta`, `cancelado`, ...), which are part of the wire format. */

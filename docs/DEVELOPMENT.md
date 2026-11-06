@@ -1,6 +1,6 @@
 # Development
 
-How to set up, test, build and extend CVLaTeX. The user-facing guide is [README](../README.md); the contribution workflow is [CONTRIBUTING](../CONTRIBUTING.md).
+How to set up, test, build and extend CVLaTex. The user-facing guide is [README](../README.md); the contribution workflow is [CONTRIBUTING](../CONTRIBUTING.md).
 
 ## Prerequisites
 
@@ -118,26 +118,26 @@ node --check web/i18n.js
 Build natively on each platform; PyInstaller bundles are not portable across operating systems.
 
 ```bash
-./build.sh        # Linux: dist/CVLaTeX_Linux + dist/CVLaTeX-v<version>-linux-x86_64.tar.gz
-                  # macOS: dist/CVLaTeX.app + dist/CVLaTeX-v<version>-macos-<arch>.zip
-build.bat         # Windows: dist/CVLaTeX.exe + dist/CVLaTeX-v<version>-windows-x64.zip
+./build.sh        # Linux: dist/CVLaTex_Linux + dist/CVLaTex-v<version>-linux-x86_64.tar.gz
+                  # macOS: dist/CVLaTex.app + dist/CVLaTex-v<version>-macos-<arch>.zip
+build.bat         # Windows: dist/CVLaTex.exe + dist/CVLaTex-v<version>-windows-x64.zip
 ```
 
 Both scripts call `tools/stage_assets.py` first. It recreates `build/stage/` with `web/` (including the vendored PDF.js viewer) and only the twelve supported templates' `.tex` files. Personal material is excluded by construction: `templates/chinese/Elvis Chen CV.docx`, `templates/picture samples/`, `.venv/`, `cache/` and `dist/` never enter the staging tree. PyInstaller then bundles `build/stage/web` and `build/stage/templates` (not the repository `web/` and `templates/`), and `main.py`/`latex_gen.py` resolve them through the `sys._MEIPASS` fallback in a frozen build.
 
 On Linux, never build with an `LD_LIBRARY_PATH` that points at a different Python than the one that created `.venv`. GitHub's `setup-python` exports its toolcache `libpython`; if PyInstaller mixes that shared library with the distro stdlib, the bundle dies at startup with `ModuleNotFoundError: No module named '_struct'` (the distro build has `_struct` built in, so it is not collected as an extension). `build.sh` unsets `LD_LIBRARY_PATH` for this reason, and runs the built Linux binary once (headless) before packaging so a broken bootstrap never becomes a release asset.
 
-`build.sh` creates or reuses `.venv`, installs `requirements.txt` when needed, checks the Linux webview packages, generates the macOS `.icns` when `sips`/`iconutil` and `assets/CVLaTex.png` are available, passes `--osx-bundle-identifier com.echeq.cvlatex` and, when `/usr/libexec/PlistBuddy` exists, writes `CFBundleShortVersionString`/`CFBundleVersion` from `version.py` into `CVLaTeX.app`. `build.bat` creates/reuses `.venv` when needed and generates the PyInstaller Windows version resource with `tools/windows_version.py` (`ProductName`/`FileDescription` `CVLaTeX`, `FileVersion`/`ProductVersion` `X.Y.Z.0`).
+`build.sh` creates or reuses `.venv`, installs `requirements.txt` when needed, checks the Linux webview packages, generates the macOS `.icns` when `sips`/`iconutil` and `assets/CVLaTex.png` are available, passes `--osx-bundle-identifier com.echeq.cvlatex` and, when `/usr/libexec/PlistBuddy` exists, writes `CFBundleShortVersionString`/`CFBundleVersion` from `version.py` into `CVLaTex.app`. `build.bat` creates/reuses `.venv` when needed and generates the PyInstaller Windows version resource with `tools/windows_version.py` (`ProductName`/`FileDescription` `CVLaTex`, `FileVersion`/`ProductVersion` `X.Y.Z.0`).
 
 `tools/package_release.py` (standard library only) turns the built binary/bundle and the repository docs into the release archives:
 
 | Platform | Archive | Contents |
 | --- | --- | --- |
-| Windows | `dist/CVLaTeX-v<version>-windows-x64.zip` | `CVLaTeX.exe` + docs |
-| Linux | `dist/CVLaTeX-v<version>-linux-x86_64.tar.gz` | `CVLaTeX` (mode 0755) + docs |
-| macOS | `dist/CVLaTeX-v<version>-macos-<arch>.zip` | `CVLaTeX.app/` + docs |
+| Windows | `dist/CVLaTex-v<version>-windows-x64.zip` | `CVLaTex.exe` + docs |
+| Linux | `dist/CVLaTex-v<version>-linux-x86_64.tar.gz` | `CVLaTex` (mode 0755) + docs |
+| macOS | `dist/CVLaTex-v<version>-macos-<arch>.zip` | `CVLaTex.app/` + docs |
 
-The docs are `README.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` and `SECURITY.md` when present. The script normalizes timestamps/ownership, avoids absolute paths, reopens every archive and prints its entries. The raw `dist/CVLaTeX_Linux`, `dist/CVLaTeX.app` and `dist/CVLaTeX.exe` remain for local runs, but the versioned archive is the release artifact. Keep the archive names in sync with `.github/workflows/build.yml`, `.github/workflows/release.yml` and the README when renaming.
+The docs are `README.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `CHANGELOG.md` and `SECURITY.md` when present. The script normalizes timestamps/ownership, avoids absolute paths, reopens every archive and prints its entries. The raw `dist/CVLaTex_Linux`, `dist/CVLaTex.app` and `dist/CVLaTex.exe` remain for local runs, but the versioned archive is the release artifact. Keep the archive names in sync with `.github/workflows/build.yml`, `.github/workflows/release.yml` and the README when renaming.
 
 Code signing and notarization are deliberately deferred; the Windows and macOS archives are unsigned.
 
@@ -166,8 +166,8 @@ The UI is loaded over HTTP and talks back through the pywebview bridge; generati
 - `docx_gen.py` writes Word with python-docx and mirrors section order/visibility/titles, blocks and the color palette. It resolves a `TemplateProfile` from `docx_profiles.py`, dispatches the header through `_HEADER_BUILDERS` and renders the matching heading, entry line, bullet marker and separators. `_Palette` resolves the profile's color roles, with the preferences palette taking precedence over the template palette. It never needs a LaTeX installation.
 - `docx_profiles.py` holds the frozen `TemplateProfile` dataclass, the `PROFILES` table and `profile_for()`. It stores color role names only, never RGB values, and does not import `latex_gen`.
 - `docx_shapes.py` holds the Word-safe shape primitives (shading, exact line heights and indents, paragraph/cell/table/page borders, fixed tables, stair-stepped blades) used by the DOCX layout.
-- `tex_datos.py` embeds the base64 JSON data block in `% CVLaTeX-DATA-BEGIN` / `% CVLaTeX-DATA-END` comments and extracts it on import. Foreign `.tex` files are rejected rather than parsed heuristically.
-- `prefs.py` stores JSON preferences in the per-OS app data directory (`%LOCALAPPDATA%\CVLaTeX`, `~/Library/Application Support/CVLaTeX`, `$XDG_DATA_HOME/CVLaTeX` or `~/.local/share/CVLaTeX`) with a module-level cache.
+- `tex_datos.py` embeds the base64 JSON data block in `% CVLaTex-DATA-BEGIN` / `% CVLaTex-DATA-END` comments and extracts it on import. Foreign `.tex` files are rejected rather than parsed heuristically.
+- `prefs.py` stores JSON preferences in the per-OS app data directory (`%LOCALAPPDATA%\CVLaTex`, `~/Library/Application Support/CVLaTex`, `$XDG_DATA_HOME/CVLaTex` or `~/.local/share/CVLaTex`) with a module-level cache.
 - `messages.py` holds backend user-facing strings and `ejemplo.py` the localized sample CV (es/en/zh).
 - `web/` contains `index.html`, `app.js`, `i18n.js`, `style.css` and the vendored `pdfjs/` viewer. Edit files directly and reload; there is no npm, bundler or transpiler.
 
@@ -272,7 +272,7 @@ Then wire the UI in `web/app.js` and add every new user-visible string to all fo
 
 WebKitGTK cannot render PDFs inline, so on Linux `app.js` loads the vendored PDF.js viewer at `/pdfjs/viewer.html?file=/preview/main.pdf` into `#pdf` instead of pointing the iframe at the PDF. The viewer reports readiness or failure to the parent page; on failure the notice above the preview appears and `Api.open_preview()` opens the last compiled PDF with the system default viewer. Windows and macOS keep the native PDF viewer.
 
-`web/pdfjs/` contains PDF.js 3.11.174 (`pdf.min.js`, `pdf.worker.min.js`) and CVLaTeX's minimal `viewer.html`; see [web/pdfjs/README.md](../web/pdfjs/README.md) for provenance and update steps. `webview.settings["ALLOW_DOWNLOADS"] = True` is required for the viewer's save dialog, because pywebview cancels downloads by default.
+`web/pdfjs/` contains PDF.js 3.11.174 (`pdf.min.js`, `pdf.worker.min.js`) and CVLaTex's minimal `viewer.html`; see [web/pdfjs/README.md](../web/pdfjs/README.md) for provenance and update steps. `webview.settings["ALLOW_DOWNLOADS"] = True` is required for the viewer's save dialog, because pywebview cancels downloads by default.
 
 The Linux bundle must include `web/pdfjs/` through the staged `build/stage/web` tree passed to `--add-data`; a missing folder is the usual cause of a blank Linux preview.
 
@@ -288,17 +288,17 @@ The Linux bundle must include `web/pdfjs/` through the staged `build/stage/web` 
 
 ## CI and release notes
 
-`.github/workflows/build.yml` runs on branch pushes, pull requests and manual dispatch with Python 3.12 and workflow-level `permissions: contents: read`. Its `test` job installs `requirements.txt` + `requirements-dev.txt` and runs `python -m pytest tests -q -n 2` on Ubuntu; the `build` job depends on it and calls the native build scripts on Windows, Ubuntu and macOS (`build.bat`, `PYTHON=/usr/bin/python3 ./build.sh`, `./build.sh`), uploading `CVLaTeX-v<version>-windows-x64.zip`, `CVLaTeX-v<version>-linux-x86_64.tar.gz` and `CVLaTeX-v<version>-macos-arm64.zip` as artifacts with `if-no-files-found: error`. It never publishes a GitHub release. The `push` trigger is restricted to branches, so a `v*` tag only starts the release workflow.
+`.github/workflows/build.yml` runs on branch pushes, pull requests and manual dispatch with Python 3.12 and workflow-level `permissions: contents: read`. Its `test` job installs `requirements.txt` + `requirements-dev.txt` and runs `python -m pytest tests -q -n 2` on Ubuntu; the `build` job depends on it and calls the native build scripts on Windows, Ubuntu and macOS (`build.bat`, `PYTHON=/usr/bin/python3 ./build.sh`, `./build.sh`), uploading `CVLaTex-v<version>-windows-x64.zip`, `CVLaTex-v<version>-linux-x86_64.tar.gz` and `CVLaTex-v<version>-macos-arm64.zip` as artifacts with `if-no-files-found: error`. It never publishes a GitHub release. The `push` trigger is restricted to branches, so a `v*` tag only starts the release workflow.
 
 The Linux build job installs `python3-gi`, `python3-venv`, `gir1.2-webkit2-4.1` and `libwebkit2gtk-4.1-dev` before calling `PYTHON=/usr/bin/python3 ./build.sh`, so the build venv can import `gi`. Builds are per-platform: a bundle produced on one OS does not run on another.
 
 `.github/workflows/release.yml` is triggered by `v*` tags, declares workflow-level `permissions: contents: read` and grants `contents: write` only to the `publish` job. It runs `test` → `build` → `publish`. Publish verifies that the tag equals `version.__version__`, checks that every archive contains its binary/bundle plus `README.md`, `LICENSE` and `THIRD_PARTY_NOTICES.md`, writes `SHA256SUMS.txt` over the three archives, then creates the release with `gh release create ... --generate-notes --prerelease`. On a rerun against an existing release it uses `gh release edit --prerelease` and `gh release upload --clobber`, so publishing is idempotent. It uses the workflow `GITHUB_TOKEN`; no PAT or workflow-scoped token is required.
 
-`macos-latest` is an Apple Silicon (`arm64`) runner at the time of writing, so the release publishes `CVLaTeX-v<version>-macos-arm64.zip`; the build job verifies `uname -m` is `arm64` instead of silently renaming a different bundle. There is no universal binary.
+`macos-latest` is an Apple Silicon (`arm64`) runner at the time of writing, so the release publishes `CVLaTex-v<version>-macos-arm64.zip`; the build job verifies `uname -m` is `arm64` instead of silently renaming a different bundle. There is no universal binary.
 
 ## Releasing
 
-CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from tags; only maintainers cut releases.
+CVLaTex follows [Semantic Versioning](https://semver.org/) and publishes from tags; only maintainers cut releases.
 
 1. Bump the version in three places: `version.py` (`__version__`), the literal `vX.Y.Z` in the `#modal-credits` block of `web/index.html`, and the dated `## [X.Y.Z] - YYYY-MM-DD` section of `CHANGELOG.md`. Update the asset names in `README.md`, this document and `tests/test_release.py` when the format changes.
 2. Run the checks on a clean tree:
@@ -313,15 +313,15 @@ CVLaTeX follows [Semantic Versioning](https://semver.org/) and publishes from ta
 3. Commit the release on `main`, create an annotated tag and push both:
 
    ```bash
-   git tag -a vX.Y.Z -m "CVLaTeX vX.Y.Z"
+   git tag -a vX.Y.Z -m "CVLaTex vX.Y.Z"
    git push origin main --follow-tags
    ```
 
 4. The tag starts `.github/workflows/release.yml`. It runs the test suite, builds the three native archives through the platform scripts (`tools/stage_assets.py` → PyInstaller on `build/stage/` → `tools/package_release.py`), and publishes:
 
-   - `CVLaTeX-vX.Y.Z-windows-x64.zip` (contains `CVLaTeX.exe`)
-   - `CVLaTeX-vX.Y.Z-linux-x86_64.tar.gz` (contains `CVLaTeX`, mode 0755)
-   - `CVLaTeX-vX.Y.Z-macos-arm64.zip` (contains `CVLaTeX.app`)
+   - `CVLaTex-vX.Y.Z-windows-x64.zip` (contains `CVLaTex.exe`)
+   - `CVLaTex-vX.Y.Z-linux-x86_64.tar.gz` (contains `CVLaTex`, mode 0755)
+   - `CVLaTex-vX.Y.Z-macos-arm64.zip` (contains `CVLaTex.app`)
    - `SHA256SUMS.txt` covering the three archives
 
    The publish job verifies that the tag equals `version.py`, checks each archive for its binary/bundle and `README.md`/`LICENSE`/`THIRD_PARTY_NOTICES.md`, and creates a GitHub pre-release. Re-running it uploads with `--clobber` and edits the existing release instead of failing. The staging step excludes personal files (`templates/chinese/Elvis Chen CV.docx`, `templates/picture samples/`), so no author CV data ships. Signing and notarization are a later step; the archives remain unsigned.

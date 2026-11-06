@@ -1,4 +1,4 @@
-# Contributing to CVLaTeX
+# Contributing to CVLaTex
 
 Thanks for helping. Bug reports, documentation fixes, translations, templates and code changes are all welcome.
 
@@ -17,7 +17,7 @@ Keep a change focused on one problem. Refactors, formatting-only edits and unrel
 Search the existing issues first. A useful report includes:
 
 - Operating system and version (Windows 10/11, macOS version, Linux distribution and desktop).
-- The CVLaTeX commit or CI build you used.
+- The CVLaTex commit or CI build you used.
 - Exact steps to reproduce, the expected result and the actual result.
 - The error text shown in the app, and any relevant console or crash log.
 - A minimal `.cvjson` or `.tex` when the problem depends on the document. Remove personal data before attaching it.
@@ -51,7 +51,7 @@ Both are multi-file changes with checks that keep them consistent. Follow the st
 
 ## Release maintainers
 
-Releases are cut from `main` by a maintainer. Bump `version.py`, the literal version in the credits modal (`web/index.html`) and `CHANGELOG.md`, run the suite, then push the `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which tests, builds the three native archives through `tools/stage_assets.py` → PyInstaller → `tools/package_release.py`, verifies their contents and `SHA256SUMS.txt`, and publishes the GitHub pre-release. The published asset names are `CVLaTeX-vX.Y.Z-windows-x64.zip`, `CVLaTeX-vX.Y.Z-linux-x86_64.tar.gz`, `CVLaTeX-vX.Y.Z-macos-arm64.zip` and `SHA256SUMS.txt`. Staging copies only `web/` and the twelve templates' `.tex` files, so the author's reference `.docx` and the picture samples never ship; signing and notarization are deferred. The step-by-step checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing); never tag a commit whose tests are failing.
+Releases are cut from `main` by a maintainer. Bump `version.py`, the literal version in the credits modal (`web/index.html`) and `CHANGELOG.md`, run the suite, then push the `vX.Y.Z` tag. The tag triggers `.github/workflows/release.yml`, which tests, builds the three native archives through `tools/stage_assets.py` → PyInstaller → `tools/package_release.py`, verifies their contents and `SHA256SUMS.txt`, and publishes the GitHub pre-release. The published asset names are `CVLaTex-vX.Y.Z-windows-x64.zip`, `CVLaTex-vX.Y.Z-linux-x86_64.tar.gz`, `CVLaTex-vX.Y.Z-macos-arm64.zip` and `SHA256SUMS.txt`. Staging copies only `web/` and the twelve templates' `.tex` files, so the author's reference `.docx` and the picture samples never ship; signing and notarization are deferred. The step-by-step checklist is in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releasing); never tag a commit whose tests are failing.
 
 ## Pull request checklist
 
@@ -65,4 +65,4 @@ Releases are cut from `main` by a maintainer. Bump `version.py`, the literal ver
 
 ## License
 
-CVLaTeX is distributed under the MIT license (see [LICENSE](LICENSE)). By submitting a contribution you agree that it is licensed under the same terms.
+CVLaTex is distributed under the MIT license (see [LICENSE](LICENSE)). By submitting a contribution you agree that it is licensed under the same terms.

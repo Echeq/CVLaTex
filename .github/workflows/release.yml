@@ -7,9 +7,9 @@
 # contents: write.
 #
 # Published assets:
-#   CVLaTeX-v<version>-windows-x64.zip
-#   CVLaTeX-v<version>-linux-x86_64.tar.gz
-#   CVLaTeX-v<version>-macos-arm64.zip
+#   CVLaTex-v<version>-windows-x64.zip
+#   CVLaTex-v<version>-linux-x86_64.tar.gz
+#   CVLaTex-v<version>-macos-arm64.zip
 #   SHA256SUMS.txt
 #
 # GitHub's macos-latest runner is Apple Silicon (arm64) at the time of writing,
@@ -59,14 +59,14 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            artifact: CVLaTeX-windows-x64
-            path: dist/CVLaTeX-v*-windows-x64.zip
+            artifact: CVLaTex-windows-x64
+            path: dist/CVLaTex-v*-windows-x64.zip
           - os: ubuntu-latest
-            artifact: CVLaTeX-linux-x86_64
-            path: dist/CVLaTeX-v*-linux-x86_64.tar.gz
+            artifact: CVLaTex-linux-x86_64
+            path: dist/CVLaTex-v*-linux-x86_64.tar.gz
           - os: macos-latest
-            artifact: CVLaTeX-macos-arm64
-            path: dist/CVLaTeX-v*-macos-arm64.zip
+            artifact: CVLaTex-macos-arm64
+            path: dist/CVLaTex-v*-macos-arm64.zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +131,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          pattern: CVLaTeX-*
+          pattern: CVLaTex-*
           merge-multiple: true
 
       - name: Verify tag, archive contents and checksums
@@ -143,9 +143,9 @@ jobs:
             exit 1
           fi
 
-          WINDOWS="CVLaTeX-v${VERSION}-windows-x64.zip"
-          LINUX="CVLaTeX-v${VERSION}-linux-x86_64.tar.gz"
-          MACOS="CVLaTeX-v${VERSION}-macos-arm64.zip"
+          WINDOWS="CVLaTex-v${VERSION}-windows-x64.zip"
+          LINUX="CVLaTex-v${VERSION}-linux-x86_64.tar.gz"
+          MACOS="CVLaTex-v${VERSION}-macos-arm64.zip"
 
           mkdir -p release-assets/publish
           for name in "$WINDOWS" "$LINUX" "$MACOS"; do
@@ -167,9 +167,9 @@ jobs:
           version = sys.argv[1]
           required_docs = ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
           checks = {
-              "CVLaTeX-v%s-windows-x64.zip" % version: ("zip", ["CVLaTeX.exe"]),
-              "CVLaTeX-v%s-linux-x86_64.tar.gz" % version: ("tar", ["CVLaTeX"]),
-              "CVLaTeX-v%s-macos-arm64.zip" % version: ("zip", []),
+              "CVLaTex-v%s-windows-x64.zip" % version: ("zip", ["CVLaTex.exe"]),
+              "CVLaTex-v%s-linux-x86_64.tar.gz" % version: ("tar", ["CVLaTex"]),
+              "CVLaTex-v%s-macos-arm64.zip" % version: ("zip", []),
           }
 
           for name, (kind, binaries) in checks.items():
@@ -179,12 +179,12 @@ jobs:
               else:
                   with tarfile.open(name, "r:gz") as archive:
                       entries = archive.getnames()
-                      member = archive.getmember("CVLaTeX")
+                      member = archive.getmember("CVLaTex")
                       if not member.mode & 0o111:
                           raise SystemExit("error: %s executable bit is not set" % name)
               missing = [entry for entry in binaries + required_docs if entry not in entries]
-              if not any(entry.startswith("CVLaTeX.app/") for entry in entries) and "macos" in name:
-                  missing.append("CVLaTeX.app/")
+              if not any(entry.startswith("CVLaTex.app/") for entry in entries) and "macos" in name:
+                  missing.append("CVLaTex.app/")
               if missing:
                   raise SystemExit("error: %s is missing %s" % (name, ", ".join(missing)))
               print("verified %s: %d entries" % (name, len(entries)))
@@ -201,9 +201,9 @@ jobs:
           set -euo pipefail
           cd release-assets/publish
           assets=(
-            "CVLaTeX-v${VERSION}-windows-x64.zip"
-            "CVLaTeX-v${VERSION}-linux-x86_64.tar.gz"
-            "CVLaTeX-v${VERSION}-macos-arm64.zip"
+            "CVLaTex-v${VERSION}-windows-x64.zip"
+            "CVLaTex-v${VERSION}-linux-x86_64.tar.gz"
+            "CVLaTex-v${VERSION}-macos-arm64.zip"
             "SHA256SUMS.txt"
           )
           for asset in "${assets[@]}"; do
@@ -219,7 +219,7 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
             gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
-              --title "CVLaTeX ${GITHUB_REF_NAME}" \
+              --title "CVLaTex ${GITHUB_REF_NAME}" \
               --generate-notes \
               --prerelease
           fi

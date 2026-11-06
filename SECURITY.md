@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-CVLaTeX is a pre-1.0 project. Only the latest `0.1.x` release receives
+CVLaTex is a pre-1.0 project. Only the latest `0.1.x` release receives
 security fixes.
 
 | Version | Supported |
@@ -28,7 +28,7 @@ maintainer-run project and reports are handled on a best-effort basis.
 
 ## Scope and guarantees
 
-CVLaTeX runs locally, stores preferences and autosaves in the per-user
+CVLaTex runs locally, stores preferences and autosaves in the per-user
 application data directory, and talks only to `127.0.0.1` for its UI. It may
 download TinyTeX at the user's request. Release bundles are built by GitHub
 Actions from the tagged source, and `SHA256SUMS.txt` lets you verify the

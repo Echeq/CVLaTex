@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Package a built CVLaTeX binary/bundle into a release archive.
+"""Package a built CVLaTex binary/bundle into a release archive.
 
 Given a PyInstaller output and the repository docs, this script produces the
 exact assets published for a release:
 
-    dist/CVLaTeX-v<version>-windows-x64.zip
-    dist/CVLaTeX-v<version>-linux-x86_64.tar.gz
-    dist/CVLaTeX-v<version>-macos-<arch>.zip
+    dist/CVLaTex-v<version>-windows-x64.zip
+    dist/CVLaTex-v<version>-linux-x86_64.tar.gz
+    dist/CVLaTex-v<version>-macos-<arch>.zip
 
 Each archive contains the platform binary/bundle plus README.md, LICENSE,
 THIRD_PARTY_NOTICES.md, CHANGELOG.md and SECURITY.md when it exists. Only the
@@ -58,11 +58,11 @@ def normalize_arch(arch: str | None = None) -> str:
 
 def asset_name(platform: str, version: str, arch: str | None = None) -> str:
     if platform == "windows":
-        return "CVLaTeX-v%s-windows-x64.zip" % version
+        return "CVLaTex-v%s-windows-x64.zip" % version
     if platform == "linux":
-        return "CVLaTeX-v%s-linux-x86_64.tar.gz" % version
+        return "CVLaTex-v%s-linux-x86_64.tar.gz" % version
     if platform == "macos":
-        return "CVLaTeX-v%s-macos-%s.zip" % (version, normalize_arch(arch))
+        return "CVLaTex-v%s-macos-%s.zip" % (version, normalize_arch(arch))
     raise PackagingError("unknown platform: %s" % platform)
 
 
@@ -134,7 +134,7 @@ def _write_zip(destination: str, platform: str, binary: str, docs_dir: str, docs
         if platform == "macos":
             _zip_tree(zf, binary, os.path.basename(binary))
         else:
-            _zip_file(zf, binary, "CVLaTeX.exe" if platform == "windows" else "CVLaTeX", 0o755)
+            _zip_file(zf, binary, "CVLaTex.exe" if platform == "windows" else "CVLaTex", 0o755)
         for name in docs:
             _zip_file(zf, os.path.join(docs_dir, name), name, 0o644)
 
@@ -158,7 +158,7 @@ def _write_tar(destination: str, binary: str, docs_dir: str, docs: list[str]) ->
             with tarfile.open(fileobj=compressed, mode="w") as tf:
                 with open(binary, "rb") as handle:
                     tf.addfile(
-                        _tarinfo("CVLaTeX", 0o755, os.path.getsize(binary)),
+                        _tarinfo("CVLaTex", 0o755, os.path.getsize(binary)),
                         handle,
                     )
                 for name in docs:
@@ -175,20 +175,20 @@ def _verify(destination: str, platform: str, docs: list[str]) -> list[str]:
         with tarfile.open(destination, "r:gz") as tf:
             names = tf.getnames()
             if platform == "linux":
-                member = tf.getmember("CVLaTeX")
+                member = tf.getmember("CVLaTex")
                 if not member.mode & 0o111:
                     raise PackagingError("Linux executable is not executable in %s" % destination)
 
     missing = []
     if platform == "windows":
-        if "CVLaTeX.exe" not in names:
-            missing.append("CVLaTeX.exe")
+        if "CVLaTex.exe" not in names:
+            missing.append("CVLaTex.exe")
     elif platform == "linux":
-        if "CVLaTeX" not in names:
-            missing.append("CVLaTeX")
+        if "CVLaTex" not in names:
+            missing.append("CVLaTex")
     else:
-        if not any(name == "CVLaTeX.app/" or name.startswith("CVLaTeX.app/") for name in names):
-            missing.append("CVLaTeX.app/")
+        if not any(name == "CVLaTex.app/" or name.startswith("CVLaTex.app/") for name in names):
+            missing.append("CVLaTex.app/")
     missing.extend(name for name in docs if name not in names)
     if missing:
         raise PackagingError(

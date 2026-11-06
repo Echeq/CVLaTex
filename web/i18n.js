@@ -1,6 +1,6 @@
 "use strict";
 
-/* CVLaTeX UI translations (es / en / zh / ru).
+/* CVLaTex UI translations (es / en / zh / ru).
  *
  * Spanish values follow the wording the application showed before the English
  * rewrite; English values are the natural translation and the default UI
@@ -16,7 +16,7 @@
 const I18N = {
   es: {
     // Application shell
-    app_title: "CVLaTeX — Editor de CV",
+    app_title: "CVLaTex — Editor de CV",
     // Menus
     menu_file: "Archivos",
     menu_edit: "Editar",
@@ -102,8 +102,8 @@ const I18N = {
     language_text: "Selecciona el idioma de la interfaz. Puedes cambiarlo más tarde en Preferencias.",
     language_continue: "Continuar",
     wizard_title: "Motor LaTeX",
-    wizard_p1: "Para generar la previsualización y exportar a PDF, CVLaTeX necesita un motor LaTeX en tu equipo.",
-    wizard_p2a: "Si no tienes uno, CVLaTeX puede ",
+    wizard_p1: "Para generar la previsualización y exportar a PDF, CVLaTex necesita un motor LaTeX en tu equipo.",
+    wizard_p2a: "Si no tienes uno, CVLaTex puede ",
     wizard_p2b: "descargar e instalar TinyTeX automáticamente",
     wizard_p2c: " (una sola vez, requiere conexión a internet).",
     wizard_install: "Descargar e instalar TinyTeX (recomendado)",
@@ -208,7 +208,7 @@ const I18N = {
     help_sample_bold: "CV de ejemplo:",
     help_sample_text: " «Editar → Cargar CV de ejemplo» rellena el formulario con un ejemplo para ver cómo completar los campos.",
     help_files_bold: "Archivos:",
-    help_files_text: " guarda tu CV como archivo CVLaTeX (.cvjson), expórtalo a PDF o a código LaTeX, o impórtalo.",
+    help_files_text: " guarda tu CV como archivo CVLaTex (.cvjson), expórtalo a PDF o a código LaTeX, o impórtalo.",
     help_latex_bold: "Código LaTeX:",
     help_latex_text: " desde «Editar → Ver código LaTeX» puedes ver y editar el código LaTeX generado. Al volver al formulario, el código se regenera desde los datos.",
     help_pdf_bold: "Exportar PDF:",
@@ -220,7 +220,7 @@ const I18N = {
     credits_github: "GitHub:",
     credits_linkedin: "LinkedIn:",
     credits_version: "Versión:",
-    credits_story: "CVLaTeX nació para que cualquier universitario pueda crear su CV gratis y de forma portable, sin cuentas, suscripciones ni microtransacciones: un editor cómodo que genera un CV en formato estándar y lo compila a un PDF profesional, todo en tu propio equipo.",
+    credits_story: "CVLaTex nació para que cualquier universitario pueda crear su CV gratis y de forma portable, sin cuentas, suscripciones ni microtransacciones: un editor cómodo que genera un CV en formato estándar y lo compila a un PDF profesional, todo en tu propio equipo.",
     credits_tinytex: "Gracias a TinyTeX por la distribución LaTeX portable.",
     // Confirm dialog
     confirm_ok: "Aceptar",
@@ -374,7 +374,7 @@ const I18N = {
   },
   en: {
     // Application shell
-    app_title: "CVLaTeX — CV Editor",
+    app_title: "CVLaTex — CV Editor",
     // Menus
     menu_file: "File",
     menu_edit: "Edit",
@@ -460,8 +460,8 @@ const I18N = {
     language_text: "Select the interface language. You can change it later in Settings.",
     language_continue: "Continue",
     wizard_title: "LaTeX engine",
-    wizard_p1: "To generate the preview and export to PDF, CVLaTeX needs a LaTeX engine on your computer.",
-    wizard_p2a: "If you don't have one, CVLaTeX can ",
+    wizard_p1: "To generate the preview and export to PDF, CVLaTex needs a LaTeX engine on your computer.",
+    wizard_p2a: "If you don't have one, CVLaTex can ",
     wizard_p2b: "download and install TinyTeX automatically",
     wizard_p2c: " (one time only, requires an internet connection).",
     wizard_install: "Download and install TinyTeX (recommended)",
@@ -566,7 +566,7 @@ const I18N = {
     help_sample_bold: "Sample CV:",
     help_sample_text: " “Edit → Load sample CV” fills the form with an example so you can see how to complete the fields.",
     help_files_bold: "Files:",
-    help_files_text: " save your CV as a CVLaTeX file (.cvjson), export it to PDF or LaTeX code, or import it.",
+    help_files_text: " save your CV as a CVLaTex file (.cvjson), export it to PDF or LaTeX code, or import it.",
     help_latex_bold: "LaTeX code:",
     help_latex_text: " from “Edit → View LaTeX code” you can view and edit the generated LaTeX code. When you return to the form, the code is regenerated from the data.",
     help_pdf_bold: "Export PDF:",
@@ -578,7 +578,7 @@ const I18N = {
     credits_github: "GitHub:",
     credits_linkedin: "LinkedIn:",
     credits_version: "Version:",
-    credits_story: "CVLaTeX was born so that any university student can build their CV for free and portably, with no accounts, subscriptions or microtransactions: a comfortable editor that produces a standard-format CV and compiles it to a professional PDF, all on your own machine.",
+    credits_story: "CVLaTex was born so that any university student can build their CV for free and portably, with no accounts, subscriptions or microtransactions: a comfortable editor that produces a standard-format CV and compiles it to a professional PDF, all on your own machine.",
     credits_tinytex: "Thanks to TinyTeX for the portable LaTeX distribution.",
     // Confirm dialog
     confirm_ok: "Accept",
@@ -732,7 +732,7 @@ const I18N = {
   },
   zh: {
     // Application shell
-    app_title: "CVLaTeX — 简历编辑器",
+    app_title: "CVLaTex — 简历编辑器",
     // Menus
     menu_file: "文件",
     menu_edit: "编辑",
@@ -818,8 +818,8 @@ const I18N = {
     language_text: "选择界面语言。之后可以在设置中更改。",
     language_continue: "继续",
     wizard_title: "LaTeX 引擎",
-    wizard_p1: "要生成预览并导出 PDF，CVLaTeX 需要在你的电脑上安装 LaTeX 引擎。",
-    wizard_p2a: "如果还没有，CVLaTeX 可以",
+    wizard_p1: "要生成预览并导出 PDF，CVLaTex 需要在你的电脑上安装 LaTeX 引擎。",
+    wizard_p2a: "如果还没有，CVLaTex 可以",
     wizard_p2b: "自动下载并安装 TinyTeX",
     wizard_p2c: "（仅需一次，需要联网）。",
     wizard_install: "下载并安装 TinyTeX（推荐）",
@@ -924,7 +924,7 @@ const I18N = {
     help_sample_bold: "示例简历：",
     help_sample_text: " “编辑 → 载入示例简历”会用示例填充表单，方便查看如何填写各项。",
     help_files_bold: "文件：",
-    help_files_text: " 将简历保存为 CVLaTeX 文件（.cvjson），导出为 PDF 或 LaTeX 代码，或导入。",
+    help_files_text: " 将简历保存为 CVLaTex 文件（.cvjson），导出为 PDF 或 LaTeX 代码，或导入。",
     help_latex_bold: "LaTeX 代码：",
     help_latex_text: " 在“编辑 → 查看 LaTeX 代码”中可查看和编辑生成的 LaTeX 代码。返回表单后，代码会根据数据重新生成。",
     help_pdf_bold: "导出 PDF：",
@@ -936,7 +936,7 @@ const I18N = {
     credits_github: "GitHub：",
     credits_linkedin: "LinkedIn:",
     credits_version: "版本：",
-    credits_story: "CVLaTeX 的初衷是让每位大学生都能免费、便携地制作简历，没有账号、订阅或微交易：一个顺手的编辑器，生成标准格式的简历并编译为专业 PDF，一切都在你自己的电脑上完成。",
+    credits_story: "CVLaTex 的初衷是让每位大学生都能免费、便携地制作简历，没有账号、订阅或微交易：一个顺手的编辑器，生成标准格式的简历并编译为专业 PDF，一切都在你自己的电脑上完成。",
     credits_tinytex: "感谢 TinyTeX 提供的便携式 LaTeX 发行版。",
     // Confirm dialog
     confirm_ok: "确定",
@@ -1090,7 +1090,7 @@ const I18N = {
   },
   ru: {
     // Application shell
-    app_title: "CVLaTeX — редактор резюме",
+    app_title: "CVLaTex — редактор резюме",
     // Menus
     menu_file: "Файл",
     menu_edit: "Правка",
@@ -1176,8 +1176,8 @@ const I18N = {
     language_text: "Выберите язык интерфейса. Его можно изменить позже в настройках.",
     language_continue: "Продолжить",
     wizard_title: "LaTeX-движок",
-    wizard_p1: "Для создания предпросмотра и экспорта в PDF CVLaTeX нужен LaTeX-движок на вашем компьютере.",
-    wizard_p2a: "Если его нет, CVLaTeX может ",
+    wizard_p1: "Для создания предпросмотра и экспорта в PDF CVLaTex нужен LaTeX-движок на вашем компьютере.",
+    wizard_p2a: "Если его нет, CVLaTex может ",
     wizard_p2b: "автоматически скачать и установить TinyTeX",
     wizard_p2c: " (однократно, требуется подключение к интернету).",
     wizard_install: "Скачать и установить TinyTeX (рекомендуется)",
@@ -1282,7 +1282,7 @@ const I18N = {
     help_sample_bold: "Пример резюме:",
     help_sample_text: " «Правка → Загрузить пример резюме» заполнит форму примером, чтобы показать, как заполнять поля.",
     help_files_bold: "Файлы:",
-    help_files_text: " сохраните резюме в файл CVLaTeX (.cvjson), экспортируйте в PDF или код LaTeX либо импортируйте его.",
+    help_files_text: " сохраните резюме в файл CVLaTex (.cvjson), экспортируйте в PDF или код LaTeX либо импортируйте его.",
     help_latex_bold: "Код LaTeX:",
     help_latex_text: " в «Правка → Показать код LaTeX» можно просмотреть и отредактировать созданный код LaTeX. При возврате к форме код будет создан заново из данных.",
     help_pdf_bold: "Экспорт PDF:",
@@ -1294,7 +1294,7 @@ const I18N = {
     credits_github: "GitHub:",
     credits_linkedin: "LinkedIn:",
     credits_version: "Версия:",
-    credits_story: "CVLaTeX создан для того, чтобы любой студент мог бесплатно и портативно сделать своё резюме — без аккаунтов, подписок и микротранзакций: удобный редактор, который формирует резюме стандартного формата и компилирует его в профессиональный PDF прямо на вашем компьютере.",
+    credits_story: "CVLaTex создан для того, чтобы любой студент мог бесплатно и портативно сделать своё резюме — без аккаунтов, подписок и микротранзакций: удобный редактор, который формирует резюме стандартного формата и компилирует его в профессиональный PDF прямо на вашем компьютере.",
     credits_tinytex: "Спасибо TinyTeX за портативную дистрибуцию LaTeX.",
     // Confirm dialog
     confirm_ok: "ОК",

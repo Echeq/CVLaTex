@@ -1,4 +1,4 @@
-"""Sample CVs for CVLaTeX.
+"""Sample CVs for CVLaTex.
 
 Return dicts with the same shape as ``latex_gen.empty_data()`` filled with
 realistic content in the language of the CV (Spanish, English or Chinese),

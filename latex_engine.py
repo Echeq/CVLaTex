@@ -113,7 +113,7 @@ def _raise_if_cancelled(cancel_event):
 
 
 def _download(url, destination, progress, cancel_event=None):
-    request = urllib.request.Request(url, headers={"User-Agent": "CVLaTeX/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "CVLaTex/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as f:
             total = int(response.headers.get("Content-Length") or 0)
@@ -172,7 +172,7 @@ def _fetch_checksum(url, cancel_event=None):
     can continue the install with a warning instead of aborting. A cancelled
     install still raises the localized LatexError.
     """
-    request = urllib.request.Request(url, headers={"User-Agent": "CVLaTeX/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "CVLaTex/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             text = response.read().decode("utf-8", errors="replace")

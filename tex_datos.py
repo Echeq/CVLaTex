@@ -1,4 +1,4 @@
-"""Embedding and extraction of the base64 data block in the CVLaTeX .tex file.
+"""Embedding and extraction of the base64 data block in the CVLaTex .tex file.
 
 The block is written as LaTeX comments (lines starting with "%"), so the
 document still compiles the same way, and it allows rebuilding the original
@@ -9,16 +9,28 @@ import base64
 import json
 import re
 
-MARK_START = "% CVLaTeX-DATA-BEGIN"
-MARK_END = "% CVLaTeX-DATA-END"
+MARK_START = "% CVLaTex-DATA-BEGIN"
+MARK_END = "% CVLaTex-DATA-END"
+# Files generated before the CVLaTeX -> CVLaTex rename still carry the old
+# markers. Keep reading them; new files always use MARK_START/MARK_END.
+LEGACY_MARK_START = "% CVLaTeX-DATA-BEGIN"
+LEGACY_MARK_END = "% CVLaTeX-DATA-END"
 LINE_WIDTH = 76  # leaves 78-character lines: below the TeX limit
 
 _RE_BLOCK = re.compile(
-    re.escape(MARK_START) + r".*?" + re.escape(MARK_END) + r"[^\n]*\n?",
+    r"(?:"
+    + re.escape(MARK_START) + r".*?" + re.escape(MARK_END)
+    + r"|"
+    + re.escape(LEGACY_MARK_START) + r".*?" + re.escape(LEGACY_MARK_END)
+    + r")[^\n]*\n?",
     re.DOTALL,
 )
 _RE_CONTENT = re.compile(
     re.escape(MARK_START) + r"(.*?)" + re.escape(MARK_END),
+    re.DOTALL,
+)
+_RE_CONTENT_LEGACY = re.compile(
+    re.escape(LEGACY_MARK_START) + r"(.*?)" + re.escape(LEGACY_MARK_END),
     re.DOTALL,
 )
 _RE_DOCUMENT = re.compile(r"^[ \t]*\\begin\{document\}", re.MULTILINE)
@@ -64,8 +76,13 @@ def embed(tex, data):
 
 
 def extract(tex):
-    """Rebuild the data dict embedded in the .tex."""
-    m = _RE_CONTENT.search(tex or "")
+    """Rebuild the data dict embedded in the .tex.
+
+    Accepts both the current CVLaTex markers and the legacy CVLaTeX ones, so
+    files exported before the rename remain importable.
+    """
+    text = tex or ""
+    m = _RE_CONTENT.search(text) or _RE_CONTENT_LEGACY.search(text)
     if not m:
         raise MissingDataBlock("No data block found in the .tex.")
     parts = []

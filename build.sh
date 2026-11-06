@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the CVLaTeX release bundle with PyInstaller (Linux/macOS counterpart of
+# Build the CVLaTex release bundle with PyInstaller (Linux/macOS counterpart of
 # build.bat).
 #
 # Creates/reuses the checkout's .venv, installs requirements.txt when the build
@@ -8,10 +8,10 @@
 # against that staging tree so personal files never enter the bundle.
 #
 # Outputs:
-#   Linux: dist/CVLaTeX_Linux (raw, for local runs) and
-#          dist/CVLaTeX-v<version>-linux-x86_64.tar.gz (release archive)
-#   macOS: dist/CVLaTeX.app (raw) and
-#          dist/CVLaTeX-v<version>-macos-<arch>.zip (release archive)
+#   Linux: dist/CVLaTex_Linux (raw, for local runs) and
+#          dist/CVLaTex-v<version>-linux-x86_64.tar.gz (release archive)
+#   macOS: dist/CVLaTex.app (raw) and
+#          dist/CVLaTex-v<version>-macos-<arch>.zip (release archive)
 #
 # The macOS .icns is generated from assets/CVLaTex.png with sips/iconutil and
 # skipped gracefully when either tool or the PNG is missing; on Linux the PNG
@@ -85,7 +85,7 @@ PYINSTALLER_ARGS=(
   --noconfirm
   --onefile
   --windowed
-  --name CVLaTeX
+  --name CVLaTex
   --distpath dist
   --workpath build/pyinstaller
   --specpath build
@@ -143,12 +143,12 @@ VERSION="$("$VENV_PY" -c 'import version; print(version.__version__)')"
 
 case "$PLATFORM" in
   Darwin)
-    if [ ! -d dist/CVLaTeX.app ]; then
-      echo "error: PyInstaller did not produce dist/CVLaTeX.app" >&2
+    if [ ! -d dist/CVLaTex.app ]; then
+      echo "error: PyInstaller did not produce dist/CVLaTex.app" >&2
       exit 1
     fi
     if [ -x /usr/libexec/PlistBuddy ]; then
-      PLIST="dist/CVLaTeX.app/Contents/Info.plist"
+      PLIST="dist/CVLaTex.app/Contents/Info.plist"
       set_plist() {
         /usr/libexec/PlistBuddy -c "Set :$1 $VERSION" "$PLIST" 2>/dev/null \
           || /usr/libexec/PlistBuddy -c "Add :$1 string $VERSION" "$PLIST"
@@ -158,7 +158,7 @@ case "$PLATFORM" in
     else
       echo "warning: /usr/libexec/PlistBuddy not found; leaving the bundle version as built" >&2
     fi
-    "$VENV_PY" tools/package_release.py --platform macos --binary dist/CVLaTeX.app
+    "$VENV_PY" tools/package_release.py --platform macos --binary dist/CVLaTex.app
     case "$(uname -m)" in
       arm64|aarch64) ARCH="arm64" ;;
       x86_64|amd64) ARCH="x86_64" ;;
@@ -167,27 +167,27 @@ case "$PLATFORM" in
         exit 1
         ;;
     esac
-    OUTPUT="dist/CVLaTeX-v${VERSION}-macos-${ARCH}.zip (unzipped app: dist/CVLaTeX.app)"
+    OUTPUT="dist/CVLaTex-v${VERSION}-macos-${ARCH}.zip (unzipped app: dist/CVLaTex.app)"
     ;;
   *)
-    if [ ! -f dist/CVLaTeX ]; then
-      echo "error: PyInstaller did not produce dist/CVLaTeX" >&2
+    if [ ! -f dist/CVLaTex ]; then
+      echo "error: PyInstaller did not produce dist/CVLaTex" >&2
       exit 1
     fi
-    mv -f dist/CVLaTeX dist/CVLaTeX_Linux
-    chmod +x dist/CVLaTeX_Linux
+    mv -f dist/CVLaTex dist/CVLaTex_Linux
+    chmod +x dist/CVLaTex_Linux
     # Catch a mixed-Python bundle before packaging. PyInstaller can produce a
     # binary that dies in the bootstrap with "No module named '_struct'" when
     # the stdlib and the bundled libpython come from different installations.
     # Run headless so a healthy build exits instead of opening a window.
-    bootstrap_output="$(env -u DISPLAY -u WAYLAND_DISPLAY timeout 20 ./dist/CVLaTeX_Linux 2>&1 || true)"
+    bootstrap_output="$(env -u DISPLAY -u WAYLAND_DISPLAY timeout 20 ./dist/CVLaTex_Linux 2>&1 || true)"
     if printf '%s\n' "$bootstrap_output" | grep -Eq "ModuleNotFoundError|Module object for .* is NULL"; then
       printf '%s\n' "$bootstrap_output" >&2
       echo "error: the Linux bundle cannot bootstrap its Python runtime" >&2
       exit 1
     fi
-    "$VENV_PY" tools/package_release.py --platform linux --binary dist/CVLaTeX_Linux
-    OUTPUT="dist/CVLaTeX-v${VERSION}-linux-x86_64.tar.gz (raw: dist/CVLaTeX_Linux)"
+    "$VENV_PY" tools/package_release.py --platform linux --binary dist/CVLaTex_Linux
+    OUTPUT="dist/CVLaTex-v${VERSION}-linux-x86_64.tar.gz (raw: dist/CVLaTex_Linux)"
     ;;
 esac
 
